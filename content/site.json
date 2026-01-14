@@ -1,6 +1,6 @@
 {
-  "background": "default-bg.jpg",
-  "banner": "default-banner.png",
+  "background": "bg-1768360488025-Homepage Banner.jpg",
+  "banner": "banner-1768360514865-Homepage Banner.jpg",
   "playlist": [
     {
       "title": "Beep two",
@@ -15,5 +15,29 @@
       "id": "1768026584134"
     }
   ],
-  "sitePassword": "perros666"
+  "sitePassword": "perros666",
+  "theme": {
+    "bgPrimary": "#030712",
+    "bgSecondary": "#111827",
+    "bgTertiary": "#1f2937",
+    "textPrimary": "#ffffff",
+    "textSecondary": "#9ca3af",
+    "textMuted": "#6b7280",
+    "border": "#374151",
+    "primary": "#ffffff",
+    "primaryHover": "#e5e7eb",
+    "primaryText": "#111827",
+    "secondary": "#1f2937",
+    "secondaryHover": "#374151",
+    "secondaryText": "#ffffff",
+    "accent": "#ffffff",
+    "visualizerBar": "#ff0000",
+    "visualizerBarAlt": "#0058f0",
+    "visualizerGlow": "#aeff00",
+    "colorMode": "dark"
+  },
+  "bandName": "Absolution denied",
+  "bandDescription": "The description of the band\n",
+  "profilePic": "profile-1768360359439-tariffs-yellow-tapes-3d-illustration.png",
+  "backgroundDark": "bg-1768357857283-pexels-doubleseven-736355.jpg"
 }

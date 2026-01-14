@@ -4,7 +4,9 @@ import type { Route } from "./+types/player";
 import { getSession } from "~/lib/session.server";
 import { getSiteContent, type Track } from "~/lib/content.server";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
+import { ColorModeToggle } from "~/components/ColorModeToggle";
 import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
+import { useColorMode } from "~/hooks/useColorMode";
 
 export function meta() {
   return [{ title: "Player" }];
@@ -30,8 +32,8 @@ export default function Player() {
   const [currentTime, setCurrentTime] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const { resolvedMode } = useColorMode();
 
-  // Use segmented streaming (HLS-like)
   const {
     loadTrack: loadSegmentedTrack,
     isLoading,
@@ -40,26 +42,22 @@ export default function Player() {
     cleanup,
   } = useSegmentedAudio(audioRef);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => cleanup();
   }, [cleanup]);
 
-  // Set audio element reference
   useEffect(() => {
     if (audioRef.current) {
       setAudioElement(audioRef.current);
     }
   }, [isReady]);
 
-  // Load initial track
   useEffect(() => {
     if (currentTrack) {
       loadSegmentedTrack(currentTrack.id);
     }
   }, []);
 
-  // Audio event listeners
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -130,11 +128,9 @@ export default function Player() {
     setCurrentTime(0);
     setDuration(0);
 
-    // Load the segmented track
     const success = await loadSegmentedTrack(track.id);
 
     if (success && audioRef.current) {
-      // Auto-play when ready
       const tryPlay = async () => {
         try {
           await audioRef.current?.play();
@@ -143,8 +139,6 @@ export default function Player() {
           console.error("Playback failed:", e);
         }
       };
-
-      // Wait a bit for buffer to fill
       setTimeout(tryPlay, 300);
     }
   };
@@ -176,7 +170,6 @@ export default function Player() {
     const percent = (e.clientX - rect.left) / rect.width;
     const newTime = percent * duration;
 
-    // Only seek to buffered regions
     if (audio.buffered.length > 0) {
       audio.currentTime = newTime;
     }
@@ -189,180 +182,233 @@ export default function Player() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const hasSidebar = content.profilePic || content.bandDescription;
+
+  // Build image URLs with theme parameter
+  const themeParam = resolvedMode === "dark" ? "?theme=dark" : "";
+
+  // Use white gradient for light mode, black for dark mode
+  const gradientOverlay = resolvedMode === "light"
+    ? "linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.9))"
+    : "linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8))";
+
   return (
     <div
       className="min-h-screen bg-cover bg-center bg-fixed"
       style={{
-        backgroundImage: `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), url('/api/media/background')`,
+        backgroundImage: `${gradientOverlay}, url('/api/media/background${themeParam}')`,
       }}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
     >
       {/* Header */}
-      <header className="p-4 flex justify-between items-center">
-        <img
-          src="/api/media/banner"
-          alt="Banner"
-          className="h-12 object-contain"
-          onContextMenu={(e) => e.preventDefault()}
-          draggable={false}
-        />
+      <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
+        <ColorModeToggle />
         <Form method="post" action="/logout">
           <button
             type="submit"
-            className="px-4 py-2 text-sm bg-white/10 hover:bg-white/20 rounded-lg transition"
+            className="px-4 py-2 text-sm btn-secondary rounded-lg transition"
           >
             Logout
           </button>
         </Form>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
-        {/* Visualizer */}
-        <div className="mb-8 rounded-xl overflow-hidden bg-gray-900/50 backdrop-blur p-4">
-          <AudioVisualizer audioElement={audioElement} isPlaying={isPlaying} />
+      <main className="container mx-auto px-4 py-8 max-w-6xl">
+        {/* Banner - Full Container Width */}
+        <div className="mb-8">
+          <img
+            src={`/api/media/banner${themeParam}`}
+            alt="Banner"
+            className="w-full h-auto object-contain rounded-xl"
+            onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
+            draggable={false}
+          />
         </div>
 
-        {/* Track Info */}
-        {currentTrack && (
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold">{currentTrack.title}</h2>
-            <p className="text-gray-400">{currentTrack.artist}</p>
-            {isLoading && (
-              <div className="mt-2">
-                <div className="w-48 h-1 bg-white/20 rounded-full mx-auto overflow-hidden">
-                  <div
-                    className="h-full bg-purple-500 transition-all duration-300"
-                    style={{ width: `${loadingProgress}%` }}
-                  />
-                </div>
-                <p className="text-purple-400 text-xs mt-1">
-                  Loading... {Math.round(loadingProgress)}%
-                </p>
+        {/* Two Column Layout */}
+        <div className={`grid gap-8 ${hasSidebar ? "lg:grid-cols-[1fr_300px]" : ""}`}>
+          {/* Left Column - Player */}
+          <div className="space-y-6">
+            {/* Visualizer */}
+            <div className="rounded-xl overflow-hidden bg-theme-secondary backdrop-blur p-4">
+              <AudioVisualizer audioElement={audioElement} isPlaying={isPlaying} />
+            </div>
+
+            {/* Track Info */}
+            {currentTrack && (
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-theme-primary">{currentTrack.title}</h2>
+                <p className="text-theme-secondary">{currentTrack.artist}</p>
+                {isLoading && (
+                  <div className="mt-2">
+                    <div className="w-48 h-1 accent-bg-muted rounded-full mx-auto overflow-hidden">
+                      <div
+                        className="h-full transition-all duration-300"
+                        style={{ width: `${loadingProgress}%`, backgroundColor: "var(--color-accent)" }}
+                      />
+                    </div>
+                    <p className="text-theme-secondary text-xs mt-1">
+                      Loading... {Math.round(loadingProgress)}%
+                    </p>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* Progress Bar */}
-        <div className="mb-6">
-          <div
-            className="h-2 bg-white/20 rounded-full cursor-pointer relative"
-            onClick={seek}
-          >
-            {/* Buffered indicator */}
-            {audioRef.current && audioRef.current.buffered.length > 0 && duration > 0 && (
+            {/* Progress Bar */}
+            <div>
               <div
-                className="absolute h-full bg-white/30 rounded-full"
-                style={{
-                  width: `${(audioRef.current.buffered.end(audioRef.current.buffered.length - 1) / duration) * 100}%`,
-                }}
-              />
-            )}
-            {/* Progress */}
-            <div
-              className="absolute h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-100"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-sm text-gray-400 mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div className="flex justify-center items-center gap-6 mb-8">
-          <button
-            onClick={playPrev}
-            className="p-3 hover:bg-white/10 rounded-full transition"
-            disabled={isLoading}
-          >
-            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-            </svg>
-          </button>
-
-          <button
-            onClick={togglePlay}
-            disabled={isLoading || !isReady}
-            className="p-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full hover:scale-105 transition disabled:opacity-50"
-          >
-            {isLoading ? (
-              <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-            ) : isPlaying ? (
-              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
-              </svg>
-            ) : (
-              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </button>
-
-          <button
-            onClick={playNext}
-            className="p-3 hover:bg-white/10 rounded-full transition"
-            disabled={isLoading}
-          >
-            <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Playlist */}
-        <div className="bg-white/5 backdrop-blur rounded-xl p-4">
-          <h3 className="text-lg font-semibold mb-4">Playlist</h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {content.playlist.map((track) => (
-              <button
-                key={track.id}
-                onClick={() => playTrack(track)}
-                disabled={isLoading}
-                className={`w-full text-left p-3 rounded-lg transition flex items-center gap-3 ${
-                  currentTrack?.id === track.id
-                    ? "bg-purple-500/30"
-                    : "hover:bg-white/10"
-                } ${isLoading ? "opacity-50" : ""}`}
+                className="h-2 bg-white/20 rounded-full cursor-pointer relative"
+                onClick={seek}
               >
+                {audioRef.current && audioRef.current.buffered.length > 0 && duration > 0 && (
+                  <div
+                    className="absolute h-full bg-white/30 rounded-full"
+                    style={{
+                      width: `${(audioRef.current.buffered.end(audioRef.current.buffered.length - 1) / duration) * 100}%`,
+                    }}
+                  />
+                )}
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    currentTrack?.id === track.id
-                      ? "bg-purple-500"
-                      : "bg-white/20"
-                  }`}
-                >
-                  {currentTrack?.id === track.id && isPlaying ? (
-                    <div className="flex gap-0.5">
-                      <span className="w-0.5 h-3 bg-white visualizer-bar" style={{ animationDelay: "0s" }} />
-                      <span className="w-0.5 h-3 bg-white visualizer-bar" style={{ animationDelay: "0.2s" }} />
-                      <span className="w-0.5 h-3 bg-white visualizer-bar" style={{ animationDelay: "0.4s" }} />
+                  className="absolute h-full rounded-full transition-all duration-100"
+                  style={{ width: `${progress}%`, backgroundColor: "var(--color-accent)" }}
+                />
+              </div>
+              <div className="flex justify-between text-sm text-theme-secondary mt-1">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex justify-center items-center gap-6">
+              <button
+                onClick={playPrev}
+                className="p-3 hover:bg-white/10 rounded-full transition"
+                disabled={isLoading}
+              >
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                </svg>
+              </button>
+
+              <button
+                onClick={togglePlay}
+                disabled={isLoading || !isReady}
+                className="p-4 btn-primary rounded-full hover:scale-105 transition disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                ) : isPlaying ? (
+                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </button>
+
+              <button
+                onClick={playNext}
+                className="p-3 hover:bg-white/10 rounded-full transition"
+                disabled={isLoading}
+              >
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Playlist */}
+            <div className="accent-bg-muted backdrop-blur rounded-xl p-4">
+              <h3 className="text-lg font-semibold mb-4 text-theme-primary">Playlist</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {content.playlist.map((track) => (
+                  <button
+                    key={track.id}
+                    onClick={() => playTrack(track)}
+                    disabled={isLoading}
+                    className={`w-full text-left p-3 rounded-lg transition flex items-center gap-3 ${
+                      currentTrack?.id === track.id
+                        ? "bg-white/20"
+                        : "hover:bg-white/10"
+                    } ${isLoading ? "opacity-50" : ""}`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        currentTrack?.id === track.id
+                          ? "btn-primary"
+                          : "accent-bg-muted"
+                      }`}
+                    >
+                      {currentTrack?.id === track.id && isPlaying ? (
+                        <div className="flex gap-0.5">
+                          <span className="w-0.5 h-3 visualizer-bar" style={{ animationDelay: "0s", backgroundColor: "var(--color-primary-text)" }} />
+                          <span className="w-0.5 h-3 visualizer-bar" style={{ animationDelay: "0.2s", backgroundColor: "var(--color-primary-text)" }} />
+                          <span className="w-0.5 h-3 visualizer-bar" style={{ animationDelay: "0.4s", backgroundColor: "var(--color-primary-text)" }} />
+                        </div>
+                      ) : currentTrack?.id === track.id && isLoading ? (
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                        </svg>
+                      )}
                     </div>
-                  ) : currentTrack?.id === track.id && isLoading ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate text-theme-primary">{track.title}</p>
+                      <p className="text-sm text-theme-secondary truncate">{track.artist}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Sidebar */}
+          {hasSidebar && (
+            <div className="space-y-6">
+              {/* Profile Image */}
+              {content.profilePic && (
+                <div className="flex justify-center">
+                  <img
+                    src={`/api/media/profile${themeParam}`}
+                    alt={content.bandName || "Profile"}
+                    className="w-full rounded-xl object-cover border-2 border-theme"
+                    onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
+                    draggable={false}
+                  />
+                </div>
+              )}
+
+              {/* Band Info */}
+              {(content.bandName || content.bandDescription) && (
+                <div className="bg-theme-secondary backdrop-blur rounded-xl p-4 border border-theme">
+                  {content.bandName && (
+                    <h3 className="text-lg font-semibold mb-2 text-theme-primary">
+                      {content.bandName}
+                    </h3>
+                  )}
+                  {content.bandDescription && (
+                    <p className="text-theme-secondary text-sm whitespace-pre-wrap">
+                      {content.bandDescription}
+                    </p>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{track.title}</p>
-                  <p className="text-sm text-gray-400 truncate">{track.artist}</p>
-                </div>
-              </button>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Audio Element (managed by MediaSource) */}
+        {/* Audio Element */}
         <audio ref={audioRef} style={{ display: "none" }} />
       </main>
     </div>

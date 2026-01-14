@@ -10,15 +10,25 @@ export async function loader({ request }: Route.LoaderArgs) {
     return new Response("Unauthorized", { status: 401 });
   }
 
+  const url = new URL(request.url);
+  const theme = url.searchParams.get("theme");
+
   const content = await getSiteContent();
-  const filePath = join(process.cwd(), "media", "backgrounds", content.background);
+
+  // Use dark mode image if available and requested, otherwise fallback to default
+  let filename = content.background;
+  if (theme === "dark" && content.backgroundDark) {
+    filename = content.backgroundDark;
+  }
+
+  const filePath = join(process.cwd(), "media", "backgrounds", filename);
 
   try {
     const fileStats = await stat(filePath);
     const file = await readFile(filePath);
 
     // Determine content type
-    const ext = content.background.split(".").pop()?.toLowerCase();
+    const ext = filename.split(".").pop()?.toLowerCase();
     const contentTypes: Record<string, string> = {
       jpg: "image/jpeg",
       jpeg: "image/jpeg",

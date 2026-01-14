@@ -35,13 +35,17 @@ export default function AdminLogin() {
   const isSubmitting = navigation.state === "submitting";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-slate-900 to-gray-900">
+    <div className="min-h-screen flex items-center justify-center bg-theme-primary">
       <div className="w-full max-w-md p-8">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl border border-white/20">
+        <div className="bg-theme-secondary rounded-2xl p-8 shadow-2xl border border-theme">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center">
+            <div
+              className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: "var(--color-primary)" }}
+            >
               <svg
-                className="w-8 h-8 text-white"
+                className="w-8 h-8"
+                style={{ color: "var(--color-primary-text)" }}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -60,8 +64,8 @@ export default function AdminLogin() {
                 />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-white">Admin Access</h1>
-            <p className="text-gray-400 mt-2">Enter admin password</p>
+            <h1 className="text-2xl font-bold text-theme-primary">Admin Access</h1>
+            <p className="text-theme-muted mt-2">Enter admin password</p>
           </div>
 
           <Form method="post" className="space-y-6">
@@ -72,7 +76,7 @@ export default function AdminLogin() {
                 placeholder="Admin password"
                 required
                 autoFocus
-                className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition"
+                className="w-full px-4 py-3 rounded-lg bg-theme-tertiary border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition"
               />
             </div>
 
@@ -85,14 +89,14 @@ export default function AdminLogin() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 bg-gradient-to-r from-orange-500 to-red-500 text-white font-semibold rounded-lg hover:from-orange-600 hover:to-red-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 focus:ring-offset-gray-900 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 btn-primary font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-offset-2 focus:ring-offset-[var(--color-bg-primary)] transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Entering..." : "Enter Admin"}
             </button>
           </Form>
 
           <div className="mt-4 text-center">
-            <a href="/" className="text-sm text-gray-400 hover:text-white transition">
+            <a href="/" className="text-sm text-theme-muted hover:text-theme-primary transition">
               Back to site
             </a>
           </div>

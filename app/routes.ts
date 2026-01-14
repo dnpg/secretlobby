@@ -10,11 +10,17 @@ export default [
 
   // Admin routes
   route("admin/login", "routes/admin.login.tsx"),
-  route("admin", "routes/admin._index.tsx"),
+  route("admin", "routes/admin.tsx", [
+    index("routes/admin._index.tsx"),
+    route("media", "routes/admin.media.tsx"),
+    route("playlist", "routes/admin.playlist.tsx"),
+    route("theme", "routes/admin.theme.tsx"),
+  ]),
 
   // API routes for media streaming
   route("api/media/background", "routes/api.media.background.tsx"),
   route("api/media/banner", "routes/api.media.banner.tsx"),
+  route("api/media/profile", "routes/api.media.profile.tsx"),
   route("api/media/audio/:filename", "routes/api.media.audio.$filename.tsx"),
 
   // Token endpoint for secure streaming

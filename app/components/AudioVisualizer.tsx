@@ -5,6 +5,23 @@ interface AudioVisualizerProps {
   isPlaying: boolean;
 }
 
+function getThemeColor(varName: string, fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  return value || fallback;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  return `rgba(255, 255, 255, ${alpha})`;
+}
+
 export function AudioVisualizer({ audioElement, isPlaying }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -33,17 +50,23 @@ export function AudioVisualizer({ audioElement, isPlaying }: AudioVisualizerProp
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
+    // Get theme colors
+    const bgColor = getThemeColor("--color-bg-secondary", "#111827");
+    const barColor = getThemeColor("--color-visualizer-bar", "#ffffff");
+    const barAltColor = getThemeColor("--color-visualizer-bar-alt", "#9ca3af");
+    const glowColor = getThemeColor("--color-visualizer-glow", "#ffffff");
+
     const draw = () => {
       if (!isPlaying) {
         // Draw idle state
-        ctx.fillStyle = "rgba(17, 24, 39, 0.9)";
+        ctx.fillStyle = hexToRgba(bgColor, 0.9);
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         const barCount = 64;
         const barWidth = canvas.width / barCount;
         const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-        gradient.addColorStop(0, "#8b5cf6");
-        gradient.addColorStop(1, "#ec4899");
+        gradient.addColorStop(0, barColor);
+        gradient.addColorStop(1, barAltColor);
 
         for (let i = 0; i < barCount; i++) {
           const height = Math.random() * 20 + 5;
@@ -61,15 +84,15 @@ export function AudioVisualizer({ audioElement, isPlaying }: AudioVisualizerProp
       animationRef.current = requestAnimationFrame(draw);
       analyser.getByteFrequencyData(dataArray);
 
-      ctx.fillStyle = "rgba(17, 24, 39, 0.9)";
+      ctx.fillStyle = hexToRgba(bgColor, 0.9);
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const barCount = 64;
       const barWidth = canvas.width / barCount;
       const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
-      gradient.addColorStop(0, "#8b5cf6");
-      gradient.addColorStop(0.5, "#a855f7");
-      gradient.addColorStop(1, "#ec4899");
+      gradient.addColorStop(0, barColor);
+      gradient.addColorStop(0.5, barAltColor);
+      gradient.addColorStop(1, glowColor);
 
       for (let i = 0; i < barCount; i++) {
         const dataIndex = Math.floor((i / barCount) * bufferLength);
@@ -84,8 +107,8 @@ export function AudioVisualizer({ audioElement, isPlaying }: AudioVisualizerProp
           height
         );
 
-        // Mirror effect
-        ctx.fillStyle = `rgba(139, 92, 246, ${(value / 255) * 0.3})`;
+        // Mirror/glow effect
+        ctx.fillStyle = hexToRgba(glowColor, (value / 255) * 0.3);
         ctx.fillRect(
           i * barWidth + 1,
           0,
