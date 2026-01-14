@@ -5,3 +5,9 @@
 # React Router
 /.react-router/
 /build/
+
+# Media files (keep structure but not content)
+/media/audio/*
+/media/backgrounds/*
+/media/banners/*
+!media/**/.gitkeep

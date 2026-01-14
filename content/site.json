@@ -1,0 +1,19 @@
+{
+  "background": "default-bg.jpg",
+  "banner": "default-banner.png",
+  "playlist": [
+    {
+      "title": "Beep two",
+      "artist": "Unknown",
+      "filename": "1768026268482-beep-two.mp3",
+      "id": "1768026268482"
+    },
+    {
+      "title": "Xmas jazz",
+      "artist": "Unknown",
+      "filename": "1768026584133-christmas-jazz-christmas-holiday-347485.mp3",
+      "id": "1768026584134"
+    }
+  ],
+  "sitePassword": "perros666"
+}

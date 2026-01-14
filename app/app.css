@@ -7,9 +7,45 @@
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-gray-900 text-white;
+  color-scheme: dark;
+}
 
-  @media (prefers-color-scheme: dark) {
-    color-scheme: dark;
-  }
+/* Audio visualizer bars animation */
+@keyframes visualizer-bar {
+  0%, 100% { transform: scaleY(0.1); }
+  50% { transform: scaleY(1); }
+}
+
+.visualizer-bar {
+  transform-origin: bottom;
+  animation: visualizer-bar 0.5s ease-in-out infinite;
+}
+
+/* Prevent media download */
+audio::-webkit-media-controls-enclosure {
+  overflow: hidden;
+}
+
+audio::-webkit-media-controls-panel {
+  width: calc(100% + 30px);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
