@@ -1,0 +1,115 @@
+name: secretlobby
+
+services:
+  # ==========================================================================
+  # PostgreSQL Database
+  # ==========================================================================
+  postgres:
+    image: postgres:17-alpine
+    container_name: secretlobby-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - secretlobby-network
+
+  # ==========================================================================
+  # Application Server
+  # ==========================================================================
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: secretlobby-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SESSION_SECRET: ${SESSION_SECRET}
+      APP_DOMAIN: ${APP_DOMAIN}
+      SITE_PASSWORD: ${SITE_PASSWORD}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./content:/app/content
+      - ./media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - secretlobby-network
+    expose:
+      - "3000"
+
+  # ==========================================================================
+  # Nginx Reverse Proxy (Subdomain & Custom Domain Routing)
+  # ==========================================================================
+  nginx:
+    image: nginx:stable-alpine
+    container_name: secretlobby-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - secretlobby-network
+
+  # ==========================================================================
+  # Redis (Sessions & Caching)
+  # ==========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: secretlobby-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - secretlobby-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================================
+  # Adminer (Database Management - Development Only)
+  # ==========================================================================
+  adminer:
+    image: adminer:latest
+    container_name: secretlobby-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: dracula
+    depends_on:
+      - postgres
+    networks:
+      - secretlobby-network
+    profiles:
+      - dev
+
+networks:
+  secretlobby-network:
+
+volumes:
+  postgres_data:
+  redis_data:

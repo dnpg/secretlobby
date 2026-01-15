@@ -39,5 +39,6 @@
   "bandName": "Absolution denied",
   "bandDescription": "The description of the band\n",
   "profilePic": "profile-1768360359439-tariffs-yellow-tapes-3d-illustration.png",
-  "backgroundDark": "bg-1768357857283-pexels-doubleseven-736355.jpg"
+  "backgroundDark": "bg-1768357857283-pexels-doubleseven-736355.jpg",
+  "allowUserColorMode": true
 }

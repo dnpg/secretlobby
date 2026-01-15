@@ -11,3 +11,17 @@
 /media/backgrounds/*
 /media/banners/*
 !media/**/.gitkeep
+
+# Prisma
+/generated/prisma
+/node_modules/.prisma
+
+# Nginx
+/nginx/logs/*
+/nginx/ssl/*
+!nginx/logs/.gitkeep
+!nginx/ssl/.gitkeep
+
+# Docker volumes
+postgres_data/
+redis_data/

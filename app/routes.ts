@@ -8,6 +8,10 @@ export default [
   // Protected player route
   route("player", "routes/player.tsx"),
 
+  // Auth routes (Google OAuth)
+  route("auth/google", "routes/auth.google.tsx"),
+  route("auth/google/callback", "routes/auth.google.callback.tsx"),
+
   // Admin routes
   route("admin/login", "routes/admin.login.tsx"),
   route("admin", "routes/admin.tsx", [
