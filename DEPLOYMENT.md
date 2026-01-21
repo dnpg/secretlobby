@@ -45,6 +45,18 @@ SESSION_SECRET=generate-a-secure-32-char-minimum-secret
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 ```
 
+### Migration Variables (console only)
+**IMPORTANT**: Only the console app should run database migrations. Add this to the console app only:
+```bash
+RUN_MIGRATIONS=true
+```
+
+**How migrations work:**
+- The console app runs `prisma migrate deploy` before starting the server
+- Other apps (marketing, lobby, super-admin) skip migrations entirely
+- This prevents race conditions and ensures migrations run exactly once per deployment
+- Console app will take ~5-10 seconds longer to start (while running migrations)
+
 ### Optional: Google OAuth (console app)
 ```bash
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
@@ -81,7 +93,11 @@ You'll create **4 separate services** in Dokploy, one for each app.
    ```
 5. **Port**: 3000
 6. **Domain**: `app.secretlobby.io`
-7. **Environment Variables**: Add shared variables + Google OAuth
+7. **Environment Variables**: Add shared variables + Database URL + Google OAuth, plus:
+   ```
+   RUN_MIGRATIONS=true
+   ```
+   ⚠️ **Critical**: This makes console responsible for running database migrations
 
 ### Service 3: Lobby (*.secretlobby.io)
 1. **Create Service** → Docker Build
@@ -122,19 +138,32 @@ A       *           your.vps.ip.address         Auto
 
 The wildcard (*) record enables dynamic subdomains for user lobbies.
 
-## Step 5: Run Database Migrations
+## Step 5: Database Migrations (Automatic)
 
-After deploying the database service, run migrations:
+**Migrations run automatically** when you deploy the console app with `RUN_MIGRATIONS=true`.
 
-1. SSH into your Dokploy VPS
-2. Run:
-   ```bash
-   docker exec -it <console-container-id> sh
-   cd /app/packages/db
-   npx prisma migrate deploy
-   ```
+### How it works:
+1. When the console container starts, it checks for the `RUN_MIGRATIONS` environment variable
+2. If set to `true`, it runs `prisma migrate deploy` from the `/app/packages/db` directory
+3. Migrations complete before the console app starts accepting requests
+4. Other apps (marketing, lobby, super-admin) connect to the already-migrated database
 
-Or add a migration script to your CI/CD pipeline.
+### First deployment:
+- Make sure to deploy the **console app first** so migrations run before other apps start
+- Console will take ~5-10 seconds longer to start on first deployment
+
+### Subsequent deployments:
+- Deploy console first (migrations run if there are any new ones)
+- Then deploy other apps in any order
+
+### Manual migration (if needed):
+If you ever need to run migrations manually:
+```bash
+# SSH into your Dokploy VPS
+docker exec -it <console-container-id> sh
+cd /app/packages/db
+npx prisma migrate deploy
+```
 
 ## Step 6: Create First Admin User
 
@@ -170,6 +199,12 @@ Each Dokploy service uses the **same Dockerfile** but with different build argum
 - Check DATABASE_URL format
 - Ensure PostgreSQL service is running
 - Verify network connectivity between services
+
+### Migration errors
+- **"Console app stuck on startup"**: Check logs - migrations might be failing
+- **"Migration failed"**: Check DATABASE_URL is correct and database is accessible
+- **"Other apps failing with schema errors"**: Console app migrations may not have run yet - deploy console first
+- **"Duplicate migrations running"**: Check that ONLY console app has `RUN_MIGRATIONS=true`
 
 ### Subdomain routing not working
 - Verify wildcard DNS (*) is configured

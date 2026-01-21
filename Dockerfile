@@ -111,6 +111,10 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 COPY --from=builder --chown=appuser:nodejs /app/apps/${APP_NAME}/build ./apps/${APP_NAME}/build
 COPY --from=builder --chown=appuser:nodejs /app/packages ./packages
 
+# Copy entrypoint script
+COPY --chown=appuser:nodejs docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # Create necessary directories with correct permissions
 RUN mkdir -p /app/data /app/uploads && \
     chown -R appuser:nodejs /app
@@ -121,10 +125,12 @@ USER appuser
 # Expose port
 EXPOSE 3000
 
-# Set environment variables
+# Set environment variables (APP_NAME is passed as build arg and stored for runtime)
+ARG APP_NAME
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    APP_NAME=${APP_NAME}
 
 # Start the application
 WORKDIR /app/apps/${APP_NAME}
-CMD ["npx", "react-router-serve", "./build/server/index.js"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
