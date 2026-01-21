@@ -66,7 +66,10 @@ You'll create **4 separate services** in Dokploy, one for each app.
    ```
 5. **Port**: 3000
 6. **Domain**: `secretlobby.io` and `www.secretlobby.io`
-7. **Environment Variables**: Add shared variables above
+7. **Environment Variables**: Add shared variables above, plus:
+   ```
+   CONSOLE_URL=//app.secretlobby.io
+   ```
 
 ### Service 2: Console (app.secretlobby.io)
 1. **Create Service** → Docker Build

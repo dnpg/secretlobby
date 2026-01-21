@@ -7,18 +7,25 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-export default function MarketingHome() {
+export async function loader() {
+  const consoleUrl = process.env.CONSOLE_URL || "//app.secretlobby.local";
+  return { consoleUrl };
+}
+
+export default function MarketingHome({ loaderData }: Route.ComponentProps) {
+  const { consoleUrl } = loaderData;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white">
       <header className="container mx-auto px-4 py-6">
         <nav className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">SecretLobby</h1>
           <div className="space-x-4">
-            <a href="//app.secretlobby.local" className="hover:text-gray-300">
+            <a href={consoleUrl} className="hover:text-gray-300">
               Sign In
             </a>
             <a
-              href="//app.secretlobby.local/signup"
+              href={`${consoleUrl}/signup`}
               className="bg-white text-black px-4 py-2 rounded-lg hover:bg-gray-200"
             >
               Get Started
@@ -37,7 +44,7 @@ export default function MarketingHome() {
             tracks, demos, and exclusive content with the people who matter most.
           </p>
           <a
-            href="//app.secretlobby.local/signup"
+            href={`${consoleUrl}/signup`}
             className="bg-white text-black px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-200 inline-block"
           >
             Start Your Free Lobby
