@@ -32,12 +32,17 @@ Create a PostgreSQL database in Dokploy:
 
 Each app needs these environment variables in Dokploy:
 
-### Shared Variables (all 4 apps)
+### Shared Variables (all apps)
 ```bash
 NODE_ENV=production
 CORE_DOMAIN=secretlobby.io  # Change to your domain
-DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 SESSION_SECRET=generate-a-secure-32-char-minimum-secret
+```
+
+### Database Variables (console, lobby, super-admin only)
+**Note**: The marketing app does NOT need database access. Only add these variables for console, lobby, and super-admin apps:
+```bash
+DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 ```
 
 ### Optional: Google OAuth (console app)
