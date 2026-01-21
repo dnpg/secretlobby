@@ -1,49 +1,31 @@
 {
-  "name": "secret-lobby",
+  "name": "band-blast",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "react-router build",
-    "dev": "react-router dev",
-    "start": "react-router-serve ./build/server/index.js",
-    "typecheck": "react-router typegen && tsc",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:migrate:create": "prisma migrate dev --create-only",
-    "db:migrate:deploy": "prisma migrate deploy",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
-    "db:reset": "prisma migrate reset",
-    "db:seed": "prisma db seed"
-  },
-  "dependencies": {
-    "@prisma/adapter-pg": "^7.2.0",
-    "@prisma/client": "^7.2.0",
-    "@react-router/node": "7.12.0",
-    "@react-router/serve": "7.12.0",
-    "arctic": "^3.7.0",
-    "bcryptjs": "^3.0.3",
-    "dotenv": "^17.2.3",
-    "iron-session": "^8.0.4",
-    "isbot": "^5.1.31",
-    "pg": "^8.16.3",
-    "prisma": "^7.2.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "react-router": "7.12.0"
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "pnpm --filter @secretlobby/db db:migrate",
+    "db:migrate:create": "pnpm --filter @secretlobby/db db:migrate:create",
+    "db:migrate:deploy": "pnpm --filter @secretlobby/db db:migrate:deploy",
+    "db:push": "pnpm --filter @secretlobby/db db:push",
+    "db:studio": "pnpm --filter @secretlobby/db db:studio",
+    "db:reset": "pnpm --filter @secretlobby/db db:reset",
+    "db:seed": "pnpm --filter @secretlobby/db db:seed",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "@react-router/dev": "7.12.0",
-    "@tailwindcss/vite": "^4.1.13",
-    "@types/bcryptjs": "^3.0.0",
-    "@types/node": "^22",
-    "@types/pg": "^8.16.0",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "tailwindcss": "^4.1.13",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.7",
-    "vite-tsconfig-paths": "^5.1.4"
+    "prettier": "^3.5.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

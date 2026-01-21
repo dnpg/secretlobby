@@ -9,65 +9,18 @@ services:
     container_name: secretlobby-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-secretlobby}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretlobby}
+      POSTGRES_DB: ${POSTGRES_DB:-secretlobby}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-secretlobby}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - secretlobby-network
-
-  # ==========================================================================
-  # Application Server
-  # ==========================================================================
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: secretlobby-app
-    restart: unless-stopped
-    environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      SESSION_SECRET: ${SESSION_SECRET}
-      APP_DOMAIN: ${APP_DOMAIN}
-      SITE_PASSWORD: ${SITE_PASSWORD}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      REDIS_URL: redis://redis:6379
-    volumes:
-      - ./content:/app/content
-      - ./media:/app/media
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - secretlobby-network
-    expose:
-      - "3000"
-
-  # ==========================================================================
-  # Nginx Reverse Proxy (Subdomain & Custom Domain Routing)
-  # ==========================================================================
-  nginx:
-    image: nginx:stable-alpine
-    container_name: secretlobby-nginx
-    restart: unless-stopped
-    ports:
-      - "8080:80"
-      - "8443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/logs:/var/log/nginx
-    depends_on:
-      - app
     networks:
       - secretlobby-network
 
@@ -87,6 +40,143 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ==========================================================================
+  # Marketing App (domain.com)
+  # ==========================================================================
+  marketing:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      args:
+        APP_NAME: marketing
+        APP_PORT: 3000
+    container_name: secretlobby-marketing
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - secretlobby-network
+    expose:
+      - "3000"
+
+  # ==========================================================================
+  # Console App (app.domain.com)
+  # ==========================================================================
+  console:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      args:
+        APP_NAME: console
+        APP_PORT: 3001
+    container_name: secretlobby-console
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-secretlobby}:${POSTGRES_PASSWORD:-secretlobby}@postgres:5432/${POSTGRES_DB:-secretlobby}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      AUTH_URL: ${AUTH_URL:-https://app.secretlobby.co}
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - secretlobby-network
+    expose:
+      - "3001"
+
+  # ==========================================================================
+  # Lobby App (*.domain.com)
+  # ==========================================================================
+  lobby:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      args:
+        APP_NAME: lobby
+        APP_PORT: 3002
+    container_name: secretlobby-lobby
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-secretlobby}:${POSTGRES_PASSWORD:-secretlobby}@postgres:5432/${POSTGRES_DB:-secretlobby}
+      SESSION_SECRET: ${SESSION_SECRET}
+      APP_DOMAIN: ${APP_DOMAIN:-secretlobby.io}
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./media:/app/media:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - secretlobby-network
+    expose:
+      - "3002"
+
+  # ==========================================================================
+  # Super Admin App (admin.domain.com)
+  # ==========================================================================
+  super-admin:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.app
+      args:
+        APP_NAME: super-admin
+        APP_PORT: 3003
+    container_name: secretlobby-super-admin
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      DATABASE_URL: postgresql://${POSTGRES_USER:-secretlobby}:${POSTGRES_PASSWORD:-secretlobby}@postgres:5432/${POSTGRES_DB:-secretlobby}
+      SESSION_SECRET: ${SESSION_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      AUTH_URL: ${AUTH_URL:-https://admin.secretlobby.io}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - secretlobby-network
+    expose:
+      - "3003"
+
+  # ==========================================================================
+  # Nginx Reverse Proxy (Domain Routing)
+  # ==========================================================================
+  nginx:
+    image: nginx:stable-alpine
+    container_name: secretlobby-nginx
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      # Use dev config when NODE_ENV=development, production config otherwise
+      - ./docker/nginx/nginx.${NODE_ENV:-dev}.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - secretlobby-network
+    profiles:
+      - "" # Always run (empty profile means no profile restriction)
 
   # ==========================================================================
   # Adminer (Database Management - Development Only)
@@ -109,6 +199,7 @@ services:
 
 networks:
   secretlobby-network:
+    driver: bridge
 
 volumes:
   postgres_data:

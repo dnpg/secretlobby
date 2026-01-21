@@ -1,0 +1,41 @@
+{
+  "name": "@secretlobby/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./session": {
+      "types": "./src/session.server.ts",
+      "import": "./src/session.server.ts"
+    },
+    "./password": {
+      "types": "./src/password.server.ts",
+      "import": "./src/password.server.ts"
+    },
+    "./oauth": {
+      "types": "./src/oauth.server.ts",
+      "import": "./src/oauth.server.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@secretlobby/db": "workspace:*",
+    "arctic": "^3.7.0",
+    "bcryptjs": "^3.0.3",
+    "iron-session": "^8.0.4"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "@react-router/node": "^7.0.0"
+  }
+}

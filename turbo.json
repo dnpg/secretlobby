@@ -1,0 +1,42 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "db:generate"],
+      "outputs": ["build/**", ".react-router/**"],
+      "env": ["NODE_ENV", "DATABASE_URL"]
+    },
+    "dev": {
+      "dependsOn": ["^db:generate"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^lint"],
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "db:generate"],
+      "outputs": []
+    },
+    "db:generate": {
+      "cache": false,
+      "outputs": ["node_modules/.prisma/**", "src/generated/**"]
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  },
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "SESSION_SECRET",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET"
+  ],
+  "globalPassThroughEnv": ["REDIS_URL", "APP_DOMAIN"]
+}

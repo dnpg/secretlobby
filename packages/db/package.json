@@ -1,0 +1,42 @@
+{
+  "name": "@secretlobby/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "import": "./src/client.ts"
+    }
+  },
+  "scripts": {
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:create": "prisma migrate dev --create-only",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma migrate reset",
+    "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "clean": "rm -rf node_modules src/generated"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "^7.2.0",
+    "dotenv": "^17.2.3",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
+    "@types/pg": "^8.16.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^7.2.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.2"
+  }
+}

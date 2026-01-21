@@ -1,0 +1,288 @@
+// Multi-tenant schema for SecretLobby.io
+// Band/Artist lobby landing pages platform
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/client"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserRole {
+  OWNER // Full access, can delete account
+  ADMIN // Full access except account deletion
+  EDITOR // Can edit lobbies and content
+  VIEWER // Read-only access
+}
+
+enum DomainStatus {
+  PENDING // DNS not yet verified
+  VERIFIED // DNS verified and active
+  FAILED // DNS verification failed
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+// ============================================================================
+// ACCOUNT (Tenant)
+// ============================================================================
+
+model Account {
+  id   String @id @default(cuid())
+  name String // Organization/Band name
+  slug String @unique // Subdomain: {slug}.secretlobby.io
+
+  // Subscription & Billing
+  subscriptionTier SubscriptionTier @default(FREE)
+  stripeCustomerId String?          @unique
+
+  // Global account settings (JSON)
+  settings Json @default("{}")
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users          AccountUser[]
+  lobbies        Lobby[]
+  domains        Domain[]
+  defaultLobbyId String? // Reference to the default lobby
+
+  @@index([slug])
+}
+
+// ============================================================================
+// USER
+// ============================================================================
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  name         String?
+  avatarUrl    String?
+
+  // Email verification
+  emailVerified    Boolean @default(false)
+  emailVerifyToken String?
+
+  // Password reset
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  // Relations
+  accounts AccountUser[]
+  sessions Session[]
+
+  @@index([email])
+}
+
+// ============================================================================
+// ACCOUNT USER (Junction table with role)
+// ============================================================================
+
+model AccountUser {
+  id        String   @id @default(cuid())
+  accountId String
+  userId    String
+  role      UserRole @default(VIEWER)
+
+  // Invitation tracking
+  invitedAt  DateTime  @default(now())
+  acceptedAt DateTime?
+  invitedBy  String? // User ID who sent the invite
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, userId])
+  @@index([accountId])
+  @@index([userId])
+}
+
+// ============================================================================
+// SESSION
+// ============================================================================
+
+model Session {
+  id     String @id @default(cuid())
+  userId String
+  token  String @unique
+
+  // Session context
+  accountId String? // Currently active account
+  userAgent String?
+  ipAddress String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+// ============================================================================
+// LOBBY (Landing Page)
+// ============================================================================
+
+model Lobby {
+  id        String @id @default(cuid())
+  accountId String
+
+  // Basic info
+  name        String // Internal name
+  slug        String // URL path: {account-slug}.secretlobby.io/{lobby-slug}
+  title       String? // Public title
+  description String? // Public description
+
+  // Status
+  isPublished Boolean @default(false)
+  isDefault   Boolean @default(false) // Is this the account's default lobby?
+
+  // Access control
+  password     String? // Optional password protection
+  requiresAuth Boolean @default(false)
+
+  // Content & Settings (JSON)
+  // Includes: theme, background, banner, playlist, band info, etc.
+  settings Json @default("{}")
+
+  // Media references
+  backgroundImage String?
+  bannerImage     String?
+  profileImage    String?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
+  // Relations
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tracks  Track[]
+
+  @@unique([accountId, slug])
+  @@index([accountId])
+  @@index([slug])
+}
+
+// ============================================================================
+// TRACK (Audio tracks for a lobby)
+// ============================================================================
+
+model Track {
+  id      String @id @default(cuid())
+  lobbyId String
+
+  // Track info
+  title    String
+  artist   String?
+  filename String // Storage reference
+  duration Int? // Duration in seconds
+
+  // Ordering
+  position Int @default(0)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  lobby Lobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+
+  @@index([lobbyId])
+  @@index([lobbyId, position])
+}
+
+// ============================================================================
+// DOMAIN (Custom domains)
+// ============================================================================
+
+model Domain {
+  id        String @id @default(cuid())
+  accountId String
+
+  // Domain info
+  domain String @unique // e.g., "music.mybandname.com"
+
+  // Verification
+  status            DomainStatus @default(PENDING)
+  verificationToken String       @unique @default(cuid())
+  verifiedAt        DateTime?
+  lastCheckedAt     DateTime?
+
+  // SSL
+  sslEnabled   Boolean   @default(false)
+  sslExpiresAt DateTime?
+
+  // Target lobby (optional - defaults to account's default lobby)
+  lobbyId String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([domain])
+  @@index([accountId])
+}
+
+// ============================================================================
+// AUDIT LOG (Optional - for tracking changes)
+// ============================================================================
+
+model AuditLog {
+  id        String  @id @default(cuid())
+  accountId String?
+  userId    String?
+
+  // Action details
+  action     String // e.g., "lobby.created", "domain.verified"
+  entityType String? // e.g., "Lobby", "Domain"
+  entityId   String?
+
+  // Change data
+  oldData Json?
+  newData Json?
+
+  // Context
+  ipAddress String?
+  userAgent String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}

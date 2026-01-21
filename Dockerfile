@@ -1,58 +1,108 @@
 # ==============================================================================
-# SecretLobby.io - Multi-stage Dockerfile
+# SecretLobby - Multi-App Dockerfile (Turborepo)
 # ==============================================================================
+# This Dockerfile can build any of the 4 apps: marketing, console, lobby, super-admin
+# Usage: docker build --build-arg APP_NAME=console -t secretlobby-console .
 
-# Stage 1: Install all dependencies
-FROM node:20-alpine AS dependencies
+ARG NODE_VERSION=20
+
+# ==============================================================================
+# Stage 1: Base - Install turbo
+# ==============================================================================
+FROM node:${NODE_VERSION}-alpine AS base
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-COPY prisma ./prisma
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+# Use npm for global install to avoid pnpm global bin directory issues
+RUN pnpm add turbo --global
+
+# ==============================================================================
+# Stage 2: Prune - Create pruned monorepo for specific app
+# ==============================================================================
+FROM base AS pruner
+ARG APP_NAME
+WORKDIR /app
+COPY . .
+RUN turbo prune @secretlobby/${APP_NAME} --docker
+
+# ==============================================================================
+# Stage 3: Dependencies - Install all dependencies
+# ==============================================================================
+FROM base AS installer
+WORKDIR /app
+
+# Copy lockfile and package.json's from prune
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+# Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Stage 2: Build the application
-FROM node:20-alpine AS builder
+# ==============================================================================
+# Stage 4: Builder - Build the application
+# ==============================================================================
+FROM base AS builder
+ARG APP_NAME
 WORKDIR /app
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY . .
+
+# Copy dependencies from installer
+COPY --from=installer /app/ .
+
+# Copy source code from prune
+COPY --from=pruner /app/out/full/ .
 
 # Generate Prisma client
-RUN corepack enable && corepack prepare pnpm@latest --activate
-RUN npx prisma generate
+RUN pnpm --filter @secretlobby/db db:generate
 
-# Build the application
-RUN pnpm run build
+# Build the app and its dependencies
+RUN turbo run build --filter=@secretlobby/${APP_NAME}...
 
-# Stage 3: Production image
-FROM node:20-alpine AS production
+# ==============================================================================
+# Stage 5: Runner - Production runtime
+# ==============================================================================
+FROM node:${NODE_VERSION}-alpine AS runner
+ARG APP_NAME
 WORKDIR /app
 
 # Add non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 secretlobby
+    adduser --system --uid 1001 appuser
 
-# Install production dependencies and generate Prisma client
-COPY package.json pnpm-lock.yaml ./
-COPY prisma ./prisma
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Copy package files for production install
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=pruner /app/out/pnpm-workspace.yaml ./pnpm-workspace.yaml
+
+# Install only production dependencies
 RUN pnpm install --prod --frozen-lockfile
-RUN npx prisma generate
 
-# Copy built application
-COPY --from=builder /app/build ./build
+# Copy built application from builder
+COPY --from=builder /app/apps/${APP_NAME}/build ./apps/${APP_NAME}/build
+COPY --from=builder /app/packages ./packages
 
-# Create directories for content and media
-RUN mkdir -p /app/content /app/media && \
-    chown -R secretlobby:nodejs /app
+# Copy .env file (will be overridden by environment variables in Dokploy)
+COPY .env.example .env
 
-USER secretlobby
+# Create necessary directories
+RUN mkdir -p /app/data /app/uploads && \
+    chown -R appuser:nodejs /app
+
+USER appuser
 
 # Expose port
 EXPOSE 3000
 
+# Set environment variables
+ENV NODE_ENV=production
+ENV PORT=3000
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+    CMD node -e "require('http').get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))" || exit 1
 
 # Start the application
-CMD ["npm", "run", "start"]
+WORKDIR /app/apps/${APP_NAME}
+CMD ["node", "./build/server/index.js"]

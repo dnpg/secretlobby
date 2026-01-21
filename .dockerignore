@@ -1,4 +1,77 @@
-.react-router
-build
+# Dependencies
 node_modules
+**/node_modules
+.pnp
+.pnp.js
+
+# Build outputs (exclude from copy, will be generated in Docker)
+dist
+build
+**/build
+.next
+out
+.turbo
+**/.turbo
+.react-router
+**/.react-router
+
+# Testing
+coverage
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+**/__tests__
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files (except .env.example)
+.env
+.env.local
+.env.development
+.env.test
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+docker-compose*.yml
+
+# CI/CD
+.github
+
+# Documentation
 README.md
+docs
+
+# Misc
+.eslintcache
+.prettiercache
+.cache
+temp
+tmp
+
+# Media & Uploads (will be mounted as volumes)
+media
+uploads
+public/uploads
+content/media

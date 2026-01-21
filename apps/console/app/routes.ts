@@ -1,0 +1,21 @@
+import { type RouteConfig, index, route, layout } from "@react-router/dev/routes";
+
+export default [
+  // Authentication
+  route("login", "routes/login.tsx"),
+  route("signup", "routes/signup.tsx"),
+  route("logout", "routes/logout.tsx"),
+
+  // OAuth
+  route("auth/google", "routes/auth.google.tsx"),
+  route("auth/google/callback", "routes/auth.google.callback.tsx"),
+
+  // Dashboard (protected with layout)
+  layout("routes/_layout.tsx", [
+    index("routes/_layout._index.tsx"),
+    route("media", "routes/_layout.media.tsx"),
+    route("playlist", "routes/_layout.playlist.tsx"),
+    route("theme", "routes/_layout.theme.tsx"),
+    route("settings", "routes/_layout.settings.tsx"),
+  ]),
+] satisfies RouteConfig;

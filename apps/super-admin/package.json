@@ -1,0 +1,35 @@
+{
+  "name": "@secretlobby/super-admin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev --host 0.0.0.0 --port 3003",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "lint": "eslint app/",
+    "db:generate": "echo 'Handled by @secretlobby/db'"
+  },
+  "dependencies": {
+    "@react-router/node": "7.12.0",
+    "@react-router/serve": "7.12.0",
+    "@secretlobby/auth": "workspace:*",
+    "@secretlobby/db": "workspace:*",
+    "@secretlobby/ui": "workspace:*",
+    "isbot": "^5.1.31",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-router": "7.12.0"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.12.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}
