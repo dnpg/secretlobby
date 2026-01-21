@@ -13,7 +13,7 @@ FROM node:${NODE_VERSION}-alpine AS base
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 # Use npm for global install to avoid pnpm global bin directory issues
-RUN pnpm add turbo --global
+RUN npm install -g turbo@^2.5.0
 
 # ==============================================================================
 # Stage 2: Prune - Create pruned monorepo for specific app
