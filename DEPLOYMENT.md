@@ -379,7 +379,7 @@ npx prisma migrate deploy
 ## Monitoring
 
 ### Health Checks
-Each app exposes `/health` endpoint for monitoring.
+Each app exposes `/` endpoint for monitoring.
 
 ### Logs
 View logs in Dokploy: Service → Logs tab
