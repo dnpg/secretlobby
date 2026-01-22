@@ -38,7 +38,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Resolve tenant from subdomain or custom domain
   const tenant = await resolveTenant(request);
-
+  console.log(tenant);
   // If no tenant found, show a generic landing
   if (!tenant.account || !tenant.lobby) {
     return {

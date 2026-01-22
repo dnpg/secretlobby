@@ -18,20 +18,35 @@ export interface TenantContext {
 }
 
 /**
+ * Get the actual hostname from the request.
+ * Handles Traefik/proxy headers (X-Forwarded-Host) and direct host header.
+ */
+function getHostname(request: Request): string {
+  // Check for proxy forwarded host (Traefik, nginx, etc.)
+  const forwardedHost = request.headers.get("X-Forwarded-Host");
+  if (forwardedHost) {
+    return forwardedHost.split(":")[0];
+  }
+
+  // Fall back to host header or URL hostname
+  const url = new URL(request.url);
+  const hostname = request.headers.get("host") || url.hostname;
+  return hostname.split(":")[0];
+}
+
+/**
  * Extract subdomain from the request hostname.
- * Handles both direct subdomains and nginx X-Subdomain header.
+ * Handles Traefik (X-Forwarded-Host) and nginx (X-Subdomain) headers.
  */
 export function extractSubdomain(request: Request): string | null {
-  // First check for nginx forwarded subdomain header
+  // First check for explicitly forwarded subdomain header (nginx)
   const forwardedSubdomain = request.headers.get("X-Subdomain");
   if (forwardedSubdomain) {
     return forwardedSubdomain;
   }
 
-  // Parse from hostname
-  const url = new URL(request.url);
-  const hostname = request.headers.get("host") || url.hostname;
-  const hostWithoutPort = hostname.split(":")[0];
+  // Parse from hostname (handles Traefik X-Forwarded-Host)
+  const hostWithoutPort = getHostname(request);
 
   // Use CORE_DOMAIN from environment
   const appDomain = process.env.CORE_DOMAIN || "secretlobby.io";
@@ -52,9 +67,7 @@ export function extractSubdomain(request: Request): string | null {
  * Check if the hostname is a custom domain (not our app domain)
  */
 export function isCustomDomain(request: Request): boolean {
-  const url = new URL(request.url);
-  const hostname = request.headers.get("host") || url.hostname;
-  const hostWithoutPort = hostname.split(":")[0];
+  const hostWithoutPort = getHostname(request);
 
   // Use CORE_DOMAIN from environment
   const appDomain = process.env.CORE_DOMAIN || "secretlobby.io";
@@ -74,7 +87,8 @@ export function isCustomDomain(request: Request): boolean {
 export async function resolveTenant(request: Request): Promise<TenantContext> {
   const subdomain = extractSubdomain(request);
   const customDomain = isCustomDomain(request);
-
+  console.log('the dsub',subdomain);
+  console.log('the custom',customDomain);
   // Try subdomain resolution first
   if (subdomain) {
     const account = await prisma.account.findUnique({
@@ -86,7 +100,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
         },
       },
     });
-
+    
     if (account) {
       return {
         account,
@@ -99,10 +113,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
 
   // Try custom domain resolution
   if (customDomain) {
-    const url = new URL(request.url);
-    const hostname = (
-      request.headers.get("host") || url.hostname
-    ).split(":")[0];
+    const hostname = getHostname(request);
 
     const domain = await prisma.domain.findUnique({
       where: {
