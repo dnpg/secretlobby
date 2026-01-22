@@ -1,0 +1,30 @@
+# Traefik Static Configuration
+api:
+  insecure: true
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: secretlobby-network
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+accessLog:
+  format: common
+
+# Uncomment for Let's Encrypt (production)
+# certificatesResolvers:
+#   letsencrypt:
+#     acme:
+#       email: admin@secretlobby.co
+#       storage: /letsencrypt/acme.json
+#       httpChallenge:
+#         entryPoint: web

@@ -1,0 +1,102 @@
+# Traefik Dynamic Configuration (Development)
+# Routes to apps running on host machine via npm run dev
+
+http:
+  # ==========================================================================
+  # Middlewares
+  # ==========================================================================
+  middlewares:
+    compress:
+      compress: {}
+
+    ratelimit-general:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
+
+    ratelimit-api:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
+
+  # ==========================================================================
+  # Routers
+  # ==========================================================================
+  routers:
+    # Marketing (main domain)
+    marketing:
+      rule: "Host(`secretlobby.local`) || Host(`www.secretlobby.local`)"
+      entryPoints:
+        - web
+      service: marketing
+      priority: 100
+      middlewares:
+        - compress
+
+    # Console
+    console:
+      rule: "Host(`console.secretlobby.local`)"
+      entryPoints:
+        - web
+      service: console
+      priority: 100
+      middlewares:
+        - compress
+
+    # Super Admin
+    super-admin:
+      rule: "Host(`admin.secretlobby.local`)"
+      entryPoints:
+        - web
+      service: super-admin
+      priority: 100
+      middlewares:
+        - compress
+
+    # Lobby (wildcard subdomains)
+    lobby:
+      rule: "HostRegexp(`^.+\\.secretlobby\\.local$`) || Host(`lobby.secretlobby.local`)"
+      entryPoints:
+        - web
+      service: lobby
+      priority: 10
+      middlewares:
+        - compress
+
+    # Adminer (dev only)
+    adminer:
+      rule: "Host(`adminer.secretlobby.local`)"
+      entryPoints:
+        - web
+      service: adminer
+
+  # ==========================================================================
+  # Services - pointing to host machine (npm run dev)
+  # ==========================================================================
+  services:
+    marketing:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3000"
+
+    console:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3001"
+
+    super-admin:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3003"
+
+    lobby:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:3002"
+
+    adminer:
+      loadBalancer:
+        servers:
+          - url: "http://adminer:8080"

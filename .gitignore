@@ -65,12 +65,6 @@ media/backgrounds/*
 media/banners/*
 !media/**/.gitkeep
 
-# Nginx
-nginx/logs/*
-nginx/ssl/*
-!nginx/logs/.gitkeep
-!nginx/ssl/.gitkeep
-
 # Docker volumes
 postgres_data/
 redis_data/

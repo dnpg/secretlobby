@@ -28,6 +28,85 @@ Create a PostgreSQL database in Dokploy:
 2. Create database: `secretlobby`
 3. Note the connection string
 
+---
+
+## Database Migrations
+
+### Option 1: Build-Time Migrations (Recommended for Dokploy)
+
+Migrations run during Docker build using BuildKit secrets. This ensures the database schema is ready before the app starts.
+
+**Build Arguments:**
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `APP_NAME` | Yes | Which app to build (marketing, console, lobby, super-admin) |
+| `RUN_MIGRATIONS` | No | Set to `true` to run migrations (only for console) |
+
+**BuildKit Secret:**
+| Secret | Description |
+|--------|-------------|
+| `DATABASE_URL` | Database connection string (passed securely, NOT stored in image) |
+
+#### Security Warning
+
+**Never use `--build-arg DATABASE_URL=...`**
+
+Build arguments are visible in image history (`docker history <image>`). Always use BuildKit secrets:
+
+```bash
+# WRONG - credentials exposed in image layers
+docker build --build-arg DATABASE_URL=postgresql://...
+
+# CORRECT - credentials NOT stored in image
+docker build --secret id=DATABASE_URL,src=/tmp/db_url.txt
+```
+
+#### Dokploy Configuration for Migrations
+
+For the **console** app only, configure:
+
+1. **Build Arguments:**
+   ```
+   APP_NAME=console
+   RUN_MIGRATIONS=true
+   ```
+
+2. **BuildKit Secret** (in Dokploy's build settings):
+   ```
+   DATABASE_URL=postgresql://user:password@db-host:5432/secretlobby
+   ```
+
+For other apps (marketing, lobby, super-admin):
+```
+APP_NAME=marketing
+RUN_MIGRATIONS=false  # or omit entirely
+```
+
+### Option 2: Runtime Migrations (Docker Compose)
+
+When using `docker-compose.yml` locally, a dedicated `migrate` service runs before apps start:
+
+```yaml
+migrate:
+  command: ["npx", "prisma", "migrate", "deploy", "--schema=/app/packages/db/prisma/schema.prisma"]
+  restart: "no"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+console:
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+```
+
+This pattern ensures:
+- Migrations run exactly once before any app starts
+- If migrations fail, apps don't start
+- No race conditions between multiple apps
+
+---
+
 ## Step 2: Configure Environment Variables
 
 Each app needs these environment variables in Dokploy:
@@ -35,97 +114,115 @@ Each app needs these environment variables in Dokploy:
 ### Shared Variables (all apps)
 ```bash
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io  # Change to your domain
+CORE_DOMAIN=secretlobby.io
 SESSION_SECRET=generate-a-secure-32-char-minimum-secret
 ```
 
 ### Database Variables (console, lobby, super-admin only)
-**Note**: The marketing app does NOT need database access. Only add these variables for console, lobby, and super-admin apps:
 ```bash
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
+REDIS_URL=redis://redis:6379
 ```
 
-### Migration Variables (console only)
-**IMPORTANT**: Only the console app should run database migrations. Add this to the console app only:
-```bash
-RUN_MIGRATIONS=true
-```
-
-**How migrations work:**
-- The console app runs `prisma migrate deploy` before starting the server
-- Other apps (marketing, lobby, super-admin) skip migrations entirely
-- This prevents race conditions and ensures migrations run exactly once per deployment
-- Console app will take ~5-10 seconds longer to start (while running migrations)
-
-### Optional: Google OAuth (console app)
+### Google OAuth (console and super-admin)
 ```bash
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_ALLOWED_DOMAINS=yourdomain.com
+AUTH_URL=https://app.secretlobby.io
 ```
+
+---
 
 ## Step 3: Deploy Each App in Dokploy
 
-You'll create **4 separate services** in Dokploy, one for each app.
+Create **4 separate services** in Dokploy, one for each app.
 
 ### Service 1: Marketing (secretlobby.io)
-1. **Create Service** → Docker Build
-2. **Repository**: Your git repository URL
-3. **Branch**: main
-4. **Build Arguments**:
-   ```
-   APP_NAME=marketing
-   ```
-5. **Port**: 3000
-6. **Domain**: `secretlobby.io` and `www.secretlobby.io`
-7. **Environment Variables**: Add shared variables above, plus:
-   ```
-   CONSOLE_URL=//app.secretlobby.io
-   ```
+
+| Setting | Value |
+|---------|-------|
+| Type | Docker Build |
+| Dockerfile | `docker/Dockerfile` |
+| Build Args | `APP_NAME=marketing` |
+| Port | 3000 |
+| Domain | `secretlobby.io`, `www.secretlobby.io` |
+
+Environment Variables:
+```
+NODE_ENV=production
+CORE_DOMAIN=secretlobby.io
+CONSOLE_URL=//app.secretlobby.io
+```
 
 ### Service 2: Console (app.secretlobby.io)
-1. **Create Service** → Docker Build
-2. **Repository**: Same git repository
-3. **Branch**: main
-4. **Build Arguments**:
-   ```
-   APP_NAME=console
-   ```
-5. **Port**: 3000
-6. **Domain**: `app.secretlobby.io`
-7. **Environment Variables**: Add shared variables + Database URL + Google OAuth, plus:
-   ```
-   RUN_MIGRATIONS=true
-   ```
-   ⚠️ **Critical**: This makes console responsible for running database migrations
+
+| Setting | Value |
+|---------|-------|
+| Type | Docker Build |
+| Dockerfile | `docker/Dockerfile` |
+| Build Args | `APP_NAME=console`, `RUN_MIGRATIONS=true` |
+| BuildKit Secret | `DATABASE_URL=postgresql://...` |
+| Port | 3000 |
+| Domain | `app.secretlobby.io` |
+
+Environment Variables:
+```
+NODE_ENV=production
+CORE_DOMAIN=secretlobby.io
+DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
+SESSION_SECRET=your-secret-min-32-chars
+REDIS_URL=redis://redis:6379
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+AUTH_URL=https://app.secretlobby.io
+```
 
 ### Service 3: Lobby (*.secretlobby.io)
-1. **Create Service** → Docker Build
-2. **Repository**: Same git repository
-3. **Branch**: main
-4. **Build Arguments**:
-   ```
-   APP_NAME=lobby
-   ```
-5. **Port**: 3000
-6. **Domain**: `*.secretlobby.io` (wildcard subdomain)
-7. **Environment Variables**: Add shared variables
+
+| Setting | Value |
+|---------|-------|
+| Type | Docker Build |
+| Dockerfile | `docker/Dockerfile` |
+| Build Args | `APP_NAME=lobby` |
+| Port | 3000 |
+| Domain | `*.secretlobby.io` (wildcard) |
+
+Environment Variables:
+```
+NODE_ENV=production
+CORE_DOMAIN=secretlobby.io
+DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
+SESSION_SECRET=your-secret-min-32-chars
+REDIS_URL=redis://redis:6379
+APP_DOMAIN=secretlobby.io
+```
 
 ### Service 4: Super Admin (admin.secretlobby.io)
-1. **Create Service** → Docker Build
-2. **Repository**: Same git repository
-3. **Branch**: main
-4. **Build Arguments**:
-   ```
-   APP_NAME=super-admin
-   ```
-5. **Port**: 3000
-6. **Domain**: `admin.secretlobby.io`
-7. **Environment Variables**: Add shared variables
+
+| Setting | Value |
+|---------|-------|
+| Type | Docker Build |
+| Dockerfile | `docker/Dockerfile` |
+| Build Args | `APP_NAME=super-admin` |
+| Port | 3000 |
+| Domain | `admin.secretlobby.io` |
+
+Environment Variables:
+```
+NODE_ENV=production
+CORE_DOMAIN=secretlobby.io
+DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
+SESSION_SECRET=your-secret-min-32-chars
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+AUTH_URL=https://admin.secretlobby.io
+```
+
+---
 
 ## Step 4: DNS Configuration
 
-In your DNS provider (Cloudflare, Route53, etc.):
+In your DNS provider:
 
 ```
 Type    Name        Value                       TTL
@@ -138,139 +235,160 @@ A       *           your.vps.ip.address         Auto
 
 The wildcard (*) record enables dynamic subdomains for user lobbies.
 
-## Step 5: Database Migrations (Automatic)
+---
 
-**Migrations run automatically** when you deploy the console app with `RUN_MIGRATIONS=true`.
+## Step 5: Deployment Order
 
-### How it works:
-1. When the console container starts, it checks for the `RUN_MIGRATIONS` environment variable
-2. If set to `true`, it runs `prisma migrate deploy` from the `/app/packages/db` directory
-3. Migrations complete before the console app starts accepting requests
-4. Other apps (marketing, lobby, super-admin) connect to the already-migrated database
+**First deployment:**
+1. Deploy **console** first (runs migrations)
+2. Wait for console to be healthy
+3. Deploy marketing, lobby, super-admin in any order
 
-### First deployment:
-- Make sure to deploy the **console app first** so migrations run before other apps start
-- Console will take ~5-10 seconds longer to start on first deployment
+**Subsequent deployments:**
+1. Deploy console first if there are database changes
+2. Deploy other apps in any order
 
-### Subsequent deployments:
-- Deploy console first (migrations run if there are any new ones)
-- Then deploy other apps in any order
+---
 
-### Manual migration (if needed):
-If you ever need to run migrations manually:
+## Local Development with Docker Compose
+
+### Start All Services
+
 ```bash
-# SSH into your Dokploy VPS
-docker exec -it <console-container-id> sh
+# Start all services (includes automatic migrations)
+docker compose up -d
+
+# With Adminer for database management
+docker compose --profile dev up -d
+
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+```
+
+### Build Individual Apps
+
+```bash
+# Build without migrations
+docker build \
+  --build-arg APP_NAME=console \
+  -f docker/Dockerfile \
+  -t secretlobby-console .
+
+# Build with migrations (using BuildKit secret)
+echo "postgresql://user:pass@localhost:5432/db" > /tmp/db_url.txt
+docker build \
+  --secret id=DATABASE_URL,src=/tmp/db_url.txt \
+  --build-arg APP_NAME=console \
+  --build-arg RUN_MIGRATIONS=true \
+  -f docker/Dockerfile .
+rm /tmp/db_url.txt
+```
+
+---
+
+## Traefik Configuration (docker-compose.yml)
+
+The local docker-compose uses Traefik as reverse proxy with:
+
+### Middlewares
+
+| Middleware | Description |
+|------------|-------------|
+| `compress` | Gzip compression |
+| `ratelimit-general` | 10 req/s, burst 20 |
+| `ratelimit-api` | 30 req/s, burst 50 |
+| `large-upload` | 100MB max body size (console) |
+| `security-headers` | XSS, nosniff, frame deny, HSTS |
+
+### Domain Routing
+
+| Route | Priority | Service |
+|-------|----------|---------|
+| `secretlobby.co` | 100 | marketing |
+| `app.secretlobby.co` | 100 | console |
+| `admin.secretlobby.co` | 100 | super-admin |
+| `*.secretlobby.co` | 10 | lobby |
+| `*` (catch-all) | 1 | lobby |
+
+---
+
+## Troubleshooting
+
+### Migration Errors
+
+| Issue | Solution |
+|-------|----------|
+| "Migration failed during build" | Check DATABASE_URL secret is configured correctly |
+| "Database not accessible" | Verify database is reachable from Dokploy build environment |
+| "Schema out of sync" | Deploy console app first to run migrations |
+
+### Build Errors
+
+| Issue | Solution |
+|-------|----------|
+| "turbo: command not found" | Dockerfile installs turbo globally in base stage |
+| "pnpm install failed" | Check pnpm-lock.yaml is committed |
+
+### Runtime Errors
+
+| Issue | Solution |
+|-------|----------|
+| "Database connection refused" | Check DATABASE_URL environment variable |
+| "Redis connection failed" | Verify REDIS_URL is correct |
+| "Subdomain not routing" | Check wildcard DNS and CORE_DOMAIN |
+
+### Manual Migration
+
+If needed, run migrations manually:
+
+```bash
+# Via Dokploy terminal or SSH
+docker exec -it <console-container> sh
 cd /app/packages/db
 npx prisma migrate deploy
 ```
 
-## Step 6: Create First Admin User
+---
 
-You need to create your first user via signup:
-1. Go to `https://app.secretlobby.io/signup`
-2. Create your account
-3. This user will be the owner of the first account
+## Security Checklist
 
-## Testing the Deployment
+- [ ] Use BuildKit secrets for DATABASE_URL in builds (never build args)
+- [ ] Use strong SESSION_SECRET (32+ characters)
+- [ ] Enable HTTPS via Dokploy/Let's Encrypt
+- [ ] Set up firewall rules
+- [ ] Configure PostgreSQL backups
+- [ ] Review environment variables (no secrets in logs)
+- [ ] Set NODE_ENV=production
 
-1. **Marketing**: https://secretlobby.io → Should show marketing site
-2. **Console**: https://app.secretlobby.io → Admin dashboard
-3. **Lobby**: https://yourband.secretlobby.io → User lobby
-4. **Super Admin**: https://admin.secretlobby.io → Super admin panel
+---
 
 ## Build Arguments Summary
 
-Each Dokploy service uses the **same Dockerfile** but with different build arguments:
+| Service | APP_NAME | RUN_MIGRATIONS | Domain |
+|---------|----------|----------------|--------|
+| Marketing | marketing | false | secretlobby.io |
+| Console | console | true | app.secretlobby.io |
+| Lobby | lobby | false | *.secretlobby.io |
+| Super Admin | super-admin | false | admin.secretlobby.io |
 
-| Service      | APP_NAME     | Domain                    | Port |
-|--------------|--------------|---------------------------|------|
-| Marketing    | marketing    | secretlobby.io            | 3000 |
-| Console      | console      | app.secretlobby.io        | 3000 |
-| Lobby        | lobby        | *.secretlobby.io          | 3000 |
-| Super Admin  | super-admin  | admin.secretlobby.io      | 3000 |
-
-## Troubleshooting
-
-### Build fails with "turbo: command not found"
-- Ensure the Dockerfile base stage installs turbo globally
-
-### Database connection errors
-- Check DATABASE_URL format
-- Ensure PostgreSQL service is running
-- Verify network connectivity between services
-
-### Migration errors
-- **"Console app stuck on startup"**: Check logs - migrations might be failing
-- **"Migration failed"**: Check DATABASE_URL is correct and database is accessible
-- **"Other apps failing with schema errors"**: Console app migrations may not have run yet - deploy console first
-- **"Duplicate migrations running"**: Check that ONLY console app has `RUN_MIGRATIONS=true`
-
-### Subdomain routing not working
-- Verify wildcard DNS (*) is configured
-- Check CORE_DOMAIN environment variable
-- Ensure lobby service is running
-
-### App not starting
-- Check logs in Dokploy
-- Verify all required environment variables are set
-- Ensure port 3000 is exposed
+---
 
 ## Monitoring
 
 ### Health Checks
-Each app has a health endpoint:
-- `https://your-app.io/health` (if implemented)
+Each app exposes `/health` endpoint for monitoring.
 
 ### Logs
-View logs in Dokploy:
-1. Go to Service
-2. Click "Logs" tab
-3. Monitor real-time logs
+View logs in Dokploy: Service → Logs tab
 
-## Updating
-
-To deploy updates:
-1. Push changes to your git repository
-2. In Dokploy, click "Rebuild" for each service
-3. Dokploy will pull latest code and rebuild
+---
 
 ## Rollback
 
 If something goes wrong:
-1. In Dokploy, go to Service
-2. Click "Deployments" tab
-3. Select previous successful deployment
-4. Click "Rollback"
-
-## Security Checklist
-
-- [ ] Change all default passwords
-- [ ] Use strong SESSION_SECRET (32+ characters)
-- [ ] Enable HTTPS (Dokploy handles this via Let's Encrypt)
-- [ ] Set up firewall rules
-- [ ] Configure backup strategy for PostgreSQL
-- [ ] Review and secure environment variables
-- [ ] Disable debug mode in production
-
-## Local Testing
-
-To test the Docker build locally before deploying:
-
-```bash
-# Build for console app
-docker build --build-arg APP_NAME=console -t secretlobby-console .
-
-# Run it
-docker run -p 3000:3000 --env-file .env secretlobby-console
-```
-
-Test each app (marketing, console, lobby, super-admin) before deploying.
-
-## Support
-
-For issues:
-1. Check Dokploy logs
-2. Verify environment variables
-3. Test database connectivity
-4. Review DNS configuration
+1. In Dokploy, go to Service → Deployments
+2. Select previous successful deployment
+3. Click "Rollback"

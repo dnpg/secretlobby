@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==============================================================================
 # SecretLobby - Multi-App Dockerfile (Turborepo)
 # ==============================================================================
@@ -62,6 +63,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 FROM base AS builder
 
 ARG APP_NAME
+ARG RUN_MIGRATIONS=false
 
 WORKDIR /app
 
@@ -73,6 +75,17 @@ COPY --from=pruner /app/out/full/ .
 
 # Generate Prisma client
 RUN pnpm --filter @secretlobby/db db:generate
+
+# Run migrations if RUN_MIGRATIONS=true (uses BuildKit secret for DATABASE_URL)
+RUN --mount=type=secret,id=DATABASE_URL,required=false \
+    if [ "$RUN_MIGRATIONS" = "true" ] && [ -f /run/secrets/DATABASE_URL ]; then \
+      export DATABASE_URL=$(cat /run/secrets/DATABASE_URL) && \
+      echo "Running database migrations..." && \
+      cd packages/db && npx prisma migrate deploy && cd ../.. && \
+      echo "Migrations completed"; \
+    else \
+      echo "Skipping migrations (RUN_MIGRATIONS=$RUN_MIGRATIONS)"; \
+    fi
 
 # Build the app and its dependencies
 RUN turbo run build --filter=@secretlobby/${APP_NAME}...
@@ -111,12 +124,8 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 COPY --from=builder --chown=appuser:nodejs /app/apps/${APP_NAME}/build ./apps/${APP_NAME}/build
 COPY --from=builder --chown=appuser:nodejs /app/packages ./packages
 
-# Copy entrypoint script
-COPY --chown=appuser:nodejs docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
 # Create necessary directories with correct permissions
-RUN mkdir -p /app/data /app/uploads && \
+RUN mkdir -p /app/data /app/uploads /app/media && \
     chown -R appuser:nodejs /app
 
 # Switch to non-root user
@@ -131,6 +140,10 @@ ENV NODE_ENV=production \
     PORT=3000 \
     APP_NAME=${APP_NAME}
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1
+
 # Start the application
 WORKDIR /app/apps/${APP_NAME}
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["npx", "react-router-serve", "./build/server/index.js"]
