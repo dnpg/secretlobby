@@ -1,5 +1,6 @@
 // Utilities
 export { cn } from "./lib/utils.js";
+export { transformUrl, generateSrcSet } from "./lib/image-transform.js";
 
 // Hooks
 export {
@@ -8,6 +9,12 @@ export {
   type UserColorMode,
   type ResolvedColorMode,
 } from "./hooks/useColorMode.js";
+export {
+  ImageTransformProvider,
+  useImageTransform,
+} from "./hooks/useImageTransform.js";
 
 // Components
 export { ColorModeToggle } from "./components/ColorModeToggle.js";
+export { ResponsiveImage } from "./components/ResponsiveImage.js";
+export { PictureImage } from "./components/PictureImage.js";

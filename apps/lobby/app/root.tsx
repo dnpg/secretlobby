@@ -10,7 +10,7 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { ColorModeProvider, type UserColorMode } from "@secretlobby/ui";
+import { ColorModeProvider, ImageTransformProvider, type UserColorMode } from "@secretlobby/ui";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -41,7 +41,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const resolvedTheme: "dark" | "light" = colorMode === "system" ? "dark" : colorMode;
 
-  return { colorMode, resolvedTheme };
+  const imageTransformPattern = process.env.IMAGE_TRANSFORM_PATTERN || "{url}";
+
+  return { colorMode, resolvedTheme, imageTransformPattern };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -95,10 +97,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   const data = useLoaderData<typeof loader>();
   const colorMode = data?.colorMode ?? "dark";
+  const imageTransformPattern = data?.imageTransformPattern ?? "{url}";
 
   return (
     <ColorModeProvider initialColorMode={colorMode} allowUserColorMode={true}>
-      <Outlet />
+      <ImageTransformProvider pattern={imageTransformPattern}>
+        <Outlet />
+      </ImageTransformProvider>
     </ColorModeProvider>
   );
 }

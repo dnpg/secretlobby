@@ -5,6 +5,8 @@ import { getSession } from "@secretlobby/auth";
 import { resolveTenant, isLocalhost } from "~/lib/subdomain.server";
 import { getSiteContent, type Track as FileTrack } from "~/lib/content.server";
 import { prisma } from "@secretlobby/db";
+import { getPublicUrl } from "@secretlobby/storage";
+import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
 import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
 
@@ -26,6 +28,14 @@ export async function loader({ request }: Route.LoaderArgs) {
       isLocalhost: true,
       content,
       lobby: null,
+      imageUrls: {
+        background: null,
+        backgroundDark: null,
+        banner: null,
+        bannerDark: null,
+        profile: null,
+        profileDark: null,
+      },
       account: null,
       tracks: content.playlist,
     };
@@ -63,6 +73,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     },
   });
 
+  const settings = lobby.settings as Record<string, string> | null;
+
   return {
     isLocalhost: false,
     content: null,
@@ -73,6 +85,14 @@ export async function loader({ request }: Route.LoaderArgs) {
       backgroundImage: lobby.backgroundImage,
       bannerImage: lobby.bannerImage,
       profileImage: lobby.profileImage,
+    },
+    imageUrls: {
+      background: lobby.backgroundImage ? getPublicUrl(lobby.backgroundImage) : null,
+      backgroundDark: settings?.backgroundImageDark ? getPublicUrl(settings.backgroundImageDark) : null,
+      banner: lobby.bannerImage ? getPublicUrl(lobby.bannerImage) : null,
+      bannerDark: settings?.bannerImageDark ? getPublicUrl(settings.bannerImageDark) : null,
+      profile: lobby.profileImage ? getPublicUrl(lobby.profileImage) : null,
+      profileDark: settings?.profileImageDark ? getPublicUrl(settings.profileImageDark) : null,
     },
     account: {
       name: account.name,
@@ -92,7 +112,7 @@ interface Track {
 
 export default function Player() {
   const data = useLoaderData<typeof loader>();
-  const { isLocalhost, content, lobby, account } = data;
+  const { isLocalhost, content, lobby, account, imageUrls } = data;
 
   // Normalize tracks to common interface
   const tracks: Track[] = isLocalhost
@@ -292,21 +312,41 @@ export default function Player() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const hasSidebar = isLocalhost
-    ? content?.profilePic || content?.bandDescription
-    : lobby?.profileImage || lobby?.description;
-
   const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
   const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
+  const hasSidebar = imageUrls.profile || bandDescription;
 
   return (
     <div
-      className="min-h-screen bg-cover bg-center bg-fixed"
-      style={{
-        backgroundImage: `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.8)), url('/api/media/background')`,
-      }}
+      className="relative min-h-screen"
       onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
     >
+      {/* Background Image */}
+      {imageUrls.background && (
+        <div className="fixed inset-0 -z-20">
+          {imageUrls.backgroundDark ? (
+            <PictureImage
+              sources={[
+                { media: "(prefers-color-scheme: dark)", src: imageUrls.backgroundDark, widths: [960, 1920, 2560] },
+              ]}
+              fallback={{ src: imageUrls.background, widths: [960, 1920, 2560], sizes: "100vw" }}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ResponsiveImage
+              src={imageUrls.background}
+              alt=""
+              widths={[960, 1920, 2560]}
+              sizes="100vw"
+              className="h-full w-full object-cover"
+            />
+          )}
+        </div>
+      )}
+      {/* Dark overlay */}
+      <div className="fixed inset-0 -z-10 bg-black/70" />
+
       {/* Header */}
       <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
         <Form method="post" action="/logout">
@@ -321,15 +361,28 @@ export default function Player() {
 
       <main className="container mx-auto px-4 py-8 max-w-6xl text-white">
         {/* Banner */}
-        <div className="mb-8">
-          <img
-            src="/api/media/banner"
-            alt="Banner"
-            className="w-full h-auto object-contain rounded-xl"
-            onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
-            draggable={false}
-          />
-        </div>
+        {imageUrls.banner && (
+          <div className="mb-8">
+            {imageUrls.bannerDark ? (
+              <PictureImage
+                sources={[
+                  { media: "(prefers-color-scheme: dark)", src: imageUrls.bannerDark, widths: [640, 960, 1280, 1920] },
+                ]}
+                fallback={{ src: imageUrls.banner, widths: [640, 960, 1280, 1920], sizes: "100vw" }}
+                alt="Banner"
+                className="w-full h-auto object-contain rounded-xl"
+              />
+            ) : (
+              <ResponsiveImage
+                src={imageUrls.banner}
+                alt="Banner"
+                widths={[640, 960, 1280, 1920]}
+                sizes="100vw"
+                className="w-full h-auto object-contain rounded-xl"
+              />
+            )}
+          </div>
+        )}
 
         {/* Two Column Layout */}
         <div className={`grid gap-8 ${hasSidebar ? "lg:grid-cols-[1fr_300px]" : ""}`}>
@@ -480,7 +533,7 @@ export default function Player() {
                       )}
                     </div>
                     {track.duration && track.duration > 0 && (
-                      <span className="text-sm text-gray-500 flex-shrink-0">
+                      <span className="text-sm text-gray-500 shrink-0">
                         {formatTime(track.duration)}
                       </span>
                     )}
@@ -494,15 +547,25 @@ export default function Player() {
           {hasSidebar && (
             <div className="space-y-6">
               {/* Profile Image */}
-              {(isLocalhost ? content?.profilePic : lobby?.profileImage) && (
+              {imageUrls.profile && (
                 <div className="flex justify-center">
-                  <img
-                    src="/api/media/profile"
-                    alt={bandName || "Profile"}
-                    className="w-full rounded-xl object-cover border-2 border-gray-700"
-                    onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
-                    draggable={false}
-                  />
+                  {imageUrls.profileDark ? (
+                    <PictureImage
+                      sources={[
+                        { media: "(prefers-color-scheme: dark)", src: imageUrls.profileDark, widths: [300, 600] },
+                      ]}
+                      fallback={{ src: imageUrls.profile, widths: [300, 600] }}
+                      alt={bandName || "Profile"}
+                      className="w-full rounded-xl object-cover border-2 border-gray-700"
+                    />
+                  ) : (
+                    <ResponsiveImage
+                      src={imageUrls.profile}
+                      alt={bandName || "Profile"}
+                      widths={[300, 600]}
+                      className="w-full rounded-xl object-cover border-2 border-gray-700"
+                    />
+                  )}
                 </div>
               )}
 
