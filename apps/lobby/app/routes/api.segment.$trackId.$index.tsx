@@ -100,19 +100,17 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(rangeData.body, {
       status: 200,
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": "application/octet-stream",
         "Content-Length": chunkSize.toString(),
-        "X-Segment-Index": segmentIndex.toString(),
-        "X-Segment-Start": start.toString(),
-        "X-Segment-End": end.toString(),
-        "X-Total-Size": totalSize.toString(),
-        // Anti-caching
+        "Content-Disposition": "inline",
+        // Anti-caching: prevent browser/proxy from storing segments
         "Cache-Control": "no-store, no-cache, must-revalidate, private",
         "Pragma": "no-cache",
         "Expires": "0",
         // Security
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
+        "X-Robots-Tag": "noindex, nofollow",
       },
     });
   } catch {

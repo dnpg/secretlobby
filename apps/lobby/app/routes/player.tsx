@@ -420,7 +420,7 @@ export default function Player() {
             {/* Playlist */}
             <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4">
               <h3 className="text-lg font-semibold mb-4">Playlist</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+              <div className="space-y-2">
                 {tracks.map((track) => (
                   <button
                     key={track.id}
