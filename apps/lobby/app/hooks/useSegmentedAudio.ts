@@ -15,11 +15,15 @@ interface Manifest {
   expiresAt: number;
 }
 
+// Estimate bytes per second for MP3 (default 128kbps)
+const DEFAULT_BYTES_PER_SEC = 16000;
+
 export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | null>) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [estimatedDuration, setEstimatedDuration] = useState(0);
 
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
@@ -28,6 +32,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   const abortControllerRef = useRef<AbortController | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const isLoadingSegmentRef = useRef(false);
+  const seekPendingRef = useRef<number | null>(null);
+  const currentTrackIdRef = useRef<string | null>(null);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -49,8 +55,11 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     manifestRef.current = null;
     loadedSegmentsRef.current.clear();
     isLoadingSegmentRef.current = false;
+    seekPendingRef.current = null;
+    currentTrackIdRef.current = null;
     setIsReady(false);
     setLoadingProgress(0);
+    setEstimatedDuration(0);
   }, []);
 
   // Fetch manifest
@@ -110,6 +119,55 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     });
   }, []);
 
+  // Calculate which segment index a byte offset falls in
+  const getSegmentForByte = useCallback((byteOffset: number): number => {
+    const manifest = manifestRef.current;
+    if (!manifest) return 0;
+    return Math.floor(byteOffset / manifest.segmentSize);
+  }, []);
+
+  // Convert time (seconds) to byte offset
+  const timeToByte = useCallback((time: number): number => {
+    return Math.floor(time * DEFAULT_BYTES_PER_SEC);
+  }, []);
+
+  // Load a specific segment by index (for seeking)
+  const loadSegmentByIndex = useCallback(async (
+    index: number,
+    trackId: string,
+    manifest: Manifest,
+    sourceBuffer: SourceBuffer
+  ): Promise<boolean> => {
+    if (loadedSegmentsRef.current.has(index)) return true;
+    if (index >= manifest.segments.length) return false;
+
+    // Wait if buffer is updating
+    while (sourceBuffer.updating) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    const data = await fetchSegment(trackId, manifest.segments[index]);
+    if (!data) {
+      // Token might have expired, refresh manifest
+      const newManifest = await fetchManifest(trackId);
+      if (newManifest) {
+        manifestRef.current = newManifest;
+        const retryData = await fetchSegment(trackId, newManifest.segments[index]);
+        if (retryData) {
+          await appendBuffer(sourceBuffer, retryData);
+          loadedSegmentsRef.current.add(index);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    await appendBuffer(sourceBuffer, data);
+    loadedSegmentsRef.current.add(index);
+    setLoadingProgress((loadedSegmentsRef.current.size / manifest.segments.length) * 100);
+    return true;
+  }, [fetchSegment, fetchManifest, appendBuffer]);
+
   // Load segments progressively
   const loadSegments = useCallback(async (
     trackId: string,
@@ -122,6 +180,23 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     for (let i = startIndex; i < manifest.segments.length; i++) {
       // Check if aborted
       if (abortControllerRef.current?.signal.aborted) break;
+
+      // If there's a pending seek, prioritize that segment
+      if (seekPendingRef.current !== null) {
+        const seekByte = timeToByte(seekPendingRef.current);
+        const seekSegment = getSegmentForByte(seekByte);
+        seekPendingRef.current = null;
+
+        // Load the seek target segment and its neighbors
+        for (let s = Math.max(0, seekSegment - 1); s <= Math.min(seekSegment + 2, manifest.segments.length - 1); s++) {
+          if (!loadedSegmentsRef.current.has(s)) {
+            await loadSegmentByIndex(s, trackId, manifest, sourceBuffer);
+          }
+        }
+
+        // Continue from where we left off
+        continue;
+      }
 
       // Skip already loaded segments
       if (loadedSegmentsRef.current.has(i)) continue;
@@ -153,7 +228,6 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         const newManifest = await fetchManifest(trackId);
         if (newManifest) {
           manifestRef.current = newManifest;
-          // Retry this segment with new token
           const retryData = await fetchSegment(trackId, newManifest.segments[i]);
           if (retryData) {
             await appendBuffer(sourceBuffer, retryData);
@@ -167,7 +241,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       try {
         await appendBuffer(sourceBuffer, data);
         loadedSegmentsRef.current.add(i);
-        setLoadingProgress(((i + 1) / manifest.segments.length) * 100);
+        setLoadingProgress((loadedSegmentsRef.current.size / manifest.segments.length) * 100);
       } catch (e) {
         console.error("Failed to append segment:", e);
       }
@@ -182,7 +256,6 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     if (loadedSegmentsRef.current.size === manifest.segments.length) {
       if (mediaSourceRef.current?.readyState === "open") {
         try {
-          // Wait for any pending updates
           while (sourceBuffer.updating) {
             await new Promise((r) => setTimeout(r, 50));
           }
@@ -190,13 +263,47 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         } catch {}
       }
     }
-  }, [audioRef, fetchSegment, fetchManifest, appendBuffer]);
+  }, [audioRef, fetchSegment, fetchManifest, appendBuffer, timeToByte, getSegmentForByte, loadSegmentByIndex]);
+
+  // Seek to a specific time
+  const seekTo = useCallback(async (time: number) => {
+    const audio = audioRef.current;
+    const manifest = manifestRef.current;
+    const sourceBuffer = sourceBufferRef.current;
+    const trackId = currentTrackIdRef.current;
+
+    if (!audio || !manifest || !sourceBuffer || !trackId) return;
+
+    // Calculate which segment we need
+    const seekByte = timeToByte(time);
+    const seekSegmentIndex = getSegmentForByte(seekByte);
+
+    // Check if the target segment is already loaded
+    if (loadedSegmentsRef.current.has(seekSegmentIndex)) {
+      // Already buffered, just seek
+      audio.currentTime = time;
+    } else {
+      // Need to load the segment first - signal the loader
+      seekPendingRef.current = time;
+
+      // Load the segment and its neighbors immediately
+      for (let s = Math.max(0, seekSegmentIndex - 1); s <= Math.min(seekSegmentIndex + 2, manifest.segments.length - 1); s++) {
+        if (!loadedSegmentsRef.current.has(s)) {
+          await loadSegmentByIndex(s, trackId, manifest, sourceBuffer);
+        }
+      }
+
+      // Now seek
+      audio.currentTime = time;
+    }
+  }, [audioRef, timeToByte, getSegmentForByte, loadSegmentByIndex]);
 
   // Initialize and start loading
   const loadTrack = useCallback(async (trackId: string) => {
     cleanup();
 
     abortControllerRef.current = new AbortController();
+    currentTrackIdRef.current = trackId;
     setIsLoading(true);
     setError(null);
     setIsReady(false);
@@ -209,6 +316,10 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         throw new Error("Failed to load track");
       }
       manifestRef.current = manifest;
+
+      // Estimate duration from file size (assuming 128kbps MP3)
+      const estDuration = manifest.totalSize / DEFAULT_BYTES_PER_SEC;
+      setEstimatedDuration(estDuration);
 
       // Create MediaSource
       const mediaSource = new MediaSource();
@@ -241,6 +352,11 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       // Create source buffer
       const sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
       sourceBufferRef.current = sourceBuffer;
+
+      // Set estimated duration on MediaSource so the browser knows the length
+      try {
+        mediaSource.duration = estDuration;
+      } catch {}
 
       // Load first few segments quickly to start playback
       const initialSegments = Math.min(3, manifest.segments.length);
@@ -279,9 +395,11 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   return {
     loadTrack,
     cleanup,
+    seekTo,
     isLoading,
     loadingProgress,
     isReady,
     error,
+    estimatedDuration,
   };
 }

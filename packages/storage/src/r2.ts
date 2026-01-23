@@ -148,18 +148,20 @@ export async function getFileInfo(
   key: string
 ): Promise<{ size: number; contentType: string } | null> {
   const client = getClient();
+  const fullKey = prefixKey(key);
   try {
     const result = await client.send(
       new HeadObjectCommand({
         Bucket: getBucket(),
-        Key: prefixKey(key),
+        Key: fullKey,
       })
     );
     return {
       size: result.ContentLength || 0,
       contentType: result.ContentType || "application/octet-stream",
     };
-  } catch {
+  } catch (err) {
+    console.error("[storage] getFileInfo failed for key:", fullKey, "error:", err instanceof Error ? err.message : err);
     return null;
   }
 }

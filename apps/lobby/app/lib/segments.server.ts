@@ -25,7 +25,10 @@ export async function generateManifest(
 ): Promise<Manifest | null> {
   try {
     const fileInfo = await getFileInfo(filename);
-    if (!fileInfo) return null;
+    if (!fileInfo) {
+      console.error("[segments] getFileInfo returned null for key:", filename);
+      return null;
+    }
 
     const totalSize = fileInfo.size;
     const segmentCount = Math.ceil(totalSize / SEGMENT_SIZE);
@@ -54,7 +57,8 @@ export async function generateManifest(
       segments,
       expiresAt: Date.now() + 55000, // Manifest expires in 55 seconds
     };
-  } catch {
+  } catch (err) {
+    console.error("[segments] generateManifest error:", err);
     return null;
   }
 }

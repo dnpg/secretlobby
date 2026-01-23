@@ -120,6 +120,8 @@ export default function Player() {
     loadingProgress,
     isReady,
     cleanup,
+    seekTo,
+    estimatedDuration,
   } = useSegmentedAudio(audioRef);
 
   useEffect(() => {
@@ -138,20 +140,37 @@ export default function Player() {
     }
   }, []);
 
+  // Use estimatedDuration from hook as fallback when audio.duration is Infinity
+  useEffect(() => {
+    if (estimatedDuration > 0 && !isFinite(duration)) {
+      setDuration(estimatedDuration);
+    }
+  }, [estimatedDuration]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const updateProgress = () => {
+    const getEffectiveDuration = () => {
       if (audio.duration && isFinite(audio.duration)) {
+        return audio.duration;
+      }
+      return estimatedDuration || 0;
+    };
+
+    const updateProgress = () => {
+      const effectiveDuration = getEffectiveDuration();
+      if (effectiveDuration > 0) {
         setCurrentTime(audio.currentTime);
-        setProgress((audio.currentTime / audio.duration) * 100);
+        setProgress((audio.currentTime / effectiveDuration) * 100);
       }
     };
 
     const handleLoadedMetadata = () => {
       if (audio.duration && isFinite(audio.duration)) {
         setDuration(audio.duration);
+      } else if (estimatedDuration > 0) {
+        setDuration(estimatedDuration);
       }
     };
 
@@ -177,7 +196,7 @@ export default function Player() {
       audio.removeEventListener("durationchange", handleDurationChange);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, [isReady]);
+  }, [isReady, estimatedDuration]);
 
   const togglePlay = async () => {
     const audio = audioRef.current;
@@ -243,16 +262,14 @@ export default function Player() {
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
-    const audio = audioRef.current;
-    if (!audio || !duration || !isFinite(duration)) return;
+    const effectiveDuration = duration || estimatedDuration;
+    if (!effectiveDuration || effectiveDuration <= 0) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    const newTime = percent * duration;
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const newTime = percent * effectiveDuration;
 
-    if (audio.buffered.length > 0) {
-      audio.currentTime = newTime;
-    }
+    seekTo(newTime);
   };
 
   const formatTime = (seconds: number) => {
@@ -337,11 +354,11 @@ export default function Player() {
                 className="h-2 bg-white/20 rounded-full cursor-pointer relative"
                 onClick={seek}
               >
-                {audioRef.current && audioRef.current.buffered.length > 0 && duration > 0 && (
+                {audioRef.current && audioRef.current.buffered.length > 0 && (duration || estimatedDuration) > 0 && (
                   <div
                     className="absolute h-full bg-white/30 rounded-full"
                     style={{
-                      width: `${(audioRef.current.buffered.end(audioRef.current.buffered.length - 1) / duration) * 100}%`,
+                      width: `${(audioRef.current.buffered.end(audioRef.current.buffered.length - 1) / (duration || estimatedDuration)) * 100}%`,
                     }}
                   />
                 )}
@@ -352,7 +369,7 @@ export default function Player() {
               </div>
               <div className="flex justify-between text-sm text-gray-400 mt-1">
                 <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
+                <span>{formatTime(duration || estimatedDuration)}</span>
               </div>
             </div>
 
@@ -443,6 +460,11 @@ export default function Player() {
                       <p className="font-medium truncate">{track.title}</p>
                       <p className="text-sm text-gray-400 truncate">{track.artist}</p>
                     </div>
+                    {track.duration && track.duration > 0 && (
+                      <span className="text-sm text-gray-500 flex-shrink-0">
+                        {formatTime(track.duration)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
