@@ -1,11 +1,10 @@
-import { open, stat } from "fs/promises";
-import { join } from "path";
 import type { Route } from "./+types/api.segment.$trackId.$index";
 import { getSession } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { verifyStreamToken } from "~/lib/token.server";
 import { getSegmentSize } from "~/lib/segments.server";
+import { getFileRange, getFileInfo } from "@secretlobby/storage";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   // Verify session
@@ -72,11 +71,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(null, { status: 404 });
   }
 
-  const filePath = join(process.cwd(), "media", "audio", track.filename);
-
   try {
-    const fileStats = await stat(filePath);
-    const totalSize = fileStats.size;
+    // Get file size from R2
+    const fileInfo = await getFileInfo(track.filename);
+    if (!fileInfo) {
+      return new Response(null, { status: 404 });
+    }
+
+    const totalSize = fileInfo.size;
     const segmentSize = getSegmentSize();
 
     // Calculate segment boundaries
@@ -89,14 +91,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
     const chunkSize = end - start + 1;
 
-    // Read segment
-    const fileHandle = await open(filePath, "r");
-    const buffer = Buffer.alloc(chunkSize);
-    await fileHandle.read(buffer, 0, chunkSize, start);
-    await fileHandle.close();
+    // Fetch segment from R2
+    const rangeData = await getFileRange(track.filename, start, end);
+    if (!rangeData) {
+      return new Response(null, { status: 404 });
+    }
 
-    // Return segment as audio (needed for MediaSource)
-    return new Response(new Uint8Array(buffer), {
+    return new Response(rangeData.body, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",

@@ -118,6 +118,15 @@ CORE_DOMAIN=secretlobby.io
 SESSION_SECRET=generate-a-secure-32-char-minimum-secret
 ```
 
+### Cloudflare R2 Storage (console + lobby)
+```bash
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key
+R2_SECRET_ACCESS_KEY=your-r2-secret-key
+R2_BUCKET_NAME=secretlobby-media
+R2_PUBLIC_URL=https://cdn.secretlobby.co
+```
+
 ### Database Variables (console, lobby, super-admin only)
 ```bash
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
@@ -175,6 +184,11 @@ REDIS_URL=redis://redis:6379
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 AUTH_URL=https://app.secretlobby.io
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key
+R2_SECRET_ACCESS_KEY=your-r2-secret-key
+R2_BUCKET_NAME=secretlobby-media
+R2_PUBLIC_URL=https://cdn.secretlobby.co
 ```
 
 ### Service 3: Lobby (*.secretlobby.io)
@@ -195,6 +209,11 @@ DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 SESSION_SECRET=your-secret-min-32-chars
 REDIS_URL=redis://redis:6379
 APP_DOMAIN=secretlobby.io
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY_ID=your-r2-access-key
+R2_SECRET_ACCESS_KEY=your-r2-secret-key
+R2_BUCKET_NAME=secretlobby-media
+R2_PUBLIC_URL=https://cdn.secretlobby.co
 ```
 
 ### Service 4: Super Admin (admin.secretlobby.io)

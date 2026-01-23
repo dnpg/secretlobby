@@ -1,6 +1,5 @@
-import { stat } from "fs/promises";
-import { join } from "path";
 import { generateStreamToken } from "./token.server";
+import { getFileInfo } from "@secretlobby/storage";
 
 // Segment duration in bytes (~5 seconds of 128kbps audio = ~80KB)
 const SEGMENT_SIZE = 80 * 1024;
@@ -24,11 +23,11 @@ export async function generateManifest(
   trackId: string,
   filename: string
 ): Promise<Manifest | null> {
-  const filePath = join(process.cwd(), "media", "audio", filename);
-
   try {
-    const fileStats = await stat(filePath);
-    const totalSize = fileStats.size;
+    const fileInfo = await getFileInfo(filename);
+    if (!fileInfo) return null;
+
+    const totalSize = fileInfo.size;
     const segmentCount = Math.ceil(totalSize / SEGMENT_SIZE);
 
     const segments: Segment[] = [];

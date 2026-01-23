@@ -1,10 +1,9 @@
-import { Form, useLoaderData, useActionData, useNavigation } from "react-router";
+import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import { useState } from "react";
 import type { Route } from "./+types/_layout.playlist";
 import { getSession, isAdmin } from "@secretlobby/auth";
-import { getSiteContent, addTrack, removeTrack } from "~/lib/content.server";
-import { writeFile, unlink } from "fs/promises";
-import { join } from "path";
+import { prisma } from "@secretlobby/db";
+import { uploadFile, deleteFile } from "@secretlobby/storage";
 
 export function meta() {
   return [{ title: "Playlist - Admin" }];
@@ -15,14 +14,37 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (!isAdmin(session)) {
     return { playlist: [] };
   }
-  const content = await getSiteContent();
-  return { playlist: content.playlist };
+
+  const accountId = session.currentAccountId;
+  if (!accountId) {
+    throw redirect("/login");
+  }
+
+  const lobby = await prisma.lobby.findFirst({
+    where: { accountId, isDefault: true },
+    include: { tracks: { orderBy: { position: "asc" } } },
+  });
+
+  return { playlist: lobby?.tracks || [] };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const { session } = await getSession(request);
   if (!isAdmin(session)) {
     return { error: "Unauthorized" };
+  }
+
+  const accountId = session.currentAccountId;
+  if (!accountId) {
+    return { error: "Not authenticated" };
+  }
+
+  const lobby = await prisma.lobby.findFirst({
+    where: { accountId, isDefault: true },
+  });
+
+  if (!lobby) {
+    return { error: "No lobby found" };
   }
 
   const formData = await request.formData();
@@ -37,12 +59,25 @@ export async function action({ request }: Route.ActionArgs) {
 
         if (file && file.size > 0 && title) {
           const buffer = Buffer.from(await file.arrayBuffer());
-          const filename = `${Date.now()}-${file.name}`;
-          await writeFile(
-            join(process.cwd(), "media", "audio", filename),
-            buffer
-          );
-          await addTrack({ title, artist: artist || "Unknown", filename });
+          const key = `${lobby.id}/audio/${Date.now()}-${file.name}`;
+          await uploadFile(key, buffer, file.type || "audio/mpeg");
+
+          // Get the next position
+          const lastTrack = await prisma.track.findFirst({
+            where: { lobbyId: lobby.id },
+            orderBy: { position: "desc" },
+          });
+
+          await prisma.track.create({
+            data: {
+              lobbyId: lobby.id,
+              title,
+              artist: artist || "Unknown",
+              filename: key,
+              position: (lastTrack?.position ?? -1) + 1,
+            },
+          });
+
           return { success: "Track added" };
         }
         return { error: "Please provide a file and title" };
@@ -52,9 +87,9 @@ export async function action({ request }: Route.ActionArgs) {
         const id = formData.get("id") as string;
         const filename = formData.get("filename") as string;
         if (id) {
-          await removeTrack(id);
+          await prisma.track.delete({ where: { id } });
           try {
-            await unlink(join(process.cwd(), "media", "audio", filename));
+            await deleteFile(filename);
           } catch {}
           return { success: "Track removed" };
         }
