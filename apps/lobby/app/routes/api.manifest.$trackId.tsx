@@ -3,6 +3,7 @@ import { getSession } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { generateManifest } from "~/lib/segments.server";
+import { verifyPreloadToken } from "~/lib/token.server";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   // Verify session
@@ -13,18 +14,26 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return Response.json({ error: "Lobby not found" }, { status: 404 });
   }
 
-  // Check if authenticated for this lobby
-  const isAuthenticated =
-    session.isAuthenticated && session.lobbyId === tenant.lobby.id;
-
-  // If lobby requires password and not authenticated
-  if (tenant.lobby.password && !isAuthenticated) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const trackId = params.trackId;
   if (!trackId) {
     return Response.json({ error: "Track ID required" }, { status: 400 });
+  }
+
+  // Check if authenticated for this lobby (session or preload token)
+  const isAuthenticated =
+    session.isAuthenticated && session.lobbyId === tenant.lobby.id;
+
+  if (tenant.lobby.password && !isAuthenticated) {
+    // Check for preload token as alternative auth
+    const url = new URL(request.url);
+    const preloadToken = url.searchParams.get("preload");
+    if (!preloadToken) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const preloadResult = verifyPreloadToken(preloadToken, trackId, tenant.lobby.id);
+    if (!preloadResult.valid) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   // Check origin

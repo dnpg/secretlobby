@@ -1,9 +1,14 @@
-import { Form, useLoaderData, useActionData, redirect } from "react-router";
+import { useRef, useState, useEffect } from "react";
+import { Form, useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
 import { getSession, createSessionResponse } from "@secretlobby/auth";
-import { getSiteContent, getSitePassword } from "~/lib/content.server";
+import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/content.server";
+import { getPublicUrl } from "@secretlobby/storage";
+import { generatePreloadToken } from "~/lib/token.server";
+import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
+import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
 
 export function meta({ data }: Route.MetaArgs) {
   const title = data?.lobby?.title || data?.account?.name || data?.content?.bandName || "SecretLobby";
@@ -14,31 +19,38 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  // Check if this is localhost development mode
+  const { session } = await getSession(request);
+
+  // Handle localhost development mode
   if (isLocalhost(request)) {
-    // Use file-based content for localhost development
-    const { session } = await getSession(request);
-
-    if (session.isAuthenticated) {
-      throw redirect("/player");
-    }
-
     const content = await getSiteContent();
+    const isAuthenticated = session.isAuthenticated;
+
     return {
       isLocalhost: true,
       content,
       lobby: null,
       account: null,
-      requiresPassword: true,
-      isAuthenticated: false,
-      tracks: [],
+      requiresPassword: !isAuthenticated,
+      isAuthenticated,
+      imageUrls: {
+        background: null,
+        backgroundDark: null,
+        banner: null,
+        bannerDark: null,
+        profile: null,
+        profileDark: null,
+      } satisfies ImageUrls,
+      tracks: isAuthenticated ? content.playlist : [],
+      preloadTrackId: null,
+      preloadToken: null,
       notFound: false,
     };
   }
 
   // Resolve tenant from subdomain or custom domain
   const tenant = await resolveTenant(request);
-  console.log(tenant);
+
   // If no tenant found, show a generic landing
   if (!tenant.account || !tenant.lobby) {
     return {
@@ -48,81 +60,90 @@ export async function loader({ request }: Route.LoaderArgs) {
       account: null,
       requiresPassword: false,
       isAuthenticated: false,
+      imageUrls: {
+        background: null,
+        backgroundDark: null,
+        banner: null,
+        bannerDark: null,
+        profile: null,
+        profileDark: null,
+      } satisfies ImageUrls,
       tracks: [],
+      preloadTrackId: null,
+      preloadToken: null,
       notFound: true,
     };
   }
 
   const { account, lobby } = tenant;
-
-  // Get session for authentication state
-  const { session } = await getSession(request);
+  const settings = lobby.settings as Record<string, string> | null;
 
   // Check if lobby requires password and user is authenticated
   const isAuthenticated =
     session.isAuthenticated && session.lobbyId === lobby.id;
 
-  if (lobby.password && !isAuthenticated) {
-    // Return lobby metadata for password form (no tracks)
-    return {
-      isLocalhost: false,
-      content: null,
-      lobby: {
-        id: lobby.id,
-        name: lobby.name,
-        title: lobby.title,
-        description: lobby.description,
-        backgroundImage: lobby.backgroundImage,
-        bannerImage: lobby.bannerImage,
-        profileImage: lobby.profileImage,
-        settings: lobby.settings,
-      },
-      account: {
-        id: account.id,
-        name: account.name,
-        slug: account.slug,
-      },
-      requiresPassword: true,
-      isAuthenticated: false,
-      tracks: [],
-      notFound: false,
-    };
-  }
+  const needsPassword = !!lobby.password && !isAuthenticated;
 
-  // Fetch tracks for this lobby (filtered by band_id via lobbyId)
-  const tracks = await prisma.track.findMany({
-    where: { lobbyId: lobby.id },
-    orderBy: { position: "asc" },
-    select: {
-      id: true,
-      title: true,
-      artist: true,
-      duration: true,
-      position: true,
-    },
-  });
+  // Compute image URLs
+  const imageUrls: ImageUrls = {
+    background: lobby.backgroundImage ? getPublicUrl(lobby.backgroundImage) : null,
+    backgroundDark: settings?.backgroundImageDark ? getPublicUrl(settings.backgroundImageDark) : null,
+    banner: lobby.bannerImage ? getPublicUrl(lobby.bannerImage) : null,
+    bannerDark: settings?.bannerImageDark ? getPublicUrl(settings.bannerImageDark) : null,
+    profile: lobby.profileImage ? getPublicUrl(lobby.profileImage) : null,
+    profileDark: settings?.profileImageDark ? getPublicUrl(settings.profileImageDark) : null,
+  };
+
+  // Fetch tracks only if authenticated (but get first track ID for preloading)
+  let preloadTrackId: string | null = null;
+  let preloadToken: string | null = null;
+
+  const tracks = needsPassword
+    ? []
+    : await prisma.track.findMany({
+        where: { lobbyId: lobby.id },
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          duration: true,
+          position: true,
+          filename: true,
+        },
+      });
+
+  // If password required, find first track for preloading
+  if (needsPassword) {
+    const firstTrack = await prisma.track.findFirst({
+      where: { lobbyId: lobby.id },
+      orderBy: { position: "asc" },
+      select: { id: true },
+    });
+    if (firstTrack) {
+      preloadTrackId = firstTrack.id;
+      preloadToken = generatePreloadToken(firstTrack.id, lobby.id);
+    }
+  }
 
   return {
     isLocalhost: false,
     content: null,
     lobby: {
       id: lobby.id,
-      name: lobby.name,
       title: lobby.title,
       description: lobby.description,
-      backgroundImage: lobby.backgroundImage,
-      bannerImage: lobby.bannerImage,
-      profileImage: lobby.profileImage,
-      settings: lobby.settings,
     },
     account: {
-      id: account.id,
       name: account.name,
       slug: account.slug,
     },
-    requiresPassword: false,
-    isAuthenticated: true,
+    requiresPassword: needsPassword,
+    isAuthenticated: !needsPassword,
+    imageUrls,
     tracks,
+    preloadTrackId,
+    preloadToken,
     notFound: false,
   };
 }
@@ -135,7 +156,7 @@ export async function action({ request }: Route.ActionArgs) {
     const sitePassword = await getSitePassword();
 
     if (password === sitePassword) {
-      return createSessionResponse({ isAuthenticated: true }, request, "/player");
+      return createSessionResponse({ isAuthenticated: true }, request, "/");
     }
     return { error: "Invalid password" };
   }
@@ -161,13 +182,71 @@ export async function action({ request }: Route.ActionArgs) {
       lobbyId: tenant.lobby.id,
     },
     request,
-    "/player"
+    "/"
   );
 }
 
 export default function LobbyIndex() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+
+  // Audio state lives here so it persists across login → player transition
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const audioHook = useSegmentedAudio(audioRef);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const loadedTrackRef = useRef<string | null>(null);
+  const wasAuthenticatedRef = useRef(!data.requiresPassword);
+
+  // Resolve tracks for both localhost and multi-tenant
+  const tracks: Track[] = data.isLocalhost
+    ? (data.content?.playlist || []).map((t: FileTrack) => ({
+        id: t.id,
+        title: t.title,
+        artist: t.artist,
+        filename: t.filename,
+      }))
+    : data.tracks;
+
+  // Stop audio on logout (authenticated → unauthenticated transition)
+  useEffect(() => {
+    if (data.requiresPassword && wasAuthenticatedRef.current) {
+      audioRef.current?.pause();
+      audioHook.cleanup();
+      setIsPlaying(false);
+      loadedTrackRef.current = null;
+    }
+    wasAuthenticatedRef.current = !data.requiresPassword;
+  }, [data.requiresPassword]);
+
+  // Preload the first track on the password page (before authentication)
+  useEffect(() => {
+    if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
+      loadedTrackRef.current = data.preloadTrackId;
+      audioHook.loadTrack(data.preloadTrackId, data.preloadToken);
+    }
+  }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
+
+  // After login: continue downloading remaining segments or load from scratch
+  const firstTrackId = tracks[0]?.id;
+  useEffect(() => {
+    if (!firstTrackId || data.requiresPassword) return;
+
+    if (loadedTrackRef.current === firstTrackId) {
+      // Track was preloaded — resume full download with session auth
+      audioHook.continueDownload();
+    } else {
+      // No preload — load from scratch
+      loadedTrackRef.current = firstTrackId;
+      audioHook.loadTrack(firstTrackId);
+    }
+  }, [firstTrackId, data.requiresPassword]);
+
+  // Auto-play when the first track becomes ready and user is authenticated
+  useEffect(() => {
+    if (audioHook.isReady && !data.requiresPassword && !isPlaying) {
+      audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [audioHook.isReady, data.requiresPassword]);
 
   // Not found state
   if (data.notFound) {
@@ -183,11 +262,10 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, tracks, isLocalhost, content } = data;
+  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls } = data;
 
   // Password required state
   if (requiresPassword) {
-    // Get title from either localhost content or tenant data
     const title = isLocalhost
       ? (content?.bandName || "Private Access")
       : (lobby?.title || account?.name || "Private Lobby");
@@ -196,119 +274,98 @@ export default function LobbyIndex() {
       : lobby?.description;
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        <div className="w-full max-w-md p-8">
-          <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700">
-            <div className="text-center mb-8">
-              <div
-                className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-600 flex items-center justify-center"
-              >
-                <svg
-                  className="w-8 h-8 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+      <>
+        <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+          <div className="w-full max-w-md p-8">
+            <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700">
+              <div className="text-center mb-8">
+                <div
+                  className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-600 flex items-center justify-center"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                  />
-                </svg>
+                  <svg
+                    className="w-8 h-8 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                </div>
+                <h1 className="text-2xl font-bold">
+                  {title}
+                </h1>
+                {description && (
+                  <p className="text-gray-400 mt-2">{description}</p>
+                )}
               </div>
-              <h1 className="text-2xl font-bold">
-                {title}
-              </h1>
-              {description && (
-                <p className="text-gray-400 mt-2">{description}</p>
+
+              {actionData?.error && (
+                <div className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg">
+                  {actionData.error}
+                </div>
               )}
+
+              <Form method="post" className="space-y-4">
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Enter the password"
+                    required
+                    autoFocus
+                    className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Enter Lobby
+                </button>
+              </Form>
             </div>
-
-            {actionData?.error && (
-              <div className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg">
-                {actionData.error}
-              </div>
-            )}
-
-            <Form method="post" className="space-y-4">
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  placeholder="Enter the password"
-                  required
-                  autoFocus
-                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Enter Lobby
-              </button>
-            </Form>
           </div>
         </div>
-      </div>
+        {/* Audio element persists even on login page */}
+        <audio ref={audioRef} style={{ display: "none" }} />
+      </>
     );
   }
 
-  // Authenticated state - show tracks
+  // Authenticated state - show player
+  const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
+  const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8">
-      <div className="max-w-2xl mx-auto">
-        <header className="text-center mb-12">
-          <h1 className="text-4xl font-bold">
-            {lobby?.title || account?.name || "Lobby"}
-          </h1>
-          {lobby?.description && (
-            <p className="text-gray-400 mt-4">{lobby.description}</p>
-          )}
-        </header>
-
-        {tracks.length > 0 ? (
-          <div className="space-y-2">
-            {tracks.map((track, index) => (
-              <div
-                key={track.id}
-                className="bg-gray-800 rounded-lg p-4 flex items-center gap-4 hover:bg-gray-750 transition"
-              >
-                <span className="text-gray-500 w-8">{index + 1}</span>
-                <div className="flex-1">
-                  <h3 className="font-medium">{track.title}</h3>
-                  {track.artist && (
-                    <p className="text-sm text-gray-400">{track.artist}</p>
-                  )}
-                </div>
-                {track.duration && (
-                  <span className="text-sm text-gray-500">
-                    {Math.floor(track.duration / 60)}:{String(track.duration % 60).padStart(2, "0")}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center text-gray-400">
-            <p>No tracks available yet.</p>
-          </div>
-        )}
-
-        <div className="mt-8 text-center">
-          <a
-            href="/player"
-            className="inline-block px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700"
-          >
-            Open Player
-          </a>
-        </div>
-      </div>
-    </div>
+    <>
+      <PlayerView
+        tracks={tracks}
+        imageUrls={imageUrls}
+        bandName={bandName}
+        bandDescription={bandDescription}
+        audio={{
+          audioRef,
+          loadTrack: audioHook.loadTrack,
+          isLoading: audioHook.isLoading,
+          loadingProgress: audioHook.loadingProgress,
+          isReady: audioHook.isReady,
+          seekTo: audioHook.seekTo,
+          estimatedDuration: audioHook.estimatedDuration,
+        }}
+        isPlaying={isPlaying}
+        onPlayingChange={setIsPlaying}
+      />
+      {/* Audio element */}
+      <audio ref={audioRef} style={{ display: "none" }} />
+    </>
   );
 }

@@ -4,9 +4,6 @@ export default [
   // Main lobby entry (password-protected)
   index("routes/_index.tsx"),
 
-  // Player route
-  route("player", "routes/player.tsx"),
-
   // Logout
   route("logout", "routes/logout.tsx"),
 

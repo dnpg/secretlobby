@@ -1,108 +1,9 @@
-import { redirect, useLoaderData, Form } from "react-router";
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { Route } from "./+types/player";
-import { getSession } from "@secretlobby/auth";
-import { resolveTenant, isLocalhost } from "~/lib/subdomain.server";
-import { getSiteContent, type Track as FileTrack } from "~/lib/content.server";
-import { prisma } from "@secretlobby/db";
-import { getPublicUrl } from "@secretlobby/storage";
+import { useState, useEffect, useCallback } from "react";
+import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
-import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
 
-export function meta({ data }: Route.MetaArgs) {
-  const title = data?.content?.bandName || data?.lobby?.title || data?.account?.name || "Player";
-  return [{ title }];
-}
-
-export async function loader({ request }: Route.LoaderArgs) {
-  const { session } = await getSession(request);
-
-  // Handle localhost development mode
-  if (isLocalhost(request)) {
-    if (!session.isAuthenticated) {
-      throw redirect("/");
-    }
-    const content = await getSiteContent();
-    return {
-      isLocalhost: true,
-      content,
-      lobby: null,
-      imageUrls: {
-        background: null,
-        backgroundDark: null,
-        banner: null,
-        bannerDark: null,
-        profile: null,
-        profileDark: null,
-      },
-      account: null,
-      tracks: content.playlist,
-    };
-  }
-
-  // Handle multi-tenant mode
-  const tenant = await resolveTenant(request);
-
-  if (!tenant.account || !tenant.lobby) {
-    throw redirect("/");
-  }
-
-  const { account, lobby } = tenant;
-
-  // Check authentication
-  const isAuthenticated =
-    session.isAuthenticated && session.lobbyId === lobby.id;
-
-  // If password required and not authenticated, redirect to home
-  if (lobby.password && !isAuthenticated) {
-    throw redirect("/");
-  }
-
-  // Fetch tracks
-  const tracks = await prisma.track.findMany({
-    where: { lobbyId: lobby.id },
-    orderBy: { position: "asc" },
-    select: {
-      id: true,
-      title: true,
-      artist: true,
-      duration: true,
-      position: true,
-      filename: true,
-    },
-  });
-
-  const settings = lobby.settings as Record<string, string> | null;
-
-  return {
-    isLocalhost: false,
-    content: null,
-    lobby: {
-      id: lobby.id,
-      title: lobby.title,
-      description: lobby.description,
-      backgroundImage: lobby.backgroundImage,
-      bannerImage: lobby.bannerImage,
-      profileImage: lobby.profileImage,
-    },
-    imageUrls: {
-      background: lobby.backgroundImage ? getPublicUrl(lobby.backgroundImage) : null,
-      backgroundDark: settings?.backgroundImageDark ? getPublicUrl(settings.backgroundImageDark) : null,
-      banner: lobby.bannerImage ? getPublicUrl(lobby.bannerImage) : null,
-      bannerDark: settings?.bannerImageDark ? getPublicUrl(settings.bannerImageDark) : null,
-      profile: lobby.profileImage ? getPublicUrl(lobby.profileImage) : null,
-      profileDark: settings?.profileImageDark ? getPublicUrl(settings.profileImageDark) : null,
-    },
-    account: {
-      name: account.name,
-      slug: account.slug,
-    },
-    tracks,
-  };
-}
-
-interface Track {
+export interface Track {
   id: string;
   title: string;
   artist?: string | null;
@@ -110,58 +11,61 @@ interface Track {
   duration?: number | null;
 }
 
-export default function Player() {
-  const data = useLoaderData<typeof loader>();
-  const { isLocalhost, content, lobby, account, imageUrls } = data;
+export interface ImageUrls {
+  background: string | null;
+  backgroundDark: string | null;
+  banner: string | null;
+  bannerDark: string | null;
+  profile: string | null;
+  profileDark: string | null;
+}
 
-  // Normalize tracks to common interface
-  const tracks: Track[] = isLocalhost
-    ? (content?.playlist || []).map((t: FileTrack) => ({
-        id: t.id,
-        title: t.title,
-        artist: t.artist,
-        filename: t.filename,
-      }))
-    : data.tracks;
+export interface AudioControls {
+  audioRef: React.RefObject<HTMLAudioElement | null>;
+  loadTrack: (trackId: string, preloadToken?: string) => Promise<boolean>;
+  isLoading: boolean;
+  loadingProgress: number;
+  isReady: boolean;
+  seekTo: (time: number) => Promise<void>;
+  estimatedDuration: number;
+}
+
+interface PlayerViewProps {
+  tracks: Track[];
+  imageUrls: ImageUrls;
+  bandName?: string | null;
+  bandDescription?: string | null;
+  audio: AudioControls;
+  isPlaying: boolean;
+  onPlayingChange: (playing: boolean) => void;
+}
+
+export function PlayerView({
+  tracks,
+  imageUrls,
+  bandName,
+  bandDescription,
+  audio,
+  isPlaying,
+  onPlayingChange,
+}: PlayerViewProps) {
+  const { audioRef, loadTrack: loadSegmentedTrack, isLoading, loadingProgress, isReady, seekTo, estimatedDuration } = audio;
 
   const [currentTrack, setCurrentTrack] = useState<Track | null>(
     tracks[0] || null
   );
-  const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
-
-  const {
-    loadTrack: loadSegmentedTrack,
-    isLoading,
-    loadingProgress,
-    isReady,
-    cleanup,
-    seekTo,
-    estimatedDuration,
-  } = useSegmentedAudio(audioRef);
-
-  useEffect(() => {
-    return () => cleanup();
-  }, [cleanup]);
 
   useEffect(() => {
     if (audioRef.current) {
       setAudioElement(audioRef.current);
     }
-  }, [isReady]);
+  }, [isReady, audioRef]);
 
-  useEffect(() => {
-    if (currentTrack) {
-      loadSegmentedTrack(currentTrack.id);
-    }
-  }, []);
-
-  // Use estimatedDuration from hook as fallback when audio.duration is Infinity
   useEffect(() => {
     if (estimatedDuration > 0 && !isFinite(duration)) {
       setDuration(estimatedDuration);
@@ -202,7 +106,7 @@ export default function Player() {
     };
 
     const handleEnded = () => {
-      setIsPlaying(false);
+      onPlayingChange(false);
       playNext();
     };
 
@@ -217,7 +121,7 @@ export default function Player() {
       audio.removeEventListener("durationchange", handleDurationChange);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, [isReady, estimatedDuration]);
+  }, [isReady, estimatedDuration, audioRef]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -225,9 +129,9 @@ export default function Player() {
 
     if (isPlaying) {
       audio.pause();
-      setIsPlaying(false);
+      onPlayingChange(false);
     } else {
-      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+      audio.play().then(() => onPlayingChange(true)).catch(() => {});
     }
   };
 
@@ -238,7 +142,7 @@ export default function Player() {
     }
 
     setCurrentTrack(track);
-    setIsPlaying(false);
+    onPlayingChange(false);
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
@@ -246,15 +150,12 @@ export default function Player() {
     const success = await loadSegmentedTrack(track.id);
 
     if (success && audioRef.current) {
-      const tryPlay = async () => {
-        try {
-          await audioRef.current?.play();
-          setIsPlaying(true);
-        } catch (e) {
-          console.error("Playback failed:", e);
-        }
-      };
-      setTimeout(tryPlay, 300);
+      try {
+        await audioRef.current.play();
+        onPlayingChange(true);
+      } catch (e) {
+        console.error("Playback failed:", e);
+      }
     }
   };
 
@@ -286,12 +187,10 @@ export default function Player() {
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const newTime = percent * effectiveDuration;
 
-    // Fire and forget - never block user interaction
     seekTo(newTime);
 
-    // Always start playing on timeline click
     if (!isPlaying) {
-      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+      audio.play().then(() => onPlayingChange(true)).catch(() => {});
     }
   };
 
@@ -312,8 +211,6 @@ export default function Player() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
-  const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
   const hasSidebar = imageUrls.profile || bandDescription;
 
   return (
@@ -449,7 +346,6 @@ export default function Player() {
               <button
                 onClick={playPrev}
                 className="p-3 hover:bg-white/10 rounded-full transition"
-
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -479,7 +375,6 @@ export default function Player() {
               <button
                 onClick={playNext}
                 className="p-3 hover:bg-white/10 rounded-full transition"
-
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -495,7 +390,6 @@ export default function Player() {
                   <button
                     key={track.id}
                     onClick={() => playTrack(track)}
-    
                     className={`w-full text-left p-3 rounded-lg transition flex items-center gap-3 ${
                       currentTrack?.id === track.id
                         ? "bg-white/20"
@@ -587,9 +481,6 @@ export default function Player() {
             </div>
           )}
         </div>
-
-        {/* Audio Element */}
-        <audio ref={audioRef} style={{ display: "none" }} />
       </main>
     </div>
   );

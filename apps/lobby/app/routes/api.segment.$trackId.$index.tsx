@@ -2,7 +2,7 @@ import type { Route } from "./+types/api.segment.$trackId.$index";
 import { getSession } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
-import { verifyStreamToken } from "~/lib/token.server";
+import { verifyStreamToken, verifyPreloadToken } from "~/lib/token.server";
 import { getSegmentSize } from "~/lib/segments.server";
 import { getFileRange, getFileInfo } from "@secretlobby/storage";
 
@@ -15,12 +15,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(null, { status: 404 });
   }
 
-  // Check if authenticated for this lobby
+  // Check if authenticated for this lobby (session or preload token)
   const isAuthenticated =
     session.isAuthenticated && session.lobbyId === tenant.lobby.id;
 
   if (tenant.lobby.password && !isAuthenticated) {
-    return new Response(null, { status: 401 });
+    // Check for preload token as alternative auth
+    const url = new URL(request.url);
+    const preloadToken = url.searchParams.get("preload");
+    const { trackId: pTrackId } = params;
+    if (!preloadToken || !pTrackId) {
+      return new Response(null, { status: 401 });
+    }
+    const preloadResult = verifyPreloadToken(preloadToken, pTrackId, tenant.lobby.id);
+    if (!preloadResult.valid) {
+      return new Response(null, { status: 401 });
+    }
   }
 
   const { trackId, index } = params;

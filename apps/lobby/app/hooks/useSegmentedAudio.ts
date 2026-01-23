@@ -31,6 +31,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   const abortControllerRef = useRef<AbortController | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const currentTrackIdRef = useRef<string | null>(null);
+  const preloadTokenRef = useRef<string | null>(null);
 
   // Segment cache: persists across seeks so re-appending is instant
   const segmentCacheRef = useRef<Map<number, ArrayBuffer>>(new Map());
@@ -72,6 +73,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     isAppendingRef.current = false;
     fetchAbortRef.current = null;
     currentTrackIdRef.current = null;
+    preloadTokenRef.current = null;
     setIsReady(false);
     setLoadingProgress(0);
     setEstimatedDuration(0);
@@ -80,7 +82,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   // Fetch manifest
   const fetchManifest = useCallback(async (trackId: string): Promise<Manifest | null> => {
     try {
-      const response = await fetch(`/api/manifest/${trackId}`, {
+      const preloadParam = preloadTokenRef.current ? `?preload=${encodeURIComponent(preloadTokenRef.current)}` : "";
+      const response = await fetch(`/api/manifest/${trackId}${preloadParam}`, {
         signal: abortControllerRef.current?.signal,
       });
       if (!response.ok) return null;
@@ -103,8 +106,9 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       const onMainAbort = () => controller.abort();
       abortControllerRef.current?.signal.addEventListener("abort", onMainAbort);
 
+      const preloadParam = preloadTokenRef.current ? `&preload=${encodeURIComponent(preloadTokenRef.current)}` : "";
       const response = await fetch(
-        `/api/segment/${trackId}/${segment.index}?t=${segment.token}`,
+        `/api/segment/${trackId}/${segment.index}?t=${segment.token}${preloadParam}`,
         { signal: controller.signal }
       );
 
@@ -402,12 +406,41 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     audio.currentTime = time;
   }, [audioRef, isTimeBuffered, timeToSegmentIndex, rebuildBufferFrom, buildQueueFrom, processQueue]);
 
+  // Resume downloading remaining segments (after preload-only load)
+  const continueDownload = useCallback(() => {
+    const manifest = manifestRef.current;
+    if (!manifest) return;
+
+    // Clear preload token so subsequent fetches use session auth
+    preloadTokenRef.current = null;
+
+    // Refresh the manifest (tokens may have expired), then queue remaining
+    const trackId = currentTrackIdRef.current;
+    if (!trackId) return;
+
+    (async () => {
+      const newManifest = await fetchManifest(trackId);
+      if (newManifest) {
+        manifestRef.current = newManifest;
+      }
+
+      const m = manifestRef.current!;
+      for (let i = 0; i < m.segments.length; i++) {
+        if (!segmentCacheRef.current.has(i)) {
+          downloadQueueRef.current.push(i);
+        }
+      }
+      processQueue();
+    })();
+  }, [fetchManifest, processQueue]);
+
   // Initialize and start loading
-  const loadTrack = useCallback(async (trackId: string) => {
+  const loadTrack = useCallback(async (trackId: string, preloadToken?: string) => {
     cleanup();
 
     abortControllerRef.current = new AbortController();
     currentTrackIdRef.current = trackId;
+    preloadTokenRef.current = preloadToken || null;
     setIsLoading(true);
     setError(null);
     setIsReady(false);
@@ -481,13 +514,16 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       setIsReady(true);
       setIsLoading(false);
 
-      // Build download queue for remaining segments
-      for (let i = initialSegments; i < manifest.segments.length; i++) {
-        downloadQueueRef.current.push(i);
-      }
+      // If preloading, stop after initial segments to save bandwidth
+      if (!preloadToken) {
+        // Build download queue for remaining segments
+        for (let i = initialSegments; i < manifest.segments.length; i++) {
+          downloadQueueRef.current.push(i);
+        }
 
-      // Start background downloading
-      processQueue();
+        // Start background downloading
+        processQueue();
+      }
 
       return true;
     } catch (err) {
@@ -507,6 +543,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
 
   return {
     loadTrack,
+    continueDownload,
     cleanup,
     seekTo,
     isLoading,
