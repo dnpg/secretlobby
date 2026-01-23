@@ -4,6 +4,7 @@ import type { Route } from "./+types/_layout.playlist";
 import { getSession, isAdmin } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { uploadFile, deleteFile } from "@secretlobby/storage";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Playlist - Admin" }];
@@ -176,7 +177,7 @@ export default function AdminPlaylist() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+              className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
             >
               Add Track
             </button>

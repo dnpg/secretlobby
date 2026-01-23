@@ -3,6 +3,7 @@ import { Form, useActionData, useLoaderData, useNavigation } from "react-router"
 import type { Route } from "./+types/reset-password";
 import { verifyPasswordResetToken, resetPassword, resetPasswordSchema } from "@secretlobby/auth";
 import { PASSWORD_REQUIREMENTS, checkPasswordRequirements } from "@secretlobby/auth/requirements";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Reset Password - Console" }];
@@ -103,7 +104,7 @@ export default function ResetPassword() {
               </div>
               <a
                 href="/login"
-                className="inline-block mt-4 py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
+                className="inline-block mt-4 py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition cursor-pointer"
               >
                 Sign In
               </a>
@@ -129,7 +130,7 @@ export default function ResetPassword() {
               </div>
               <a
                 href="/forgot-password"
-                className="inline-block mt-4 py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition"
+                className="inline-block mt-4 py-3 px-6 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition cursor-pointer"
               >
                 Request New Link
               </a>
@@ -205,7 +206,7 @@ export default function ResetPassword() {
             <button
               type="submit"
               disabled={!canSubmit}
-              className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={cn("w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50", {"cursor-pointer": canSubmit, "cursor-not-allowed": !canSubmit})}
             >
               {isSubmitting ? "Resetting..." : "Reset Password"}
             </button>

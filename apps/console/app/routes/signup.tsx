@@ -2,6 +2,7 @@ import { Form, redirect, useActionData, useLoaderData, useNavigation } from "rea
 import type { Route } from "./+types/signup";
 import { getSession, createSessionResponse, createUser, addUserToAccount, isGoogleConfigured } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Sign Up - Console" }];
@@ -274,7 +275,7 @@ export default function Signup() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 transition"
+              className={cn("w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 transition", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
             >
               {isSubmitting ? "Creating Account..." : "Create Account"}
             </button>

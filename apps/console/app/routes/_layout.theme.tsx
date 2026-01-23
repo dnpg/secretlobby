@@ -4,13 +4,13 @@ import { getSession, isAdmin } from "@secretlobby/auth";
 import {
   getThemeSettings,
   updateThemeSettings,
-  resetThemeSettings,
   getDefaultThemeForMode,
   getAllowUserColorMode,
   updateAllowUserColorMode,
   type ThemeSettings,
   type ColorMode,
 } from "~/lib/content.server";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Theme Settings - Admin" }];
@@ -18,33 +18,29 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { session } = await getSession(request);
-  if (!isAdmin(session)) {
+  if (!isAdmin(session) || !session.currentAccountId) {
     return { theme: null, allowUserColorMode: true };
   }
-  const theme = await getThemeSettings();
-  const allowUserColorMode = await getAllowUserColorMode();
+  const theme = await getThemeSettings(session.currentAccountId);
+  const allowUserColorMode = await getAllowUserColorMode(session.currentAccountId);
   return { theme, allowUserColorMode };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const { session } = await getSession(request);
-  if (!isAdmin(session)) {
+  if (!isAdmin(session) || !session.currentAccountId) {
     return { error: "Unauthorized" };
   }
 
+  const accountId = session.currentAccountId;
   const formData = await request.formData();
   const intent = formData.get("intent");
 
   try {
     if (intent === "toggle-user-color-mode") {
       const allow = formData.get("allow") === "true";
-      await updateAllowUserColorMode(allow);
+      await updateAllowUserColorMode(accountId, allow);
       return { success: allow ? "User color mode toggle enabled" : "User color mode toggle disabled (light mode only)" };
-    }
-
-    if (intent === "reset-theme") {
-      await resetThemeSettings();
-      return { success: "Theme reset to defaults" };
     }
 
     if (intent === "change-color-mode") {
@@ -52,9 +48,9 @@ export async function action({ request }: Route.ActionArgs) {
       if (colorMode && ["dark", "light", "system"].includes(colorMode)) {
         if (colorMode !== "system") {
           const defaultColors = getDefaultThemeForMode(colorMode);
-          await updateThemeSettings({ ...defaultColors, colorMode });
+          await updateThemeSettings(accountId, { ...defaultColors, colorMode });
         } else {
-          await updateThemeSettings({ colorMode });
+          await updateThemeSettings(accountId, { colorMode });
         }
         return { success: `Color mode changed to ${colorMode}` };
       }
@@ -89,11 +85,12 @@ export async function action({ request }: Route.ActionArgs) {
         }
       }
 
-      await updateThemeSettings(themeUpdate);
+      await updateThemeSettings(accountId, themeUpdate);
       return { success: "Theme updated successfully" };
     }
-  } catch {
-    return { error: "Operation failed" };
+  } catch (error){
+    console.error(error);
+    return { error: "Operation failed", data: error };
   }
 
   return null;
@@ -173,8 +170,8 @@ export default function AdminTheme() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-              allowUserColorMode ? "bg-green-500" : "bg-theme-tertiary"
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer border ${
+              allowUserColorMode ? "bg-green-500 border-green-500" : "bg-theme-tertiary border-theme"
             } disabled:opacity-50`}
           >
             <span
@@ -360,18 +357,9 @@ export default function AdminTheme() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+              className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50",{"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
             >
               Save Theme
-            </button>
-            <button
-              type="submit"
-              name="intent"
-              value="reset-theme"
-              disabled={isSubmitting}
-              className="px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50"
-            >
-              Reset to Defaults
             </button>
           </div>
         </Form>

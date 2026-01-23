@@ -2,6 +2,7 @@ import { Form, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/forgot-password";
 import { forgotPasswordSchema, generatePasswordResetToken } from "@secretlobby/auth";
 import { sendPasswordResetEmail } from "@secretlobby/email";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Forgot Password - Console" }];
@@ -94,7 +95,7 @@ export default function ForgotPassword() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  className={cn("w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
                 >
                   {isSubmitting ? "Sending..." : "Send Reset Link"}
                 </button>

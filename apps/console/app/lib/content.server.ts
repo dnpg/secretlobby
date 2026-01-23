@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
+import { prisma } from "@secretlobby/db";
 
 export interface Track {
   id: string;
@@ -148,23 +149,47 @@ export async function updateSitePassword(password: string): Promise<void> {
   await updateSiteContent({ sitePassword: password });
 }
 
-export async function getThemeSettings(): Promise<ThemeSettings> {
-  const content = await getSiteContent();
-  const theme = content.theme || defaultTheme;
+interface AccountSettings {
+  theme?: ThemeSettings;
+  allowUserColorMode?: boolean;
+  [key: string]: unknown;
+}
+
+async function getAccountSettings(accountId: string): Promise<AccountSettings> {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { settings: true },
+  });
+  if (!account?.settings || typeof account.settings !== "object") {
+    return {};
+  }
+  return account.settings as AccountSettings;
+}
+
+async function updateAccountSettings(accountId: string, updates: Partial<AccountSettings>): Promise<void> {
+  const current = await getAccountSettings(accountId);
+  await prisma.account.update({
+    where: { id: accountId },
+    data: { settings: { ...current, ...updates } },
+  });
+}
+
+export async function getThemeSettings(accountId: string): Promise<ThemeSettings> {
+  const settings = await getAccountSettings(accountId);
+  const theme = settings.theme || defaultTheme;
   if (!theme.colorMode) {
     theme.colorMode = "dark";
   }
   return theme;
 }
 
-export async function updateThemeSettings(theme: Partial<ThemeSettings>): Promise<void> {
-  const content = await getSiteContent();
-  const currentTheme = content.theme || defaultTheme;
-  await updateSiteContent({ theme: { ...currentTheme, ...theme } });
+export async function updateThemeSettings(accountId: string, theme: Partial<ThemeSettings>): Promise<void> {
+  const currentTheme = await getThemeSettings(accountId);
+  await updateAccountSettings(accountId, { theme: { ...currentTheme, ...theme } });
 }
 
-export async function resetThemeSettings(): Promise<void> {
-  await updateSiteContent({ theme: defaultTheme });
+export async function resetThemeSettings(accountId: string): Promise<void> {
+  await updateAccountSettings(accountId, { theme: defaultTheme });
 }
 
 export function generateThemeCSS(theme: ThemeSettings): string {
@@ -200,11 +225,11 @@ export function getDefaultThemeForMode(mode: ColorMode): ThemeSettings {
   return mode === "light" ? defaultLightTheme : defaultDarkTheme;
 }
 
-export async function getAllowUserColorMode(): Promise<boolean> {
-  const content = await getSiteContent();
-  return content.allowUserColorMode !== false;
+export async function getAllowUserColorMode(accountId: string): Promise<boolean> {
+  const settings = await getAccountSettings(accountId);
+  return settings.allowUserColorMode !== false;
 }
 
-export async function updateAllowUserColorMode(allow: boolean): Promise<void> {
-  await updateSiteContent({ allowUserColorMode: allow });
+export async function updateAllowUserColorMode(accountId: string, allow: boolean): Promise<void> {
+  await updateAccountSettings(accountId, { allowUserColorMode: allow });
 }

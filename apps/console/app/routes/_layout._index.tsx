@@ -2,6 +2,7 @@ import { Form, useLoaderData, useActionData, useNavigation, redirect } from "rea
 import type { Route } from "./+types/_layout._index";
 import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Content Settings - Admin" }];
@@ -167,7 +168,7 @@ export default function AdminContent() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+            className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
           >
             Save Lobby Info
           </button>
@@ -211,7 +212,7 @@ export default function AdminContent() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+            className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
           >
             Update Password
           </button>

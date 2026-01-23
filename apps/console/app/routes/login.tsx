@@ -1,6 +1,7 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/login";
 import { getSession, createSessionResponse, authenticateWithPassword, isGoogleConfigured } from "@secretlobby/auth";
+import { cn } from "@secretlobby/ui";
 
 const ERROR_MESSAGES: Record<string, string> = {
   google_not_configured: "Google sign-in is not configured.",
@@ -184,7 +185,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              className={cn("w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
             >
               {isSubmitting ? "Signing in..." : "Sign In"}
             </button>

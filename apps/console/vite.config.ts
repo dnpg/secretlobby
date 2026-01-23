@@ -30,7 +30,7 @@ export default defineConfig({
   envDir: "../../",
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths(), serverOnlyModules()],
   ssr: {
-    noExternal: ["@secretlobby/ui", "@secretlobby/auth"],
+    noExternal: ["@secretlobby/ui"],
   },
   server: {
     host: "0.0.0.0",

@@ -10,12 +10,12 @@ export function ColorModeToggle({ className }: { className?: string }) {
   }
 
   return (
-    <div className={cn("flex items-center bg-theme-secondary rounded-lg p-1 border border-theme", className)}>
+    <div className={cn("flex items-center bg-theme-secondary rounded-lg p-1.5 gap-1 border border-theme", className)}>
       <button
         type="button"
         onClick={() => setMode("light")}
         className={cn(
-          "p-2 rounded-md transition cursor-pointer",
+          "p-1 transition rounded-lg cursor-pointer",
           mode === "light"
             ? "btn-primary"
             : "text-theme-secondary hover:text-theme-primary hover:bg-(--color-accent-muted)"
@@ -30,7 +30,7 @@ export function ColorModeToggle({ className }: { className?: string }) {
         type="button"
         onClick={() => setMode("dark")}
         className={cn(
-          "p-2 rounded-md transition cursor-pointer",
+          "p-1 rounded-lg transition cursor-pointer",
           mode === "dark"
             ? "btn-primary"
             : "text-theme-secondary hover:text-theme-primary hover:bg-(--color-accent-muted)"
@@ -45,7 +45,7 @@ export function ColorModeToggle({ className }: { className?: string }) {
         type="button"
         onClick={() => setMode("system")}
         className={cn(
-          "p-2 rounded-md transition cursor-pointer",
+          "p-1 rounded-lg transition cursor-pointer",
           mode === "system"
             ? "btn-primary"
             : "text-theme-secondary hover:text-theme-primary hover:bg-(--color-accent-muted)"

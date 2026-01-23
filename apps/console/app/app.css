@@ -1,1 +1,86 @@
 @import "tailwindcss";
+@source "../../../packages/ui/src/**/*.{ts,tsx}";
+
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  --color-bg-primary: #030712;
+  --color-bg-secondary: #111827;
+  --color-bg-tertiary: #1f2937;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #9ca3af;
+  --color-text-muted: #6b7280;
+  --color-border: #374151;
+  --color-primary: #ffffff;
+  --color-primary-hover: #e5e7eb;
+  --color-primary-text: #111827;
+  --color-secondary: #1f2937;
+  --color-secondary-hover: #374151;
+  --color-secondary-text: #ffffff;
+  --color-accent: #ffffff;
+  --color-accent-muted: #ffffff33;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f3f4f6;
+  --color-bg-tertiary: #e5e7eb;
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+  --color-border: #d1d5db;
+  --color-primary: #111827;
+  --color-primary-hover: #374151;
+  --color-primary-text: #ffffff;
+  --color-secondary: #e5e7eb;
+  --color-secondary-hover: #d1d5db;
+  --color-secondary-text: #111827;
+  --color-accent: #111827;
+  --color-accent-muted: #11182733;
+}
+
+/* Theme utility classes */
+@utility bg-theme-primary {
+  background-color: var(--color-bg-primary);
+}
+
+@utility bg-theme-secondary {
+  background-color: var(--color-bg-secondary);
+}
+
+@utility bg-theme-tertiary {
+  background-color: var(--color-bg-tertiary);
+}
+
+@utility text-theme-primary {
+  color: var(--color-text-primary);
+}
+
+@utility text-theme-secondary {
+  color: var(--color-text-secondary);
+}
+
+@utility text-theme-muted {
+  color: var(--color-text-muted);
+}
+
+@utility border-theme {
+  border-color: var(--color-border);
+}
+
+@utility btn-primary {
+  background-color: var(--color-primary);
+  color: var(--color-primary-text);
+  &:hover {
+    background-color: var(--color-primary-hover);
+  }
+}
+
+@utility btn-secondary {
+  background-color: var(--color-secondary);
+  color: var(--color-secondary-text);
+  &:hover {
+    background-color: var(--color-secondary-hover);
+  }
+}

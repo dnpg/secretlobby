@@ -3,6 +3,7 @@ import type { Route } from "./+types/_layout.media";
 import { getSession, isAdmin } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { uploadFile, getPublicUrl, listFiles } from "@secretlobby/storage";
+import { cn } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Media Settings - Admin" }];
@@ -270,7 +271,7 @@ export default function AdminMedia() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+            className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
           >
             Update Background
           </button>
@@ -324,7 +325,7 @@ export default function AdminMedia() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50"
+                className={cn("px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
               >
                 Update Dark Mode Background
               </button>
@@ -376,7 +377,7 @@ export default function AdminMedia() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+            className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
           >
             Update Banner
           </button>
@@ -431,7 +432,7 @@ export default function AdminMedia() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50"
+                className={cn("px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
               >
                 Update Dark Mode Banner
               </button>
@@ -486,7 +487,7 @@ export default function AdminMedia() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+            className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
           >
             Update Profile Picture
           </button>
@@ -541,7 +542,7 @@ export default function AdminMedia() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50"
+                className={cn("px-6 py-2 btn-secondary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
               >
                 Update Dark Mode Profile Picture
               </button>
