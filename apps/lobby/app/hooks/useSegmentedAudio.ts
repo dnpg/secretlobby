@@ -18,6 +18,19 @@ interface Manifest {
 // Estimate bytes per second for MP3 (default 128kbps)
 const DEFAULT_BYTES_PER_SEC = 16000;
 
+// Check if MediaSource Extensions is available for audio/mpeg
+function canUseMSE(): boolean {
+  try {
+    return (
+      typeof MediaSource !== "undefined" &&
+      typeof MediaSource.isTypeSupported === "function" &&
+      MediaSource.isTypeSupported("audio/mpeg")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | null>) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -32,6 +45,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   const objectUrlRef = useRef<string | null>(null);
   const currentTrackIdRef = useRef<string | null>(null);
   const preloadTokenRef = useRef<string | null>(null);
+  const useBlobModeRef = useRef(false);
 
   // Segment cache: persists across seeks so re-appending is instant
   const segmentCacheRef = useRef<Map<number, ArrayBuffer>>(new Map());
@@ -120,6 +134,167 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       return null;
     }
   }, []);
+
+  // --- Blob mode helpers (iOS fallback) ---
+
+  // Build a Blob from all cached segments in order
+  const buildBlobFromCache = useCallback((): Blob | null => {
+    const manifest = manifestRef.current;
+    if (!manifest) return null;
+
+    const parts: ArrayBuffer[] = [];
+    for (let i = 0; i < manifest.segments.length; i++) {
+      const data = segmentCacheRef.current.get(i);
+      if (!data) break; // Stop at first gap
+      parts.push(data);
+    }
+    if (parts.length === 0) return null;
+    return new Blob(parts, { type: "audio/mpeg" });
+  }, []);
+
+  // Update the audio element with the current blob
+  const updateBlobSrc = useCallback((preservePlayback: boolean) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const blob = buildBlobFromCache();
+    if (!blob) return;
+
+    const savedTime = audio.currentTime;
+    const wasPlaying = !audio.paused;
+
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+    }
+    const url = URL.createObjectURL(blob);
+    objectUrlRef.current = url;
+    audio.src = url;
+
+    if (preservePlayback && savedTime > 0) {
+      const onCanPlay = () => {
+        audio.removeEventListener("canplay", onCanPlay);
+        audio.currentTime = savedTime;
+        if (wasPlaying) {
+          audio.play().catch(() => {});
+        }
+      };
+      audio.addEventListener("canplay", onCanPlay);
+    }
+
+    audio.load();
+  }, [audioRef, buildBlobFromCache]);
+
+  // Process download queue in blob mode
+  const processBlobQueue = useCallback(async () => {
+    if (isDownloadingRef.current) return;
+    isDownloadingRef.current = true;
+
+    const manifest = manifestRef.current;
+    const trackId = currentTrackIdRef.current;
+
+    if (!manifest || !trackId) {
+      isDownloadingRef.current = false;
+      return;
+    }
+
+    while (downloadQueueRef.current.length > 0) {
+      if (abortControllerRef.current?.signal.aborted) break;
+
+      const segmentIndex = downloadQueueRef.current.shift()!;
+
+      if (segmentCacheRef.current.has(segmentIndex)) continue;
+      if (segmentIndex >= manifest.segments.length) continue;
+
+      const segment = manifest.segments[segmentIndex];
+      let data = await fetchSegment(trackId, segment);
+
+      if (!data) {
+        const newManifest = await fetchManifest(trackId);
+        if (newManifest) {
+          manifestRef.current = newManifest;
+          data = await fetchSegment(trackId, newManifest.segments[segmentIndex]);
+        }
+        if (!data) continue;
+      }
+
+      segmentCacheRef.current.set(segmentIndex, data);
+      const totalCached = segmentCacheRef.current.size;
+      setLoadingProgress((totalCached / manifest.segments.length) * 100);
+
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
+    // All segments downloaded - update blob with complete file
+    if (segmentCacheRef.current.size === manifest.segments.length) {
+      updateBlobSrc(true);
+    }
+
+    isDownloadingRef.current = false;
+  }, [fetchSegment, fetchManifest, updateBlobSrc]);
+
+  // Load track in blob mode (iOS fallback)
+  const loadTrackBlob = useCallback(async (trackId: string, preloadToken?: string) => {
+    cleanup();
+
+    abortControllerRef.current = new AbortController();
+    currentTrackIdRef.current = trackId;
+    preloadTokenRef.current = preloadToken || null;
+    useBlobModeRef.current = true;
+    setIsLoading(true);
+    setError(null);
+    setIsReady(false);
+    segmentCacheRef.current.clear();
+    downloadQueueRef.current = [];
+
+    try {
+      const manifest = await fetchManifest(trackId);
+      if (!manifest) {
+        throw new Error("Failed to load track");
+      }
+      manifestRef.current = manifest;
+
+      const estDuration = manifest.totalSize / DEFAULT_BYTES_PER_SEC;
+      setEstimatedDuration(estDuration);
+
+      // Download initial segments
+      const initialSegments = Math.min(3, manifest.segments.length);
+
+      for (let i = 0; i < initialSegments; i++) {
+        if (abortControllerRef.current?.signal.aborted) break;
+        const segment = manifest.segments[i];
+        const data = await fetchSegment(trackId, segment);
+        if (data) {
+          segmentCacheRef.current.set(i, data);
+          setLoadingProgress(((i + 1) / manifest.segments.length) * 100);
+        }
+      }
+
+      // Create initial blob and set as audio src
+      updateBlobSrc(false);
+
+      setIsReady(true);
+      setIsLoading(false);
+
+      // Queue remaining segments for background download
+      if (!preloadToken) {
+        for (let i = initialSegments; i < manifest.segments.length; i++) {
+          downloadQueueRef.current.push(i);
+        }
+        processBlobQueue();
+      }
+
+      return true;
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return false;
+      }
+      setError(err instanceof Error ? err.message : "Failed to load");
+      setIsLoading(false);
+      return false;
+    }
+  }, [cleanup, fetchManifest, fetchSegment, updateBlobSrc, processBlobQueue]);
+
+  // --- MSE mode helpers (desktop) ---
 
   // Append a single buffer to the source buffer (waits for updateend)
   const appendToSourceBuffer = useCallback((sourceBuffer: SourceBuffer, data: ArrayBuffer): Promise<void> => {
@@ -262,7 +437,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     isAppendingRef.current = false;
   }, [appendToSourceBuffer, waitForBuffer]);
 
-  // Process the download queue
+  // Process the download queue (MSE mode)
   const processQueue = useCallback(async () => {
     if (isDownloadingRef.current) return;
     isDownloadingRef.current = true;
@@ -371,14 +546,20 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     await flushAppendQueue();
   }, [clearSourceBuffer, waitForBuffer, segmentIndexToTime, flushAppendQueue]);
 
-  // Seek to a specific time - instant like YouTube
+  // Seek to a specific time
   const seekTo = useCallback(async (time: number) => {
     const audio = audioRef.current;
     const manifest = manifestRef.current;
 
     if (!audio || !manifest) return;
 
-    // If the time is within the currently buffered range, just seek immediately
+    // In blob mode, just set currentTime directly (browser handles seeking in the blob)
+    if (useBlobModeRef.current) {
+      audio.currentTime = time;
+      return;
+    }
+
+    // MSE mode: if the time is within the currently buffered range, just seek immediately
     if (isTimeBuffered(time)) {
       audio.currentTime = time;
       return;
@@ -414,7 +595,6 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     // Clear preload token so subsequent fetches use session auth
     preloadTokenRef.current = null;
 
-    // Refresh the manifest (tokens may have expired), then queue remaining
     const trackId = currentTrackIdRef.current;
     if (!trackId) return;
 
@@ -430,17 +610,23 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
           downloadQueueRef.current.push(i);
         }
       }
-      processQueue();
-    })();
-  }, [fetchManifest, processQueue]);
 
-  // Initialize and start loading
-  const loadTrack = useCallback(async (trackId: string, preloadToken?: string) => {
+      if (useBlobModeRef.current) {
+        processBlobQueue();
+      } else {
+        processQueue();
+      }
+    })();
+  }, [fetchManifest, processQueue, processBlobQueue]);
+
+  // Load track in MSE mode (desktop)
+  const loadTrackMSE = useCallback(async (trackId: string, preloadToken?: string) => {
     cleanup();
 
     abortControllerRef.current = new AbortController();
     currentTrackIdRef.current = trackId;
     preloadTokenRef.current = preloadToken || null;
+    useBlobModeRef.current = false;
     setIsLoading(true);
     setError(null);
     setIsReady(false);
@@ -535,6 +721,15 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       return false;
     }
   }, [cleanup, fetchManifest, fetchSegment, appendToSourceBuffer, processQueue, audioRef]);
+
+  // Main loadTrack - picks MSE or blob based on browser support
+  const loadTrack = useCallback(async (trackId: string, preloadToken?: string) => {
+    if (canUseMSE()) {
+      return loadTrackMSE(trackId, preloadToken);
+    } else {
+      return loadTrackBlob(trackId, preloadToken);
+    }
+  }, [loadTrackMSE, loadTrackBlob]);
 
   // Cleanup on unmount
   useEffect(() => {
