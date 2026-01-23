@@ -5,6 +5,54 @@ button {
   cursor: pointer;
 }
 
+/* Rich text prose content styles */
+.prose-content h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.prose-content h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.prose-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.prose-content ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.prose-content ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.prose-content blockquote {
+  border-left: 3px solid var(--color-accent, #6366f1);
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+  opacity: 0.8;
+}
+
+.prose-content a {
+  color: var(--color-accent, #6366f1);
+  text-decoration: underline;
+}
+
+.prose-content p {
+  margin: 1rem 0;
+  text-wrap-style: pretty;
+}
+
 :root {
   --color-bg-primary: #030712;
   --color-bg-secondary: #111827;

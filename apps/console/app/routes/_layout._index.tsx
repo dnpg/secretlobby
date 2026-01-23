@@ -2,7 +2,7 @@ import { Form, useLoaderData, useActionData, useNavigation, redirect } from "rea
 import type { Route } from "./+types/_layout._index";
 import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
-import { cn } from "@secretlobby/ui";
+import { cn, RichTextEditor } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Content Settings - Admin" }];
@@ -136,12 +136,11 @@ export default function AdminContent() {
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">Description</label>
-            <textarea
+            <RichTextEditor
               name="bandDescription"
               defaultValue={lobby.description || ""}
-              rows={4}
-              className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] resize-none"
               placeholder="Enter lobby description..."
+              features={["bold", "italic", "underline","textAlign", "heading", "bulletList", "orderedList", "link", "blockquote"]}
             />
           </div>
           <button

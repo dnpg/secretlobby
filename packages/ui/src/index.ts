@@ -18,3 +18,4 @@ export {
 export { ColorModeToggle } from "./components/ColorModeToggle.js";
 export { ResponsiveImage } from "./components/ResponsiveImage.js";
 export { PictureImage } from "./components/PictureImage.js";
+export { RichTextEditor, type RichTextEditorFeature } from "./components/RichTextEditor.js";

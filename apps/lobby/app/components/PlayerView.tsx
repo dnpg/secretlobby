@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
@@ -101,6 +101,58 @@ function CardContainer({ cardStyles, children, className }: CardContainerProps) 
     </div>
   );
 }
+
+interface SidebarProps {
+  imageUrls: ImageUrls;
+  bandName?: string | null;
+  bandDescription?: string | null;
+  cardStyles?: CardStyles;
+}
+
+const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, cardStyles }: SidebarProps) {
+  return (
+    <div className="space-y-6">
+      {imageUrls.profile && (
+        <div className="flex justify-center overflow-hidden border-2" style={{ borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`, borderColor: "var(--color-border)" }}>
+          {imageUrls.profileDark ? (
+            <PictureImage
+              sources={[
+                { media: "(prefers-color-scheme: dark)", src: imageUrls.profileDark, widths: [300, 600] },
+              ]}
+              fallback={{ src: imageUrls.profile, widths: [300, 600] }}
+              alt={bandName || "Profile"}
+              className="w-full object-cover"
+            />
+          ) : (
+            <ResponsiveImage
+              src={imageUrls.profile}
+              alt={bandName || "Profile"}
+              widths={[300, 600]}
+              className="w-full object-cover"
+            />
+          )}
+        </div>
+      )}
+
+      {(bandName || bandDescription) && (
+        <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+          {bandName && (
+            <h3 className="text-lg font-semibold mb-2" style={{ color: cardStyles?.headingColor }}>
+              {bandName}
+            </h3>
+          )}
+          {bandDescription && (
+            <div
+              className="text-sm prose-content"
+              style={{ color: cardStyles?.contentColor }}
+              dangerouslySetInnerHTML={{ __html: bandDescription }}
+            />
+          )}
+        </CardContainer>
+      )}
+    </div>
+  );
+});
 
 interface PlayerViewProps {
   tracks: Track[];
@@ -579,46 +631,12 @@ export function PlayerView({
 
           {/* Right Column - Sidebar */}
           {hasSidebar && (
-            <div className="space-y-6">
-              {/* Profile Image */}
-              {imageUrls.profile && (
-                <div className="flex justify-center overflow-hidden border-2" style={{ borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`, borderColor: "var(--color-border)" }}>
-                  {imageUrls.profileDark ? (
-                    <PictureImage
-                      sources={[
-                        { media: "(prefers-color-scheme: dark)", src: imageUrls.profileDark, widths: [300, 600] },
-                      ]}
-                      fallback={{ src: imageUrls.profile, widths: [300, 600] }}
-                      alt={bandName || "Profile"}
-                      className="w-full object-cover"
-                    />
-                  ) : (
-                    <ResponsiveImage
-                      src={imageUrls.profile}
-                      alt={bandName || "Profile"}
-                      widths={[300, 600]}
-                      className="w-full object-cover"
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Band Info */}
-              {(bandName || bandDescription) && (
-                <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
-                  {bandName && (
-                    <h3 className="text-lg font-semibold mb-2" style={{ color: cardStyles?.headingColor }}>
-                      {bandName}
-                    </h3>
-                  )}
-                  {bandDescription && (
-                    <p className="text-sm whitespace-pre-wrap" style={{ color: cardStyles?.contentColor }}>
-                      {bandDescription}
-                    </p>
-                  )}
-                </CardContainer>
-              )}
-            </div>
+            <Sidebar
+              imageUrls={imageUrls}
+              bandName={bandName}
+              bandDescription={bandDescription}
+              cardStyles={cardStyles}
+            />
           )}
         </div>
       </main>
