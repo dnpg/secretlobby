@@ -10,6 +10,220 @@ import { generatePreloadToken } from "~/lib/token.server";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
 import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
 
+interface LoginPageSettings {
+  title: string;
+  description: string;
+  logoType: "svg" | "image" | null;
+  logoSvg: string;
+  logoImage: string;
+  bgColor: string;
+  panelBgColor: string;
+  panelBorderColor: string;
+  textColor: string;
+}
+
+const defaultLoginPageSettings: LoginPageSettings = {
+  title: "",
+  description: "",
+  logoType: null,
+  logoSvg: "",
+  logoImage: "",
+  bgColor: "#111827",
+  panelBgColor: "#1f2937",
+  panelBorderColor: "#374151",
+  textColor: "#ffffff",
+};
+
+interface ThemeSettings {
+  bgPrimary: string;
+  bgSecondary: string;
+  bgTertiary: string;
+  textPrimary: string;
+  textSecondary: string;
+  textMuted: string;
+  border: string;
+  primary: string;
+  primaryHover: string;
+  primaryText: string;
+  secondary: string;
+  secondaryHover: string;
+  secondaryText: string;
+  accent: string;
+  visualizerBg: string;
+  visualizerBgOpacity: number;
+  visualizerBar: string;
+  visualizerBarAlt: string;
+  visualizerGlow: string;
+  visualizerUseCardBg: boolean;
+  visualizerBorderShow: boolean;
+  visualizerBorderColor: string;
+  visualizerBorderRadius: number;
+  visualizerBlendMode: string;
+  cardHeadingColor: string;
+  cardContentColor: string;
+  cardMutedColor: string;
+  cardBgType: "solid" | "gradient";
+  cardBgColor: string;
+  cardBgGradientFrom: string;
+  cardBgGradientTo: string;
+  cardBgGradientAngle: number;
+  cardBgOpacity: number;
+  cardBorderShow: boolean;
+  cardBorderType: "solid" | "gradient";
+  cardBorderColor: string;
+  cardBorderGradientFrom: string;
+  cardBorderGradientTo: string;
+  cardBorderGradientAngle: number;
+  cardBorderOpacity: number;
+  cardBorderRadius: number;
+  buttonBorderRadius: number;
+  playButtonBorderRadius: number;
+}
+
+const defaultTheme: ThemeSettings = {
+  bgPrimary: "#030712",
+  bgSecondary: "#111827",
+  bgTertiary: "#1f2937",
+  textPrimary: "#ffffff",
+  textSecondary: "#9ca3af",
+  textMuted: "#6b7280",
+  border: "#374151",
+  primary: "#ffffff",
+  primaryHover: "#e5e7eb",
+  primaryText: "#111827",
+  secondary: "#1f2937",
+  secondaryHover: "#374151",
+  secondaryText: "#ffffff",
+  accent: "#ffffff",
+  visualizerBg: "#111827",
+  visualizerBgOpacity: 0,
+  visualizerBar: "#ffffff",
+  visualizerBarAlt: "#9ca3af",
+  visualizerGlow: "#ffffff",
+  visualizerUseCardBg: false,
+  visualizerBorderShow: false,
+  visualizerBorderColor: "#374151",
+  visualizerBorderRadius: 8,
+  visualizerBlendMode: "normal",
+  cardHeadingColor: "#ffffff",
+  cardContentColor: "#9ca3af",
+  cardMutedColor: "#6b7280",
+  cardBgType: "solid",
+  cardBgColor: "#111827",
+  cardBgGradientFrom: "#1f2937",
+  cardBgGradientTo: "#111827",
+  cardBgGradientAngle: 135,
+  cardBgOpacity: 50,
+  cardBorderShow: true,
+  cardBorderType: "solid",
+  cardBorderColor: "#374151",
+  cardBorderGradientFrom: "#374151",
+  cardBorderGradientTo: "#1f2937",
+  cardBorderGradientAngle: 135,
+  cardBorderOpacity: 100,
+  cardBorderRadius: 12,
+  buttonBorderRadius: 24,
+  playButtonBorderRadius: 50,
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
+  }
+  return `rgba(0, 0, 0, ${alpha})`;
+}
+
+function getCardBgCSS(theme: ThemeSettings): string {
+  const opacity = (theme.cardBgOpacity ?? 50) / 100;
+  if (theme.cardBgType === "gradient") {
+    const from = hexToRgba(theme.cardBgGradientFrom, opacity);
+    const to = hexToRgba(theme.cardBgGradientTo, opacity);
+    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
+  }
+  return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
+}
+
+function getCardBorderCSS(theme: ThemeSettings): { style: string; borderImage?: string } {
+  if (!theme.cardBorderShow) {
+    return { style: "none" };
+  }
+  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
+  if (theme.cardBorderType === "gradient") {
+    const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
+    const to = hexToRgba(theme.cardBorderGradientTo, opacity);
+    return {
+      style: "1px solid transparent",
+      borderImage: `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to}) 1`,
+    };
+  }
+  return { style: `1px solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}` };
+}
+
+interface CardStyles {
+  bg: string;
+  bgIsGradient: boolean;
+  border: string;
+  borderImage?: string;
+  headingColor: string;
+  contentColor: string;
+  mutedColor: string;
+  visualizerUseCardBg: boolean;
+  visualizerBorderShow: boolean;
+  visualizerBorderColor: string;
+  visualizerBorderRadius: number;
+  visualizerBlendMode: string;
+  cardBorderRadius: number;
+  buttonBorderRadius: number;
+  playButtonBorderRadius: number;
+}
+
+function computeCardStyles(theme: ThemeSettings): CardStyles {
+  const bg = getCardBgCSS(theme);
+  const border = getCardBorderCSS(theme);
+  return {
+    bg,
+    bgIsGradient: theme.cardBgType === "gradient",
+    border: border.style,
+    borderImage: border.borderImage,
+    headingColor: theme.cardHeadingColor || theme.textPrimary,
+    contentColor: theme.cardContentColor || theme.textSecondary,
+    mutedColor: theme.cardMutedColor || theme.textMuted,
+    visualizerUseCardBg: theme.visualizerUseCardBg ?? false,
+    visualizerBorderShow: theme.visualizerBorderShow ?? false,
+    visualizerBorderColor: theme.visualizerBorderColor || theme.border,
+    visualizerBorderRadius: theme.visualizerBorderRadius ?? 8,
+    visualizerBlendMode: theme.visualizerBlendMode || "normal",
+    cardBorderRadius: theme.cardBorderRadius ?? 12,
+    buttonBorderRadius: theme.buttonBorderRadius ?? 24,
+    playButtonBorderRadius: theme.playButtonBorderRadius ?? 50,
+  };
+}
+
+function generateThemeCSSVars(theme: ThemeSettings): Record<string, string> {
+  return {
+    "--color-bg-primary": theme.bgPrimary,
+    "--color-bg-secondary": theme.bgSecondary,
+    "--color-bg-tertiary": theme.bgTertiary,
+    "--color-text-primary": theme.textPrimary,
+    "--color-text-secondary": theme.textSecondary,
+    "--color-text-muted": theme.textMuted,
+    "--color-border": theme.border,
+    "--color-primary": theme.primary,
+    "--color-primary-hover": theme.primaryHover,
+    "--color-primary-text": theme.primaryText,
+    "--color-secondary": theme.secondary,
+    "--color-secondary-hover": theme.secondaryHover,
+    "--color-secondary-text": theme.secondaryText,
+    "--color-accent": theme.accent,
+    "--color-visualizer-bg": theme.visualizerBg,
+    "--color-visualizer-bg-opacity": String(theme.visualizerBgOpacity / 100),
+    "--color-visualizer-bar": theme.visualizerBar,
+    "--color-visualizer-bar-alt": theme.visualizerBarAlt,
+    "--color-visualizer-glow": theme.visualizerGlow,
+  };
+}
+
 export function meta({ data }: Route.MetaArgs) {
   const title = data?.lobby?.title || data?.account?.name || data?.content?.bandName || "SecretLobby";
   return [
@@ -45,6 +259,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       preloadTrackId: null,
       preloadToken: null,
       notFound: false,
+      loginPageSettings: defaultLoginPageSettings,
+      loginLogoImageUrl: null,
+      themeVars: generateThemeCSSVars(defaultTheme),
+      cardStyles: computeCardStyles(defaultTheme),
     };
   }
 
@@ -72,6 +290,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       preloadTrackId: null,
       preloadToken: null,
       notFound: true,
+      loginPageSettings: defaultLoginPageSettings,
+      loginLogoImageUrl: null,
+      themeVars: generateThemeCSSVars(defaultTheme),
+      cardStyles: computeCardStyles(defaultTheme),
     };
   }
 
@@ -83,6 +305,27 @@ export async function loader({ request }: Route.LoaderArgs) {
     session.isAuthenticated && session.lobbyId === lobby.id;
 
   const needsPassword = !!lobby.password && !isAuthenticated;
+
+  // Extract login page and theme settings from account
+  let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
+  let loginLogoImageUrl: string | null = null;
+  let themeSettings: ThemeSettings = defaultTheme;
+
+  if (account.settings && typeof account.settings === "object") {
+    const accountSettings = account.settings as Record<string, unknown>;
+    if (accountSettings.loginPage && typeof accountSettings.loginPage === "object") {
+      loginPageSettings = { ...defaultLoginPageSettings, ...(accountSettings.loginPage as Partial<LoginPageSettings>) };
+    }
+    if (accountSettings.theme && typeof accountSettings.theme === "object") {
+      themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    }
+  }
+  if (loginPageSettings.logoType === "image" && loginPageSettings.logoImage) {
+    loginLogoImageUrl = getPublicUrl(loginPageSettings.logoImage);
+  }
+
+  const themeVars = generateThemeCSSVars(themeSettings);
+  const cardStyles = computeCardStyles(themeSettings);
 
   // Compute image URLs
   const imageUrls: ImageUrls = {
@@ -145,6 +388,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     preloadTrackId,
     preloadToken,
     notFound: false,
+    loginPageSettings,
+    loginLogoImageUrl,
+    themeVars,
+    cardStyles,
   };
 }
 
@@ -262,45 +509,55 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls } = data;
+  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles } = data;
 
   // Password required state
   if (requiresPassword) {
-    const title = isLocalhost
-      ? (content?.bandName || "Private Access")
-      : (lobby?.title || account?.name || "Private Lobby");
-    const description = isLocalhost
-      ? content?.bandDescription
-      : lobby?.description;
+    const lp = loginPageSettings;
+
+    // Use login page settings title/description if set, otherwise fall back to lobby data
+    const title = lp.title
+      || (isLocalhost ? content?.bandName : (lobby?.title || account?.name))
+      || "";
+    const description = lp.description
+      || (isLocalhost ? content?.bandDescription : lobby?.description)
+      || "";
 
     return (
       <>
-        <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <div
+          className="min-h-screen flex items-center justify-center"
+          style={{ backgroundColor: lp.bgColor }}
+        >
           <div className="w-full max-w-md p-8">
-            <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700">
+            <div
+              className="rounded-2xl p-8 shadow-2xl border"
+              style={{
+                backgroundColor: lp.panelBgColor,
+                borderColor: lp.panelBorderColor,
+              }}
+            >
               <div className="text-center mb-8">
-                <div
-                  className="w-16 h-16 mx-auto mb-4 rounded-full bg-blue-600 flex items-center justify-center"
-                >
-                  <svg
-                    className="w-8 h-8 text-white"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                    />
-                  </svg>
-                </div>
-                <h1 className="text-2xl font-bold">
-                  {title}
-                </h1>
+                {lp.logoType === "svg" && lp.logoSvg && (
+                  <div
+                    className="flex justify-center mb-4 [&>svg]:max-w-[180px] [&>svg]:max-h-[60px]"
+                    dangerouslySetInnerHTML={{ __html: lp.logoSvg }}
+                  />
+                )}
+                {lp.logoType === "image" && loginLogoImageUrl && (
+                  <div className="flex justify-center mb-4">
+                    <img src={loginLogoImageUrl} alt="" className="max-w-[180px] max-h-[60px] object-contain" />
+                  </div>
+                )}
+                {title && (
+                  <h1 className="text-2xl font-bold" style={{ color: lp.textColor }}>
+                    {title}
+                  </h1>
+                )}
                 {description && (
-                  <p className="text-gray-400 mt-2">{description}</p>
+                  <p className="mt-2" style={{ color: lp.textColor, opacity: 0.7 }}>
+                    {description}
+                  </p>
                 )}
               </div>
 
@@ -312,7 +569,11 @@ export default function LobbyIndex() {
 
               <Form method="post" className="space-y-4">
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium mb-1"
+                    style={{ color: lp.textColor, opacity: 0.85 }}
+                  >
                     Password
                   </label>
                   <input
@@ -322,12 +583,17 @@ export default function LobbyIndex() {
                     placeholder="Enter the password"
                     required
                     autoFocus
-                    className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{
+                      backgroundColor: "#ffffff",
+                      borderColor: lp.panelBorderColor,
+                      color: "#111827",
+                    }}
                   />
                 </div>
                 <button
                   type="submit"
-                  className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
                   Enter Lobby
                 </button>
@@ -346,7 +612,7 @@ export default function LobbyIndex() {
   const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
 
   return (
-    <>
+    <div style={data.themeVars as React.CSSProperties}>
       <PlayerView
         tracks={tracks}
         imageUrls={imageUrls}
@@ -363,9 +629,10 @@ export default function LobbyIndex() {
         }}
         isPlaying={isPlaying}
         onPlayingChange={setIsPlaying}
+        cardStyles={cardStyles}
       />
       {/* Audio element */}
       <audio ref={audioRef} style={{ display: "none" }} />
-    </>
+    </div>
   );
 }

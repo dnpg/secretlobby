@@ -30,6 +30,24 @@ export interface AudioControls {
   estimatedDuration: number;
 }
 
+export interface CardStyles {
+  bg: string;
+  bgIsGradient: boolean;
+  border: string;
+  borderImage?: string;
+  headingColor: string;
+  contentColor: string;
+  mutedColor: string;
+  visualizerUseCardBg: boolean;
+  visualizerBorderShow: boolean;
+  visualizerBorderColor: string;
+  visualizerBorderRadius: number;
+  visualizerBlendMode: string;
+  cardBorderRadius: number;
+  buttonBorderRadius: number;
+  playButtonBorderRadius: number;
+}
+
 interface PlayerViewProps {
   tracks: Track[];
   imageUrls: ImageUrls;
@@ -38,6 +56,7 @@ interface PlayerViewProps {
   audio: AudioControls;
   isPlaying: boolean;
   onPlayingChange: (playing: boolean) => void;
+  cardStyles?: CardStyles;
 }
 
 export function PlayerView({
@@ -48,6 +67,7 @@ export function PlayerView({
   audio,
   isPlaying,
   onPlayingChange,
+  cardStyles,
 }: PlayerViewProps) {
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, loadingProgress, isReady, seekTo, estimatedDuration } = audio;
 
@@ -237,6 +257,8 @@ export function PlayerView({
               widths={[960, 1920, 2560]}
               sizes="100vw"
               className="h-full w-full object-cover"
+              width={1600}
+              height={1200}
             />
           )}
         </div>
@@ -249,14 +271,19 @@ export function PlayerView({
         <Form method="post" action="/logout">
           <button
             type="submit"
-            className="px-4 py-2 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition"
+            className="px-4 py-2 text-sm transition"
+            style={{
+              borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
+              backgroundColor: "var(--color-secondary)",
+              color: "var(--color-secondary-text)",
+            }}
           >
             Logout
           </button>
         </Form>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-6xl text-white">
+      <main className="container mx-auto px-4 py-8 max-w-6xl" style={{ color: "var(--color-text-primary)" }}>
         {/* Banner */}
         {imageUrls.banner && (
           <div className="mb-8">
@@ -275,6 +302,8 @@ export function PlayerView({
                 alt="Banner"
                 widths={[640, 960, 1280, 1920]}
                 sizes="100vw"
+                width={3200}
+                height={1600}
                 className="w-full h-auto object-contain rounded-xl"
               />
             )}
@@ -286,8 +315,28 @@ export function PlayerView({
           {/* Left Column - Player */}
           <div className="space-y-6">
             {/* Visualizer */}
-            <div className="rounded-xl overflow-hidden bg-gray-800/50 backdrop-blur p-4">
-              <AudioVisualizer audioElement={audioElement} isPlaying={isPlaying} />
+            <div
+              className="overflow-hidden"
+              style={{
+                ...(cardStyles?.visualizerUseCardBg ? {
+                  borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`,
+                  ...(cardStyles.bgIsGradient
+                    ? { background: cardStyles.bg }
+                    : { backgroundColor: cardStyles.bg }),
+                  border: cardStyles.border,
+                  borderImage: cardStyles.borderImage,
+                  padding: "1rem",
+                } : {}),
+              }}
+            >
+              <AudioVisualizer
+                audioElement={audioElement}
+                isPlaying={isPlaying}
+                borderShow={cardStyles?.visualizerBorderShow}
+                borderColor={cardStyles?.visualizerBorderColor}
+                borderRadius={cardStyles?.visualizerBorderRadius}
+                blendMode={cardStyles?.visualizerBlendMode}
+              />
             </div>
 
             {/* Track Info */}
@@ -295,7 +344,7 @@ export function PlayerView({
               <div className="text-center">
                 <h2 className="text-2xl font-bold">{currentTrack.title}</h2>
                 {currentTrack.artist && (
-                  <p className="text-gray-400">{currentTrack.artist}</p>
+                  <p style={{ color: "var(--color-text-secondary)" }}>{currentTrack.artist}</p>
                 )}
               </div>
             )}
@@ -303,7 +352,8 @@ export function PlayerView({
             {/* Progress Bar */}
             <div>
               <div
-                className="group relative h-2 bg-white/20 rounded-full cursor-pointer"
+                className="group relative h-2 rounded-full cursor-pointer"
+                style={{ backgroundColor: "color-mix(in srgb, var(--color-accent) 20%, transparent)" }}
                 onClick={seek}
                 onMouseMove={handleProgressHover}
                 onMouseLeave={handleProgressLeave}
@@ -311,31 +361,31 @@ export function PlayerView({
                 {/* Download progress indicator */}
                 {loadingProgress > 0 && (
                   <div
-                    className="absolute top-0 bottom-0 bg-white/15 rounded-full"
-                    style={{ width: `${loadingProgress}%` }}
+                    className="absolute top-0 bottom-0 rounded-full"
+                    style={{ width: `${loadingProgress}%`, backgroundColor: "color-mix(in srgb, var(--color-accent) 15%, transparent)" }}
                   />
                 )}
                 {/* Played progress */}
                 <div
-                  className="absolute top-0 bottom-0 bg-white rounded-full"
-                  style={{ width: `${progress}%` }}
+                  className="absolute top-0 bottom-0 rounded-full"
+                  style={{ width: `${progress}%`, backgroundColor: "var(--color-accent)" }}
                 />
                 {/* Position ball */}
                 <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ left: `calc(${progress}% - 6px)` }}
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ left: `calc(${progress}% - 6px)`, backgroundColor: "var(--color-accent)" }}
                 />
                 {/* Hover tooltip */}
                 {hoverPercent !== null && (duration || estimatedDuration) > 0 && (
                   <div
-                    className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-white text-xs pointer-events-none"
-                    style={{ left: `${hoverPercent * 100}%` }}
+                    className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-xs pointer-events-none"
+                    style={{ left: `${hoverPercent * 100}%`, color: "var(--color-text-primary)" }}
                   >
                     {formatTime(hoverPercent * (duration || estimatedDuration))}
                   </div>
                 )}
               </div>
-              <div className="flex justify-between text-sm text-gray-400 mt-1">
+              <div className="flex justify-between text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration || estimatedDuration)}</span>
               </div>
@@ -345,7 +395,8 @@ export function PlayerView({
             <div className="flex justify-center items-center gap-6">
               <button
                 onClick={playPrev}
-                className="p-3 hover:bg-white/10 rounded-full transition"
+                className="p-3 transition hover:opacity-80"
+                style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -354,7 +405,12 @@ export function PlayerView({
 
               <button
                 onClick={togglePlay}
-                className="p-4 bg-white text-gray-900 rounded-full hover:scale-105 transition"
+                className="p-4 hover:scale-105 transition"
+                style={{
+                  borderRadius: `${cardStyles?.playButtonBorderRadius ?? 50}%`,
+                  backgroundColor: "var(--color-primary)",
+                  color: "var(--color-primary-text)",
+                }}
               >
                 {isLoading ? (
                   <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -374,7 +430,8 @@ export function PlayerView({
 
               <button
                 onClick={playNext}
-                className="p-3 hover:bg-white/10 rounded-full transition"
+                className="p-3 transition hover:opacity-80"
+                style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -383,31 +440,42 @@ export function PlayerView({
             </div>
 
             {/* Playlist */}
-            <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4">
-              <h3 className="text-lg font-semibold mb-4">Playlist</h3>
+            <div
+              className="backdrop-blur p-4"
+              style={{
+                borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`,
+                ...(cardStyles?.bgIsGradient
+                  ? { background: cardStyles.bg }
+                  : { backgroundColor: cardStyles?.bg || "color-mix(in srgb, var(--color-bg-secondary) 50%, transparent)" }),
+                border: cardStyles?.border || "none",
+                borderImage: cardStyles?.borderImage,
+              }}
+            >
+              <h3 className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
               <div className="space-y-2">
                 {tracks.map((track) => (
                   <button
                     key={track.id}
                     onClick={() => playTrack(track)}
-                    className={`w-full text-left p-3 rounded-lg transition flex items-center gap-3 ${
-                      currentTrack?.id === track.id
-                        ? "bg-white/20"
-                        : "hover:bg-white/10"
-                    }`}
+                    className="w-full text-left p-3 rounded-lg transition flex items-center gap-3"
+                    style={{
+                      backgroundColor: currentTrack?.id === track.id
+                        ? "color-mix(in srgb, var(--color-accent) 20%, transparent)"
+                        : "transparent",
+                    }}
                   >
                     <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        currentTrack?.id === track.id
-                          ? "bg-white text-gray-900"
-                          : "bg-gray-700"
-                      }`}
+                      className="w-8 h-8 rounded-full flex items-center justify-center"
+                      style={currentTrack?.id === track.id
+                        ? { backgroundColor: "var(--color-primary)", color: "var(--color-primary-text)" }
+                        : { backgroundColor: "var(--color-bg-tertiary)" }
+                      }
                     >
                       {currentTrack?.id === track.id && isPlaying ? (
                         <div className="flex gap-0.5">
-                          <span className="w-0.5 h-3 bg-gray-900 animate-pulse" style={{ animationDelay: "0s" }} />
-                          <span className="w-0.5 h-3 bg-gray-900 animate-pulse" style={{ animationDelay: "0.2s" }} />
-                          <span className="w-0.5 h-3 bg-gray-900 animate-pulse" style={{ animationDelay: "0.4s" }} />
+                          <span className="w-0.5 h-3 animate-pulse" style={{ animationDelay: "0s", backgroundColor: "var(--color-primary-text)" }} />
+                          <span className="w-0.5 h-3 animate-pulse" style={{ animationDelay: "0.2s", backgroundColor: "var(--color-primary-text)" }} />
+                          <span className="w-0.5 h-3 animate-pulse" style={{ animationDelay: "0.4s", backgroundColor: "var(--color-primary-text)" }} />
                         </div>
                       ) : currentTrack?.id === track.id && isLoading ? (
                         <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -421,13 +489,13 @@ export function PlayerView({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{track.title}</p>
+                      <p className="font-medium truncate" style={{ color: cardStyles?.contentColor }}>{track.title}</p>
                       {track.artist && (
-                        <p className="text-sm text-gray-400 truncate">{track.artist}</p>
+                        <p className="text-sm truncate" style={{ color: cardStyles?.mutedColor }}>{track.artist}</p>
                       )}
                     </div>
                     {track.duration && track.duration > 0 && (
-                      <span className="text-sm text-gray-500 shrink-0">
+                      <span className="text-sm shrink-0" style={{ color: cardStyles?.mutedColor }}>
                         {formatTime(track.duration)}
                       </span>
                     )}
@@ -442,7 +510,7 @@ export function PlayerView({
             <div className="space-y-6">
               {/* Profile Image */}
               {imageUrls.profile && (
-                <div className="flex justify-center">
+                <div className="flex justify-center overflow-hidden border-2" style={{ borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`, borderColor: "var(--color-border)" }}>
                   {imageUrls.profileDark ? (
                     <PictureImage
                       sources={[
@@ -450,14 +518,14 @@ export function PlayerView({
                       ]}
                       fallback={{ src: imageUrls.profile, widths: [300, 600] }}
                       alt={bandName || "Profile"}
-                      className="w-full rounded-xl object-cover border-2 border-gray-700"
+                      className="w-full object-cover"
                     />
                   ) : (
                     <ResponsiveImage
                       src={imageUrls.profile}
                       alt={bandName || "Profile"}
                       widths={[300, 600]}
-                      className="w-full rounded-xl object-cover border-2 border-gray-700"
+                      className="w-full object-cover"
                     />
                   )}
                 </div>
@@ -465,14 +533,24 @@ export function PlayerView({
 
               {/* Band Info */}
               {(bandName || bandDescription) && (
-                <div className="bg-gray-800/50 backdrop-blur rounded-xl p-4 border border-gray-700">
+                <div
+                  className="backdrop-blur p-4"
+                  style={{
+                    borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`,
+                    ...(cardStyles?.bgIsGradient
+                      ? { background: cardStyles.bg }
+                      : { backgroundColor: cardStyles?.bg || "color-mix(in srgb, var(--color-bg-secondary) 50%, transparent)" }),
+                    border: cardStyles?.border || "none",
+                    borderImage: cardStyles?.borderImage,
+                  }}
+                >
                   {bandName && (
-                    <h3 className="text-lg font-semibold mb-2">
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: cardStyles?.headingColor }}>
                       {bandName}
                     </h3>
                   )}
                   {bandDescription && (
-                    <p className="text-gray-400 text-sm whitespace-pre-wrap">
+                    <p className="text-sm whitespace-pre-wrap" style={{ color: cardStyles?.contentColor }}>
                       {bandDescription}
                     </p>
                   )}

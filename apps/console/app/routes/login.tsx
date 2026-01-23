@@ -1,7 +1,10 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/login";
 import { getSession, createSessionResponse, authenticateWithPassword, isGoogleConfigured } from "@secretlobby/auth";
+import { prisma } from "@secretlobby/db";
+import { getPublicUrl } from "@secretlobby/storage";
 import { cn } from "@secretlobby/ui";
+import { defaultLoginPageSettings, type LoginPageSettings } from "~/lib/content.server";
 
 const ERROR_MESSAGES: Record<string, string> = {
   google_not_configured: "Google sign-in is not configured.",
@@ -27,9 +30,30 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/");
   }
 
+  // Load login page customization from the first account
+  let loginSettings: LoginPageSettings = defaultLoginPageSettings;
+  let logoImageUrl: string | null = null;
+
+  const account = await prisma.account.findFirst({
+    select: { settings: true },
+  });
+
+  if (account?.settings && typeof account.settings === "object") {
+    const settings = account.settings as Record<string, unknown>;
+    if (settings.loginPage && typeof settings.loginPage === "object") {
+      loginSettings = { ...defaultLoginPageSettings, ...(settings.loginPage as Partial<LoginPageSettings>) };
+    }
+  }
+
+  if (loginSettings.logoType === "image" && loginSettings.logoImage) {
+    logoImageUrl = getPublicUrl(loginSettings.logoImage);
+  }
+
   return {
     googleEnabled: isGoogleConfigured(),
     errorMessage: errorCode ? ERROR_MESSAGES[errorCode] || `Authentication error: ${errorCode}` : null,
+    loginSettings,
+    logoImageUrl,
   };
 }
 
@@ -90,7 +114,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Login() {
-  const { googleEnabled, errorMessage } = useLoaderData<typeof loader>();
+  const { googleEnabled, errorMessage, loginSettings, logoImageUrl } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -99,13 +123,41 @@ export default function Login() {
   const isWarning = actionData?.warning;
   const isLocked = actionData?.locked;
 
+  const { bgColor, panelBgColor, panelBorderColor, textColor, title, description, logoType, logoSvg } = loginSettings;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: bgColor }}
+    >
       <div className="w-full max-w-md p-8">
-        <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700">
+        <div
+          className="rounded-2xl p-8 shadow-2xl border"
+          style={{
+            backgroundColor: panelBgColor,
+            borderColor: panelBorderColor,
+          }}
+        >
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-white">Console Login</h1>
-            <p className="text-gray-400 mt-2">Sign in to manage your account</p>
+            {logoType === "svg" && logoSvg && (
+              <div
+                className="flex justify-center mb-4 [&>svg]:max-w-[180px] [&>svg]:max-h-[60px]"
+                dangerouslySetInnerHTML={{ __html: logoSvg }}
+              />
+            )}
+            {logoType === "image" && logoImageUrl && (
+              <div className="flex justify-center mb-4">
+                <img src={logoImageUrl} alt="" className="max-w-[180px] max-h-[60px] object-contain" />
+              </div>
+            )}
+            <h1 className="text-2xl font-bold" style={{ color: textColor }}>
+              {title || "Console Login"}
+            </h1>
+            {description && (
+              <p className="mt-2" style={{ color: textColor, opacity: 0.7 }}>
+                {description}
+              </p>
+            )}
           </div>
 
           {displayError && (
@@ -139,10 +191,10 @@ export default function Login() {
               </a>
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-600"></div>
+                  <div className="w-full border-t" style={{ borderColor: panelBorderColor }}></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-gray-800 text-gray-400">or</span>
+                  <span className="px-2" style={{ backgroundColor: panelBgColor, color: textColor, opacity: 0.7 }}>or</span>
                 </div>
               </div>
             </>
@@ -150,7 +202,7 @@ export default function Login() {
 
           <Form method="post" className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium mb-1" style={{ color: textColor, opacity: 0.85 }}>
                 Email
               </label>
               <input
@@ -160,12 +212,13 @@ export default function Login() {
                 placeholder="you@example.com"
                 required
                 autoComplete="email"
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ backgroundColor: `${bgColor}`, borderColor: panelBorderColor, color: textColor }}
               />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+                <label htmlFor="password" className="block text-sm font-medium" style={{ color: textColor, opacity: 0.85 }}>
                   Password
                 </label>
                 <a href="/forgot-password" className="text-xs text-blue-400 hover:text-blue-300">
@@ -179,7 +232,8 @@ export default function Login() {
                 placeholder="Your password"
                 required
                 autoComplete="current-password"
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ backgroundColor: `${bgColor}`, borderColor: panelBorderColor, color: textColor }}
               />
             </div>
             <button
@@ -191,7 +245,7 @@ export default function Login() {
             </button>
           </Form>
 
-          <div className="mt-6 text-center text-sm text-gray-400">
+          <div className="mt-6 text-center text-sm" style={{ color: textColor, opacity: 0.7 }}>
             Don't have an account?{" "}
             <a href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
               Sign up

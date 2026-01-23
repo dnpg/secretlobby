@@ -34,7 +34,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       id: lobby.id,
       title: lobby.title,
       description: lobby.description,
-      password: lobby.password,
     },
   };
 }
@@ -80,26 +79,6 @@ export async function action({ request }: Route.ActionArgs) {
         return { success: "Band info updated successfully" };
       }
 
-      case "update-password": {
-        const newPassword = formData.get("newPassword") as string;
-        const confirmPassword = formData.get("confirmPassword") as string;
-
-        if (!newPassword || newPassword.length < 4) {
-          return { error: "Password must be at least 4 characters" };
-        }
-        if (newPassword !== confirmPassword) {
-          return { error: "Passwords do not match" };
-        }
-
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: {
-            password: newPassword,
-          },
-        });
-
-        return { success: "Lobby password updated successfully" };
-      }
     }
   } catch (error) {
     console.error("Content update error:", error);
@@ -175,49 +154,6 @@ export default function AdminContent() {
         </Form>
       </section>
 
-      {/* Lobby Password Section */}
-      <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
-        <h2 className="text-lg font-semibold mb-4">Lobby Password</h2>
-        <p className="text-sm text-theme-secondary mb-4">
-          {lobby.password
-            ? "Change or remove the password protection for your lobby."
-            : "Add password protection to your lobby (optional)."}
-        </p>
-        <Form method="post" className="space-y-4">
-          <input type="hidden" name="intent" value="update-password" />
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">New Password</label>
-              <input
-                type="password"
-                name="newPassword"
-                required
-                minLength={4}
-                className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                placeholder="Enter new password"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Confirm Password</label>
-              <input
-                type="password"
-                name="confirmPassword"
-                required
-                minLength={4}
-                className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                placeholder="Confirm new password"
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
-          >
-            Update Password
-          </button>
-        </Form>
-      </section>
     </div>
   );
 }

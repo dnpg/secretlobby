@@ -27,9 +27,36 @@ export interface ThemeSettings {
   secondaryHover: string;
   secondaryText: string;
   accent: string;
+  visualizerBg: string;
+  visualizerBgOpacity: number;
   visualizerBar: string;
   visualizerBarAlt: string;
   visualizerGlow: string;
+  visualizerUseCardBg: boolean;
+  visualizerBorderShow: boolean;
+  visualizerBorderColor: string;
+  visualizerBorderRadius: number;
+  visualizerBlendMode: string;
+  // Card settings
+  cardHeadingColor: string;
+  cardContentColor: string;
+  cardMutedColor: string;
+  cardBgType: "solid" | "gradient";
+  cardBgColor: string;
+  cardBgGradientFrom: string;
+  cardBgGradientTo: string;
+  cardBgGradientAngle: number;
+  cardBgOpacity: number;
+  cardBorderShow: boolean;
+  cardBorderType: "solid" | "gradient";
+  cardBorderColor: string;
+  cardBorderGradientFrom: string;
+  cardBorderGradientTo: string;
+  cardBorderGradientAngle: number;
+  cardBorderOpacity: number;
+  cardBorderRadius: number;
+  buttonBorderRadius: number;
+  playButtonBorderRadius: number;
 }
 
 export const defaultDarkTheme: ThemeSettings = {
@@ -48,9 +75,35 @@ export const defaultDarkTheme: ThemeSettings = {
   secondaryHover: "#374151",
   secondaryText: "#ffffff",
   accent: "#ffffff",
+  visualizerBg: "#111827",
+  visualizerBgOpacity: 0,
   visualizerBar: "#ffffff",
   visualizerBarAlt: "#9ca3af",
   visualizerGlow: "#ffffff",
+  visualizerUseCardBg: false,
+  visualizerBorderShow: false,
+  visualizerBorderColor: "#374151",
+  visualizerBorderRadius: 8,
+  visualizerBlendMode: "normal",
+  cardHeadingColor: "#ffffff",
+  cardContentColor: "#9ca3af",
+  cardMutedColor: "#6b7280",
+  cardBgType: "solid",
+  cardBgColor: "#111827",
+  cardBgGradientFrom: "#1f2937",
+  cardBgGradientTo: "#111827",
+  cardBgGradientAngle: 135,
+  cardBgOpacity: 50,
+  cardBorderShow: true,
+  cardBorderType: "solid",
+  cardBorderColor: "#374151",
+  cardBorderGradientFrom: "#374151",
+  cardBorderGradientTo: "#1f2937",
+  cardBorderGradientAngle: 135,
+  cardBorderOpacity: 100,
+  cardBorderRadius: 12,
+  buttonBorderRadius: 24,
+  playButtonBorderRadius: 50,
 };
 
 export const defaultLightTheme: ThemeSettings = {
@@ -69,9 +122,35 @@ export const defaultLightTheme: ThemeSettings = {
   secondaryHover: "#d1d5db",
   secondaryText: "#111827",
   accent: "#111827",
+  visualizerBg: "#e5e7eb",
+  visualizerBgOpacity: 0,
   visualizerBar: "#111827",
   visualizerBarAlt: "#4b5563",
   visualizerGlow: "#111827",
+  visualizerUseCardBg: false,
+  visualizerBorderShow: false,
+  visualizerBorderColor: "#d1d5db",
+  visualizerBorderRadius: 8,
+  visualizerBlendMode: "normal",
+  cardHeadingColor: "#111827",
+  cardContentColor: "#4b5563",
+  cardMutedColor: "#9ca3af",
+  cardBgType: "solid",
+  cardBgColor: "#f3f4f6",
+  cardBgGradientFrom: "#e5e7eb",
+  cardBgGradientTo: "#f3f4f6",
+  cardBgGradientAngle: 135,
+  cardBgOpacity: 50,
+  cardBorderShow: true,
+  cardBorderType: "solid",
+  cardBorderColor: "#d1d5db",
+  cardBorderGradientFrom: "#d1d5db",
+  cardBorderGradientTo: "#e5e7eb",
+  cardBorderGradientAngle: 135,
+  cardBorderOpacity: 100,
+  cardBorderRadius: 12,
+  buttonBorderRadius: 24,
+  playButtonBorderRadius: 50,
 };
 
 export const defaultTheme: ThemeSettings = defaultDarkTheme;
@@ -149,9 +228,34 @@ export async function updateSitePassword(password: string): Promise<void> {
   await updateSiteContent({ sitePassword: password });
 }
 
+export interface LoginPageSettings {
+  title: string;
+  description: string;
+  logoType: "svg" | "image" | null;
+  logoSvg: string;
+  logoImage: string;
+  bgColor: string;
+  panelBgColor: string;
+  panelBorderColor: string;
+  textColor: string;
+}
+
+export const defaultLoginPageSettings: LoginPageSettings = {
+  title: "Console Login",
+  description: "",
+  logoType: null,
+  logoSvg: "",
+  logoImage: "",
+  bgColor: "#111827",
+  panelBgColor: "#1f2937",
+  panelBorderColor: "#374151",
+  textColor: "#ffffff",
+};
+
 interface AccountSettings {
   theme?: ThemeSettings;
   allowUserColorMode?: boolean;
+  loginPage?: Partial<LoginPageSettings>;
   [key: string]: unknown;
 }
 
@@ -168,15 +272,16 @@ async function getAccountSettings(accountId: string): Promise<AccountSettings> {
 
 async function updateAccountSettings(accountId: string, updates: Partial<AccountSettings>): Promise<void> {
   const current = await getAccountSettings(accountId);
+  const merged = { ...current, ...updates };
   await prisma.account.update({
     where: { id: accountId },
-    data: { settings: { ...current, ...updates } },
+    data: { settings: JSON.parse(JSON.stringify(merged)) },
   });
 }
 
 export async function getThemeSettings(accountId: string): Promise<ThemeSettings> {
   const settings = await getAccountSettings(accountId);
-  const theme = settings.theme || defaultTheme;
+  const theme = { ...defaultTheme, ...settings.theme };
   if (!theme.colorMode) {
     theme.colorMode = "dark";
   }
@@ -190,6 +295,41 @@ export async function updateThemeSettings(accountId: string, theme: Partial<Them
 
 export async function resetThemeSettings(accountId: string): Promise<void> {
   await updateAccountSettings(accountId, { theme: defaultTheme });
+}
+
+export function getCardBgCSS(theme: ThemeSettings): string {
+  const opacity = (theme.cardBgOpacity ?? 50) / 100;
+  if (theme.cardBgType === "gradient") {
+    // For gradient with opacity, we use a gradient with alpha colors
+    const from = hexToRgba(theme.cardBgGradientFrom, opacity);
+    const to = hexToRgba(theme.cardBgGradientTo, opacity);
+    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
+  }
+  return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
+}
+
+export function getCardBorderCSS(theme: ThemeSettings): { style: string; borderImage?: string } {
+  if (!theme.cardBorderShow) {
+    return { style: "none" };
+  }
+  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
+  if (theme.cardBorderType === "gradient") {
+    const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
+    const to = hexToRgba(theme.cardBorderGradientTo, opacity);
+    return {
+      style: "1px solid transparent",
+      borderImage: `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to}) 1`,
+    };
+  }
+  return { style: `1px solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}` };
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (result) {
+    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
+  }
+  return `rgba(0, 0, 0, ${alpha})`;
 }
 
 export function generateThemeCSS(theme: ThemeSettings): string {
@@ -232,4 +372,14 @@ export async function getAllowUserColorMode(accountId: string): Promise<boolean>
 
 export async function updateAllowUserColorMode(accountId: string, allow: boolean): Promise<void> {
   await updateAccountSettings(accountId, { allowUserColorMode: allow });
+}
+
+export async function getLoginPageSettings(accountId: string): Promise<LoginPageSettings> {
+  const settings = await getAccountSettings(accountId);
+  return { ...defaultLoginPageSettings, ...settings.loginPage };
+}
+
+export async function updateLoginPageSettings(accountId: string, updates: Partial<LoginPageSettings>): Promise<void> {
+  const current = await getLoginPageSettings(accountId);
+  await updateAccountSettings(accountId, { loginPage: { ...current, ...updates } });
 }

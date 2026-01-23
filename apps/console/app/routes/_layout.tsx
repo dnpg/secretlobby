@@ -56,6 +56,7 @@ const navItems = [
   { to: "media", label: "Media" },
   { to: "playlist", label: "Playlist" },
   { to: "theme", label: "Theme" },
+  { to: "login-page", label: "Login" },
   { to: "settings", label: "Settings" },
 ];
 

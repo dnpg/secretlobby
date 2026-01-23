@@ -18,6 +18,7 @@ export default [
     route("media", "routes/_layout.media.tsx"),
     route("playlist", "routes/_layout.playlist.tsx"),
     route("theme", "routes/_layout.theme.tsx"),
+    route("login-page", "routes/_layout.login.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
   ]),
 ] satisfies RouteConfig;
