@@ -59,6 +59,7 @@ export async function action({ request }: Route.ActionArgs) {
         const panelBgColor = (formData.get("panelBgColor") as string) || "#1f2937";
         const panelBorderColor = (formData.get("panelBorderColor") as string) || "#374151";
         const textColor = (formData.get("textColor") as string) || "#ffffff";
+        const buttonLabel = (formData.get("buttonLabel") as string) || "Enter Lobby";
 
         await updateLoginPageSettings(accountId, {
           title,
@@ -67,6 +68,7 @@ export async function action({ request }: Route.ActionArgs) {
           panelBgColor,
           panelBorderColor,
           textColor,
+          buttonLabel,
         });
 
         return { success: "Login page appearance updated" };
@@ -344,6 +346,16 @@ export default function AdminLogin() {
                 defaultValue={loginSettings.description}
                 className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 placeholder="Sign in to manage your account"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Button Label</label>
+              <input
+                type="text"
+                name="buttonLabel"
+                defaultValue={loginSettings.buttonLabel}
+                className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                placeholder="Enter Lobby"
               />
             </div>
           </div>

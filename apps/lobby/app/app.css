@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+body {
+  background-color: var(--color-bg-primary, #030712);
+}
+
 a,
 button {
   cursor: pointer;
+}
+
+h1, h2, h3, h4, h5, h6, p {
+  text-wrap-style: balance;
 }
 
 /* Rich text prose content styles */

@@ -241,6 +241,7 @@ export interface LoginPageSettings {
   panelBgColor: string;
   panelBorderColor: string;
   textColor: string;
+  buttonLabel: string;
 }
 
 export const defaultLoginPageSettings: LoginPageSettings = {
@@ -253,6 +254,7 @@ export const defaultLoginPageSettings: LoginPageSettings = {
   panelBgColor: "#1f2937",
   panelBorderColor: "#374151",
   textColor: "#ffffff",
+  buttonLabel: "Enter Lobby",
 };
 
 interface AccountSettings {

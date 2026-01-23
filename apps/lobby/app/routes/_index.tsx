@@ -20,6 +20,7 @@ interface LoginPageSettings {
   panelBgColor: string;
   panelBorderColor: string;
   textColor: string;
+  buttonLabel: string;
 }
 
 const defaultLoginPageSettings: LoginPageSettings = {
@@ -32,6 +33,7 @@ const defaultLoginPageSettings: LoginPageSettings = {
   panelBgColor: "#1f2937",
   panelBorderColor: "#374151",
   textColor: "#ffffff",
+  buttonLabel: "Enter Lobby",
 };
 
 interface ThemeSettings {
@@ -144,6 +146,13 @@ function getCardBgCSS(theme: ThemeSettings): string {
     return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
   }
   return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
+}
+
+function getBodyBgCSS(theme: ThemeSettings): string {
+  if (theme.cardBgType === "gradient") {
+    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${theme.cardBgGradientFrom}, ${theme.cardBgGradientTo})`;
+  }
+  return theme.bgPrimary;
 }
 
 interface CardStyles {
@@ -279,6 +288,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       loginLogoImageUrl: null,
       themeVars: generateThemeCSSVars(defaultTheme),
       cardStyles: computeCardStyles(defaultTheme),
+      bodyBg: getBodyBgCSS(defaultTheme),
     };
   }
 
@@ -310,6 +320,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       loginLogoImageUrl: null,
       themeVars: generateThemeCSSVars(defaultTheme),
       cardStyles: computeCardStyles(defaultTheme),
+      bodyBg: getBodyBgCSS(defaultTheme),
     };
   }
 
@@ -342,6 +353,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const themeVars = generateThemeCSSVars(themeSettings);
   const cardStyles = computeCardStyles(themeSettings);
+  const bodyBg = getBodyBgCSS(themeSettings);
 
   // Compute image URLs
   const imageUrls: ImageUrls = {
@@ -408,6 +420,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     loginLogoImageUrl,
     themeVars,
     cardStyles,
+    bodyBg,
   };
 }
 
@@ -459,6 +472,20 @@ export default function LobbyIndex() {
   const [isPlaying, setIsPlaying] = useState(false);
   const loadedTrackRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
+
+  // Apply body background from theme settings
+  useEffect(() => {
+    const bg = data.bodyBg;
+    if (bg.startsWith("linear-gradient")) {
+      document.body.style.background = bg;
+    } else {
+      document.body.style.backgroundColor = bg;
+    }
+    return () => {
+      document.body.style.background = "";
+      document.body.style.backgroundColor = "";
+    };
+  }, [data.bodyBg]);
 
   // Resolve tracks for both localhost and multi-tenant
   const tracks: Track[] = data.isLocalhost
@@ -607,7 +634,7 @@ export default function LobbyIndex() {
                   type="submit"
                   className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
-                  Enter Lobby
+                  {lp.buttonLabel || "Enter Lobby"}
                 </button>
               </Form>
             </div>
