@@ -54,6 +54,7 @@ export interface ThemeSettings {
   cardBorderGradientTo: string;
   cardBorderGradientAngle: number;
   cardBorderOpacity: number;
+  cardBorderWidth: string;
   cardBorderRadius: number;
   buttonBorderRadius: number;
   playButtonBorderRadius: number;
@@ -101,6 +102,7 @@ export const defaultDarkTheme: ThemeSettings = {
   cardBorderGradientTo: "#1f2937",
   cardBorderGradientAngle: 135,
   cardBorderOpacity: 100,
+  cardBorderWidth: "1px",
   cardBorderRadius: 12,
   buttonBorderRadius: 24,
   playButtonBorderRadius: 50,
@@ -148,6 +150,7 @@ export const defaultLightTheme: ThemeSettings = {
   cardBorderGradientTo: "#e5e7eb",
   cardBorderGradientAngle: 135,
   cardBorderOpacity: 100,
+  cardBorderWidth: "1px",
   cardBorderRadius: 12,
   buttonBorderRadius: 24,
   playButtonBorderRadius: 50,
@@ -308,20 +311,30 @@ export function getCardBgCSS(theme: ThemeSettings): string {
   return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
 }
 
+export function normalizeCSSValue(value: string | number | undefined, fallback: string): string {
+  if (value === undefined || value === null || value === "") return fallback;
+  const str = String(value).trim();
+  if (!str) return fallback;
+  // If it's purely numeric, append "px"
+  if (/^[\d.]+$/.test(str)) return `${str}px`;
+  return str;
+}
+
 export function getCardBorderCSS(theme: ThemeSettings): { style: string; borderImage?: string } {
   if (!theme.cardBorderShow) {
     return { style: "none" };
   }
   const opacity = (theme.cardBorderOpacity ?? 100) / 100;
+  const width = normalizeCSSValue(theme.cardBorderWidth, "1px");
   if (theme.cardBorderType === "gradient") {
     const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
     const to = hexToRgba(theme.cardBorderGradientTo, opacity);
     return {
-      style: "1px solid transparent",
+      style: `${width} solid transparent`,
       borderImage: `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to}) 1`,
     };
   }
-  return { style: `1px solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}` };
+  return { style: `${width} solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}` };
 }
 
 function hexToRgba(hex: string, alpha: number): string {

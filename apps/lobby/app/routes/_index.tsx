@@ -75,6 +75,7 @@ interface ThemeSettings {
   cardBorderGradientTo: string;
   cardBorderGradientAngle: number;
   cardBorderOpacity: number;
+  cardBorderWidth: string;
   cardBorderRadius: number;
   buttonBorderRadius: number;
   playButtonBorderRadius: number;
@@ -121,6 +122,7 @@ const defaultTheme: ThemeSettings = {
   cardBorderGradientTo: "#1f2937",
   cardBorderGradientAngle: 135,
   cardBorderOpacity: 100,
+  cardBorderWidth: "1px",
   cardBorderRadius: 12,
   buttonBorderRadius: 24,
   playButtonBorderRadius: 50,
@@ -144,27 +146,13 @@ function getCardBgCSS(theme: ThemeSettings): string {
   return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
 }
 
-function getCardBorderCSS(theme: ThemeSettings): { style: string; borderImage?: string } {
-  if (!theme.cardBorderShow) {
-    return { style: "none" };
-  }
-  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
-  if (theme.cardBorderType === "gradient") {
-    const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
-    const to = hexToRgba(theme.cardBorderGradientTo, opacity);
-    return {
-      style: "1px solid transparent",
-      borderImage: `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to}) 1`,
-    };
-  }
-  return { style: `1px solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}` };
-}
-
 interface CardStyles {
   bg: string;
   bgIsGradient: boolean;
-  border: string;
-  borderImage?: string;
+  borderType: "none" | "solid" | "gradient";
+  borderSolid: string;
+  borderGradient: string;
+  borderWidth: string;
   headingColor: string;
   contentColor: string;
   mutedColor: string;
@@ -178,14 +166,42 @@ interface CardStyles {
   playButtonBorderRadius: number;
 }
 
+function normalizeCSSValue(value: string | undefined, fallback: string): string {
+  if (value === undefined || value === null || value === "") return fallback;
+  const str = String(value).trim();
+  if (!str) return fallback;
+  if (/^[\d.]+$/.test(str)) return `${str}px`;
+  return str;
+}
+
 function computeCardStyles(theme: ThemeSettings): CardStyles {
   const bg = getCardBgCSS(theme);
-  const border = getCardBorderCSS(theme);
+  const borderWidth = normalizeCSSValue(theme.cardBorderWidth, "1px");
+  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
+
+  let borderType: "none" | "solid" | "gradient" = "none";
+  let borderSolid = "";
+  let borderGradient = "";
+
+  if (theme.cardBorderShow) {
+    if (theme.cardBorderType === "gradient") {
+      borderType = "gradient";
+      const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
+      const to = hexToRgba(theme.cardBorderGradientTo, opacity);
+      borderGradient = `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to})`;
+    } else {
+      borderType = "solid";
+      borderSolid = `${borderWidth} solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}`;
+    }
+  }
+
   return {
     bg,
     bgIsGradient: theme.cardBgType === "gradient",
-    border: border.style,
-    borderImage: border.borderImage,
+    borderType,
+    borderSolid,
+    borderGradient,
+    borderWidth,
     headingColor: theme.cardHeadingColor || theme.textPrimary,
     contentColor: theme.cardContentColor || theme.textSecondary,
     mutedColor: theme.cardMutedColor || theme.textMuted,

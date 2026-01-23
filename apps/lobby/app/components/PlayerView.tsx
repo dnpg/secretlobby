@@ -33,8 +33,10 @@ export interface AudioControls {
 export interface CardStyles {
   bg: string;
   bgIsGradient: boolean;
-  border: string;
-  borderImage?: string;
+  borderType: "none" | "solid" | "gradient";
+  borderSolid: string;
+  borderGradient: string;
+  borderWidth: string;
   headingColor: string;
   contentColor: string;
   mutedColor: string;
@@ -46,6 +48,58 @@ export interface CardStyles {
   cardBorderRadius: number;
   buttonBorderRadius: number;
   playButtonBorderRadius: number;
+}
+
+interface CardContainerProps {
+  cardStyles?: CardStyles;
+  children: React.ReactNode;
+  className?: string;
+}
+
+function CardContainer({ cardStyles, children, className }: CardContainerProps) {
+  const radius = cardStyles?.cardBorderRadius ?? 12;
+  const borderWidth = cardStyles?.borderWidth || "1px";
+
+  const contentBg = cardStyles?.bgIsGradient
+    ? { background: cardStyles.bg }
+    : { backgroundColor: cardStyles?.bg || "color-mix(in srgb, var(--color-bg-secondary) 50%, transparent)" };
+
+  if (cardStyles?.borderType === "gradient") {
+    // Double-div technique for gradient borders with rounded corners
+    return (
+      <div
+        style={{
+          borderRadius: `${radius}px`,
+          background: cardStyles.borderGradient,
+          padding: borderWidth,
+        }}
+      >
+        <div
+          className={className}
+          style={{
+            borderRadius: `calc(${radius}px - ${borderWidth})`,
+            ...contentBg,
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  // Solid or no border: single div
+  return (
+    <div
+      className={className}
+      style={{
+        borderRadius: `${radius}px`,
+        ...contentBg,
+        border: cardStyles?.borderType === "solid" ? cardStyles.borderSolid : "none",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 interface PlayerViewProps {
@@ -78,6 +132,7 @@ export function PlayerView({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
+  const [hoveredTrackId, setHoveredTrackId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -315,29 +370,29 @@ export function PlayerView({
           {/* Left Column - Player */}
           <div className="space-y-6">
             {/* Visualizer */}
-            <div
-              className="overflow-hidden"
-              style={{
-                ...(cardStyles?.visualizerUseCardBg ? {
-                  borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`,
-                  ...(cardStyles.bgIsGradient
-                    ? { background: cardStyles.bg }
-                    : { backgroundColor: cardStyles.bg }),
-                  border: cardStyles.border,
-                  borderImage: cardStyles.borderImage,
-                  padding: "1rem",
-                } : {}),
-              }}
-            >
-              <AudioVisualizer
-                audioElement={audioElement}
-                isPlaying={isPlaying}
-                borderShow={cardStyles?.visualizerBorderShow}
-                borderColor={cardStyles?.visualizerBorderColor}
-                borderRadius={cardStyles?.visualizerBorderRadius}
-                blendMode={cardStyles?.visualizerBlendMode}
-              />
-            </div>
+            {cardStyles?.visualizerUseCardBg ? (
+              <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
+                <AudioVisualizer
+                  audioElement={audioElement}
+                  isPlaying={isPlaying}
+                  borderShow={cardStyles?.visualizerBorderShow}
+                  borderColor={cardStyles?.visualizerBorderColor}
+                  borderRadius={cardStyles?.visualizerBorderRadius}
+                  blendMode={cardStyles?.visualizerBlendMode}
+                />
+              </CardContainer>
+            ) : (
+              <div className="overflow-hidden">
+                <AudioVisualizer
+                  audioElement={audioElement}
+                  isPlaying={isPlaying}
+                  borderShow={cardStyles?.visualizerBorderShow}
+                  borderColor={cardStyles?.visualizerBorderColor}
+                  borderRadius={cardStyles?.visualizerBorderRadius}
+                  blendMode={cardStyles?.visualizerBlendMode}
+                />
+              </div>
+            )}
 
             {/* Track Info */}
             {currentTrack && (
@@ -440,69 +495,86 @@ export function PlayerView({
             </div>
 
             {/* Playlist */}
-            <div
-              className="backdrop-blur p-4"
-              style={{
-                borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`,
-                ...(cardStyles?.bgIsGradient
-                  ? { background: cardStyles.bg }
-                  : { backgroundColor: cardStyles?.bg || "color-mix(in srgb, var(--color-bg-secondary) 50%, transparent)" }),
-                border: cardStyles?.border || "none",
-                borderImage: cardStyles?.borderImage,
-              }}
-            >
+            <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
               <h3 className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
-              <div className="space-y-2">
-                {tracks.map((track) => (
-                  <button
-                    key={track.id}
-                    onClick={() => playTrack(track)}
-                    className="w-full text-left p-3 rounded-lg transition flex items-center gap-3"
-                    style={{
-                      backgroundColor: currentTrack?.id === track.id
-                        ? "color-mix(in srgb, var(--color-accent) 20%, transparent)"
-                        : "transparent",
-                    }}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center"
-                      style={currentTrack?.id === track.id
-                        ? { backgroundColor: "var(--color-primary)", color: "var(--color-primary-text)" }
-                        : { backgroundColor: "var(--color-bg-tertiary)" }
-                      }
+              <div className="space-y-1">
+                {tracks.map((track, index) => {
+                  const isCurrent = currentTrack?.id === track.id;
+                  const isHovered = hoveredTrackId === track.id;
+                  const isCurrentPlaying = isCurrent && isPlaying;
+                  const isCurrentLoading = isCurrent && isLoading;
+
+                  return (
+                    <button
+                      key={track.id}
+                      onClick={() => {
+                        if (isCurrentPlaying) {
+                          audioRef.current?.pause();
+                          onPlayingChange(false);
+                        } else if (isCurrent && !isPlaying && !isLoading) {
+                          audioRef.current?.play().then(() => onPlayingChange(true)).catch(() => {});
+                        } else {
+                          playTrack(track);
+                        }
+                      }}
+                      onMouseEnter={() => setHoveredTrackId(track.id)}
+                      onMouseLeave={() => setHoveredTrackId(null)}
+                      className="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-3 group"
+                      style={{
+                        backgroundColor: isCurrent
+                          ? "color-mix(in srgb, var(--color-accent) 10%, transparent)"
+                          : "transparent",
+                      }}
                     >
-                      {currentTrack?.id === track.id && isPlaying ? (
-                        <div className="flex gap-0.5">
-                          <span className="w-0.5 h-3 animate-pulse" style={{ animationDelay: "0s", backgroundColor: "var(--color-primary-text)" }} />
-                          <span className="w-0.5 h-3 animate-pulse" style={{ animationDelay: "0.2s", backgroundColor: "var(--color-primary-text)" }} />
-                          <span className="w-0.5 h-3 animate-pulse" style={{ animationDelay: "0.4s", backgroundColor: "var(--color-primary-text)" }} />
-                        </div>
-                      ) : currentTrack?.id === track.id && isLoading ? (
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                        </svg>
+                      {/* Track number / play / pause indicator */}
+                      <div className="w-6 flex items-center justify-center shrink-0">
+                        {isCurrentLoading ? (
+                          <svg className="w-4 h-4 animate-spin" style={{ color: "var(--color-accent)" }} fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                        ) : isCurrentPlaying && !isHovered ? (
+                          <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                          </svg>
+                        ) : isCurrentPlaying && isHovered ? (
+                          <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                          </svg>
+                        ) : isHovered ? (
+                          <svg className="w-4 h-4" style={{ color: cardStyles?.contentColor }} fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        ) : (
+                          <span
+                            className="text-sm tabular-nums"
+                            style={{ color: isCurrent ? "var(--color-accent)" : cardStyles?.mutedColor }}
+                          >
+                            {index + 1}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="font-medium truncate"
+                          style={{ color: isCurrent ? "var(--color-accent)" : cardStyles?.contentColor }}
+                        >
+                          {track.title}
+                        </p>
+                        {track.artist && (
+                          <p className="text-sm truncate" style={{ color: cardStyles?.mutedColor }}>{track.artist}</p>
+                        )}
+                      </div>
+                      {track.duration && track.duration > 0 && (
+                        <span className="text-sm shrink-0" style={{ color: cardStyles?.mutedColor }}>
+                          {formatTime(track.duration)}
+                        </span>
                       )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate" style={{ color: cardStyles?.contentColor }}>{track.title}</p>
-                      {track.artist && (
-                        <p className="text-sm truncate" style={{ color: cardStyles?.mutedColor }}>{track.artist}</p>
-                      )}
-                    </div>
-                    {track.duration && track.duration > 0 && (
-                      <span className="text-sm shrink-0" style={{ color: cardStyles?.mutedColor }}>
-                        {formatTime(track.duration)}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            </CardContainer>
           </div>
 
           {/* Right Column - Sidebar */}
@@ -533,17 +605,7 @@ export function PlayerView({
 
               {/* Band Info */}
               {(bandName || bandDescription) && (
-                <div
-                  className="backdrop-blur p-4"
-                  style={{
-                    borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`,
-                    ...(cardStyles?.bgIsGradient
-                      ? { background: cardStyles.bg }
-                      : { backgroundColor: cardStyles?.bg || "color-mix(in srgb, var(--color-bg-secondary) 50%, transparent)" }),
-                    border: cardStyles?.border || "none",
-                    borderImage: cardStyles?.borderImage,
-                  }}
-                >
+                <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
                   {bandName && (
                     <h3 className="text-lg font-semibold mb-2" style={{ color: cardStyles?.headingColor }}>
                       {bandName}
@@ -554,7 +616,7 @@ export function PlayerView({
                       {bandDescription}
                     </p>
                   )}
-                </div>
+                </CardContainer>
               )}
             </div>
           )}

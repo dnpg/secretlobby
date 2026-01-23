@@ -57,6 +57,8 @@ export async function action({ request }: Route.ActionArgs) {
         const file = formData.get("file") as File | null;
         const title = formData.get("title") as string;
         const artist = formData.get("artist") as string;
+        const durationStr = formData.get("duration") as string | null;
+        const duration = durationStr ? parseInt(durationStr, 10) : null;
 
         if (file && file.size > 0 && title) {
           const buffer = Buffer.from(await file.arrayBuffer());
@@ -75,6 +77,7 @@ export async function action({ request }: Route.ActionArgs) {
               title,
               artist: artist || "Unknown",
               filename: key,
+              duration: duration && duration > 0 ? duration : null,
               position: (lastTrack?.position ?? -1) + 1,
             },
           });
@@ -110,6 +113,28 @@ export default function AdminPlaylist() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [showAddTrack, setShowAddTrack] = useState(false);
+  const [fileDuration, setFileDuration] = useState<number | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setFileDuration(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.addEventListener("loadedmetadata", () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setFileDuration(Math.round(audio.duration));
+      }
+      URL.revokeObjectURL(url);
+    });
+    audio.addEventListener("error", () => {
+      setFileDuration(null);
+      URL.revokeObjectURL(url);
+    });
+    audio.src = url;
+  };
 
   return (
     <div className="space-y-8">
@@ -145,6 +170,7 @@ export default function AdminPlaylist() {
             className="mb-6 p-4 bg-theme-tertiary rounded-lg space-y-4"
           >
             <input type="hidden" name="intent" value="add-track" />
+            {fileDuration && <input type="hidden" name="duration" value={fileDuration} />}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Title *</label>
@@ -171,6 +197,7 @@ export default function AdminPlaylist() {
                 name="file"
                 accept="audio/mpeg,audio/mp3"
                 required
+                onChange={handleFileChange}
                 className="w-full px-4 py-2 bg-theme-secondary rounded-lg border border-theme file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-[var(--color-primary)] file:text-[var(--color-primary-text)] file:cursor-pointer"
               />
             </div>

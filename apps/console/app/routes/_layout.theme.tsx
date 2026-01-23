@@ -115,6 +115,12 @@ export async function action({ request }: Route.ActionArgs) {
         themeUpdate.cardBorderGradientAngle = parseInt(cardBorderGradientAngle, 10);
       }
 
+      // Card border width
+      const cardBorderWidth = formData.get("cardBorderWidth") as string;
+      if (cardBorderWidth) {
+        themeUpdate.cardBorderWidth = cardBorderWidth.trim();
+      }
+
       // Border radius
       const cardBorderRadius = formData.get("cardBorderRadius") as string;
       if (cardBorderRadius) {
@@ -239,6 +245,7 @@ export default function AdminTheme() {
   const [cardBgOpacity, setCardBgOpacity] = useState(theme?.cardBgOpacity ?? 50);
   const [cardBgGradientAngle, setCardBgGradientAngle] = useState(theme?.cardBgGradientAngle ?? 135);
   const [cardBorderOpacity, setCardBorderOpacity] = useState(theme?.cardBorderOpacity ?? 100);
+  const [cardBorderWidth, setCardBorderWidth] = useState(theme?.cardBorderWidth ?? "1px");
   const [cardBorderGradientAngle, setCardBorderGradientAngle] = useState(theme?.cardBorderGradientAngle ?? 135);
   const [cardBorderRadius, setCardBorderRadius] = useState(theme?.cardBorderRadius ?? 12);
   const [buttonBorderRadius, setButtonBorderRadius] = useState(theme?.buttonBorderRadius ?? 24);
@@ -532,6 +539,20 @@ export default function AdminTheme() {
                       </div>
                     </>
                   )}
+                  {/* Border Width */}
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium mb-1">Width</label>
+                    <input
+                      type="text"
+                      name="cardBorderWidth"
+                      value={cardBorderWidth}
+                      onChange={(e) => setCardBorderWidth(e.target.value)}
+                      placeholder="1px"
+                      className="w-full px-3 py-1.5 bg-theme-secondary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-sm"
+                    />
+                    <p className="text-xs text-theme-secondary mt-1">e.g. 1px, 2px, 0.5rem, 1%</p>
+                  </div>
+
                   {/* Hidden fields to preserve values when type is toggled */}
                   {cardBorderType === "solid" && (
                     <>
