@@ -532,12 +532,8 @@ export default function LobbyIndex() {
     const lp = loginPageSettings;
 
     // Use login page settings title/description if set, otherwise fall back to lobby data
-    const title = lp.title
-      || (isLocalhost ? content?.bandName : (lobby?.title || account?.name))
-      || "";
-    const description = lp.description
-      || (isLocalhost ? content?.bandDescription : lobby?.description)
-      || "";
+    const title = lp.title || null;
+    const description = lp.description || null;
 
     return (
       <>
