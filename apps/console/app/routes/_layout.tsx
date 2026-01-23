@@ -57,6 +57,7 @@ const navItems = [
   { to: "playlist", label: "Playlist" },
   { to: "theme", label: "Theme" },
   { to: "login-page", label: "Login" },
+  { to: "social", label: "Social" },
   { to: "settings", label: "Settings" },
 ];
 

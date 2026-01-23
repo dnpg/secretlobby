@@ -8,6 +8,7 @@ import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
+import type { SocialLinksSettings } from "~/components/SocialLinks";
 import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
 
 interface LoginPageSettings {
@@ -289,6 +290,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       themeVars: generateThemeCSSVars(defaultTheme),
       cardStyles: computeCardStyles(defaultTheme),
       bodyBg: getBodyBgCSS(defaultTheme),
+      socialLinksSettings: null as SocialLinksSettings | null,
     };
   }
 
@@ -321,6 +323,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       themeVars: generateThemeCSSVars(defaultTheme),
       cardStyles: computeCardStyles(defaultTheme),
       bodyBg: getBodyBgCSS(defaultTheme),
+      socialLinksSettings: null as SocialLinksSettings | null,
     };
   }
 
@@ -333,10 +336,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const needsPassword = !!lobby.password && !isAuthenticated;
 
-  // Extract login page and theme settings from account
+  // Extract login page, theme, and social links settings from account
   let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
   let loginLogoImageUrl: string | null = null;
   let themeSettings: ThemeSettings = defaultTheme;
+  let socialLinksSettings: SocialLinksSettings | null = null;
 
   if (account.settings && typeof account.settings === "object") {
     const accountSettings = account.settings as Record<string, unknown>;
@@ -345,6 +349,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
     if (accountSettings.theme && typeof accountSettings.theme === "object") {
       themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    }
+    if (accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
+      socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
     }
   }
   if (loginPageSettings.logoType === "image" && loginPageSettings.logoImage) {
@@ -421,6 +428,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     themeVars,
     cardStyles,
     bodyBg,
+    socialLinksSettings,
   };
 }
 
@@ -552,7 +560,7 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles } = data;
+  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings } = data;
 
   // Password required state
   if (requiresPassword) {
@@ -669,6 +677,7 @@ export default function LobbyIndex() {
         isPlaying={isPlaying}
         onPlayingChange={setIsPlaying}
         cardStyles={cardStyles}
+        socialLinksSettings={socialLinksSettings}
       />
       {/* Audio element */}
       <audio ref={audioRef} style={{ display: "none" }} />

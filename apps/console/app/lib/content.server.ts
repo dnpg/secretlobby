@@ -257,10 +257,15 @@ export const defaultLoginPageSettings: LoginPageSettings = {
   buttonLabel: "Enter Lobby",
 };
 
+export type { SocialLink, SocialLinksSettings } from "./social-platforms";
+import { defaultSocialLinksSettings, type SocialLinksSettings } from "./social-platforms";
+export { defaultSocialLinksSettings, SOCIAL_PLATFORMS } from "./social-platforms";
+
 interface AccountSettings {
   theme?: ThemeSettings;
   allowUserColorMode?: boolean;
   loginPage?: Partial<LoginPageSettings>;
+  socialLinks?: SocialLinksSettings;
   [key: string]: unknown;
 }
 
@@ -397,4 +402,13 @@ export async function getLoginPageSettings(accountId: string): Promise<LoginPage
 export async function updateLoginPageSettings(accountId: string, updates: Partial<LoginPageSettings>): Promise<void> {
   const current = await getLoginPageSettings(accountId);
   await updateAccountSettings(accountId, { loginPage: { ...current, ...updates } });
+}
+
+export async function getSocialLinksSettings(accountId: string): Promise<SocialLinksSettings> {
+  const settings = await getAccountSettings(accountId);
+  return { ...defaultSocialLinksSettings, ...settings.socialLinks };
+}
+
+export async function updateSocialLinksSettings(accountId: string, socialLinks: SocialLinksSettings): Promise<void> {
+  await updateAccountSettings(accountId, { socialLinks });
 }

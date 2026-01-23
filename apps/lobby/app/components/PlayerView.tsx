@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, memo } from "react";
 import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
+import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
 
 export interface Track {
   id: string;
@@ -107,9 +108,10 @@ interface SidebarProps {
   bandName?: string | null;
   bandDescription?: string | null;
   cardStyles?: CardStyles;
+  socialLinksSettings?: SocialLinksSettings | null;
 }
 
-const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, cardStyles }: SidebarProps) {
+const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, cardStyles, socialLinksSettings }: SidebarProps) {
   return (
     <div className="space-y-6">
       {imageUrls.profile && (
@@ -150,6 +152,12 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
           )}
         </CardContainer>
       )}
+
+      {socialLinksSettings && socialLinksSettings.links.length > 0 && (
+        <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+          <SocialLinks settings={socialLinksSettings} />
+        </CardContainer>
+      )}
     </div>
   );
 });
@@ -163,6 +171,7 @@ interface PlayerViewProps {
   isPlaying: boolean;
   onPlayingChange: (playing: boolean) => void;
   cardStyles?: CardStyles;
+  socialLinksSettings?: SocialLinksSettings | null;
 }
 
 export function PlayerView({
@@ -174,6 +183,7 @@ export function PlayerView({
   isPlaying,
   onPlayingChange,
   cardStyles,
+  socialLinksSettings,
 }: PlayerViewProps) {
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, loadingProgress, isReady, seekTo, estimatedDuration } = audio;
 
@@ -338,7 +348,8 @@ export function PlayerView({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const hasSidebar = imageUrls.profile || bandDescription;
+  const hasSocialLinks = socialLinksSettings && socialLinksSettings.links.length > 0;
+  const hasSidebar = imageUrls.profile || bandDescription || hasSocialLinks;
 
   return (
     <div
@@ -636,6 +647,7 @@ export function PlayerView({
               bandName={bandName}
               bandDescription={bandDescription}
               cardStyles={cardStyles}
+              socialLinksSettings={socialLinksSettings}
             />
           )}
         </div>
