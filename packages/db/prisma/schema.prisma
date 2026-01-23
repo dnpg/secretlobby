@@ -83,6 +83,10 @@ model User {
   passwordResetToken   String?
   passwordResetExpires DateTime?
 
+  // Login lockout
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   // Timestamps
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

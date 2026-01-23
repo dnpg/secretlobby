@@ -19,6 +19,14 @@
     "./oauth": {
       "types": "./src/oauth.server.ts",
       "import": "./src/oauth.server.ts"
+    },
+    "./validation": {
+      "types": "./src/password-validation.ts",
+      "import": "./src/password-validation.ts"
+    },
+    "./requirements": {
+      "types": "./src/password-requirements.ts",
+      "import": "./src/password-requirements.ts"
     }
   },
   "scripts": {
@@ -29,7 +37,8 @@
     "@secretlobby/db": "workspace:*",
     "arctic": "^3.7.0",
     "bcryptjs": "^3.0.3",
-    "iron-session": "^8.0.4"
+    "iron-session": "^8.0.4",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

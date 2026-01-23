@@ -41,11 +41,29 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Invalid form data" };
   }
 
-  const user = await authenticateWithPassword(email, password);
+  const result = await authenticateWithPassword(email, password);
 
-  if (!user) {
+  if (!result.success) {
+    if (result.error === "account_locked") {
+      const minutes = Math.ceil((result.lockedUntil.getTime() - Date.now()) / 60000);
+      return {
+        error: `Account locked. Try again in ${minutes} minute${minutes !== 1 ? "s" : ""}.`,
+        locked: true,
+      };
+    }
+
+    // invalid_credentials
+    if (result.remainingAttempts === 1) {
+      return {
+        error: "Invalid email or password. You have 1 attempt remaining before your account is locked.",
+        warning: true,
+      };
+    }
+
     return { error: "Invalid email or password" };
   }
+
+  const user = result.user;
 
   if (user.accounts.length === 0) {
     return { error: "You don't have access to any accounts. Contact an administrator." };
@@ -77,6 +95,8 @@ export default function Login() {
   const isSubmitting = navigation.state === "submitting";
 
   const displayError = errorMessage || actionData?.error;
+  const isWarning = actionData?.warning;
+  const isLocked = actionData?.locked;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -88,8 +108,17 @@ export default function Login() {
           </div>
 
           {displayError && (
-            <div className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg">
-              {displayError}
+            <div className={`mb-6 text-sm text-center py-3 px-4 rounded-lg ${
+              isWarning
+                ? "text-yellow-400 bg-yellow-500/10"
+                : "text-red-400 bg-red-500/10"
+            }`}>
+              <p>{displayError}</p>
+              {isLocked && (
+                <a href="/forgot-password" className="block mt-2 text-blue-400 hover:text-blue-300 font-medium text-xs">
+                  Reset your password to unlock immediately
+                </a>
+              )}
             </div>
           )}
 
@@ -134,9 +163,14 @@ export default function Login() {
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+                  Password
+                </label>
+                <a href="/forgot-password" className="text-xs text-blue-400 hover:text-blue-300">
+                  Forgot password?
+                </a>
+              </div>
               <input
                 type="password"
                 id="password"

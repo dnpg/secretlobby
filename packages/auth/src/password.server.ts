@@ -25,10 +25,18 @@ export interface AuthenticatedUser {
   }>;
 }
 
+const MAX_LOGIN_ATTEMPTS = 3;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+export type AuthResult =
+  | { success: true; user: AuthenticatedUser }
+  | { success: false; error: "invalid_credentials"; remainingAttempts: number }
+  | { success: false; error: "account_locked"; lockedUntil: Date };
+
 export async function authenticateWithPassword(
   email: string,
   password: string
-): Promise<AuthenticatedUser | null> {
+): Promise<AuthResult> {
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase() },
     include: {
@@ -42,26 +50,65 @@ export async function authenticateWithPassword(
     },
   });
 
-  if (!user) return null;
+  if (!user) {
+    return { success: false, error: "invalid_credentials", remainingAttempts: 0 };
+  }
+
+  // Check if account is locked
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    return { success: false, error: "account_locked", lockedUntil: user.lockedUntil };
+  }
+
+  // If lock has expired, reset attempts
+  if (user.lockedUntil && user.lockedUntil <= new Date()) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+  }
 
   const isValid = await verifyPassword(password, user.passwordHash);
-  if (!isValid) return null;
 
-  // Update last login
+  if (!isValid) {
+    const currentAttempts = user.lockedUntil && user.lockedUntil <= new Date() ? 0 : (user.failedLoginAttempts ?? 0);
+    const newAttempts = currentAttempts + 1;
+    const remaining = MAX_LOGIN_ATTEMPTS - newAttempts;
+
+    if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+      const lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: newAttempts, lockedUntil },
+      });
+      return { success: false, error: "account_locked", lockedUntil };
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: newAttempts },
+    });
+
+    return { success: false, error: "invalid_credentials", remainingAttempts: remaining };
+  }
+
+  // Success — reset attempts and update last login
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLoginAt: new Date() },
+    data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
 
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    accounts: user.accounts.map((au) => ({
-      accountId: au.accountId,
-      role: au.role,
-      account: au.account,
-    })),
+    success: true,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      accounts: user.accounts.map((au) => ({
+        accountId: au.accountId,
+        role: au.role,
+        account: au.account,
+      })),
+    },
   };
 }
 

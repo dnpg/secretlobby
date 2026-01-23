@@ -6,13 +6,14 @@ import tsconfigPaths from "vite-tsconfig-paths";
 // Plugin to stub out server-only modules in client builds
 function serverOnlyModules(): Plugin {
   const serverOnlyPkgs = ["@secretlobby/db", "@secretlobby/auth", "@prisma/client", "@prisma/adapter-pg", "pg"];
+  const clientSafeSubpaths = ["@secretlobby/auth/requirements"];
 
   return {
     name: "server-only-modules",
     enforce: "pre",
     resolveId(id, importer, options) {
       // Only stub these out in client (browser) builds, not SSR
-      if (options?.ssr === false && serverOnlyPkgs.some(pkg => id === pkg || id.startsWith(pkg + "/"))) {
+      if (options?.ssr === false && serverOnlyPkgs.some(pkg => id === pkg || id.startsWith(pkg + "/")) && !clientSafeSubpaths.includes(id)) {
         return "\0" + id; // Virtual module ID
       }
     },
@@ -29,7 +30,7 @@ export default defineConfig({
   envDir: "../../",
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths(), serverOnlyModules()],
   ssr: {
-    noExternal: ["@secretlobby/ui"],
+    noExternal: ["@secretlobby/ui", "@secretlobby/auth"],
   },
   server: {
     host: "0.0.0.0",

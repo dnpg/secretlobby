@@ -36,7 +36,10 @@
     "DATABASE_URL",
     "SESSION_SECRET",
     "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET"
+    "GOOGLE_CLIENT_SECRET",
+    "RESEND_API_KEY",
+    "EMAIL_FROM",
+    "AUTH_URL"
   ],
   "globalPassThroughEnv": ["REDIS_URL", "APP_DOMAIN"]
 }
