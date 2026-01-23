@@ -111,6 +111,7 @@ export default function Player() {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [hoverPercent, setHoverPercent] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
 
@@ -198,20 +199,15 @@ export default function Player() {
     };
   }, [isReady, estimatedDuration]);
 
-  const togglePlay = async () => {
+  const togglePlay = () => {
     const audio = audioRef.current;
-    if (!audio || !isReady) return;
+    if (!audio) return;
 
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
     } else {
-      try {
-        await audio.play();
-        setIsPlaying(true);
-      } catch (e) {
-        console.error("Playback failed:", e);
-      }
+      audio.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -262,14 +258,31 @@ export default function Player() {
   };
 
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = audioRef.current;
     const effectiveDuration = duration || estimatedDuration;
-    if (!effectiveDuration || effectiveDuration <= 0) return;
+    if (!audio || !effectiveDuration || effectiveDuration <= 0) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const newTime = percent * effectiveDuration;
 
+    // Fire and forget - never block user interaction
     seekTo(newTime);
+
+    // Always start playing on timeline click
+    if (!isPlaying) {
+      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  };
+
+  const handleProgressHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setHoverPercent(percent);
+  };
+
+  const handleProgressLeave = () => {
+    setHoverPercent(null);
   };
 
   const formatTime = (seconds: number) => {
@@ -331,19 +344,8 @@ export default function Player() {
             {currentTrack && (
               <div className="text-center">
                 <h2 className="text-2xl font-bold">{currentTrack.title}</h2>
-                <p className="text-gray-400">{currentTrack.artist}</p>
-                {isLoading && (
-                  <div className="mt-2">
-                    <div className="w-48 h-1 bg-gray-700 rounded-full mx-auto overflow-hidden">
-                      <div
-                        className="h-full bg-white transition-all duration-300"
-                        style={{ width: `${loadingProgress}%` }}
-                      />
-                    </div>
-                    <p className="text-gray-400 text-xs mt-1">
-                      Loading... {Math.round(loadingProgress)}%
-                    </p>
-                  </div>
+                {currentTrack.artist && (
+                  <p className="text-gray-400">{currentTrack.artist}</p>
                 )}
               </div>
             )}
@@ -351,21 +353,37 @@ export default function Player() {
             {/* Progress Bar */}
             <div>
               <div
-                className="h-2 bg-white/20 rounded-full cursor-pointer relative"
+                className="group relative h-2 bg-white/20 rounded-full cursor-pointer"
                 onClick={seek}
+                onMouseMove={handleProgressHover}
+                onMouseLeave={handleProgressLeave}
               >
-                {audioRef.current && audioRef.current.buffered.length > 0 && (duration || estimatedDuration) > 0 && (
+                {/* Download progress indicator */}
+                {loadingProgress > 0 && (
                   <div
-                    className="absolute h-full bg-white/30 rounded-full"
-                    style={{
-                      width: `${(audioRef.current.buffered.end(audioRef.current.buffered.length - 1) / (duration || estimatedDuration)) * 100}%`,
-                    }}
+                    className="absolute top-0 bottom-0 bg-white/15 rounded-full"
+                    style={{ width: `${loadingProgress}%` }}
                   />
                 )}
+                {/* Played progress */}
                 <div
-                  className="absolute h-full bg-white rounded-full transition-all duration-100"
+                  className="absolute top-0 bottom-0 bg-white rounded-full"
                   style={{ width: `${progress}%` }}
                 />
+                {/* Position ball */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ left: `calc(${progress}% - 6px)` }}
+                />
+                {/* Hover tooltip */}
+                {hoverPercent !== null && (duration || estimatedDuration) > 0 && (
+                  <div
+                    className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-white text-xs pointer-events-none"
+                    style={{ left: `${hoverPercent * 100}%` }}
+                  >
+                    {formatTime(hoverPercent * (duration || estimatedDuration))}
+                  </div>
+                )}
               </div>
               <div className="flex justify-between text-sm text-gray-400 mt-1">
                 <span>{formatTime(currentTime)}</span>
@@ -378,7 +396,7 @@ export default function Player() {
               <button
                 onClick={playPrev}
                 className="p-3 hover:bg-white/10 rounded-full transition"
-                disabled={isLoading}
+
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -387,8 +405,7 @@ export default function Player() {
 
               <button
                 onClick={togglePlay}
-                disabled={isLoading || !isReady}
-                className="p-4 bg-white text-gray-900 rounded-full hover:scale-105 transition disabled:opacity-50"
+                className="p-4 bg-white text-gray-900 rounded-full hover:scale-105 transition"
               >
                 {isLoading ? (
                   <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -409,7 +426,7 @@ export default function Player() {
               <button
                 onClick={playNext}
                 className="p-3 hover:bg-white/10 rounded-full transition"
-                disabled={isLoading}
+
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -425,12 +442,12 @@ export default function Player() {
                   <button
                     key={track.id}
                     onClick={() => playTrack(track)}
-                    disabled={isLoading}
+    
                     className={`w-full text-left p-3 rounded-lg transition flex items-center gap-3 ${
                       currentTrack?.id === track.id
                         ? "bg-white/20"
                         : "hover:bg-white/10"
-                    } ${isLoading ? "opacity-50" : ""}`}
+                    }`}
                   >
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -458,7 +475,9 @@ export default function Player() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium truncate">{track.title}</p>
-                      <p className="text-sm text-gray-400 truncate">{track.artist}</p>
+                      {track.artist && (
+                        <p className="text-sm text-gray-400 truncate">{track.artist}</p>
+                      )}
                     </div>
                     {track.duration && track.duration > 0 && (
                       <span className="text-sm text-gray-500 flex-shrink-0">
