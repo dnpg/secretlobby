@@ -34,7 +34,7 @@ export interface AudioControls {
   blobTimeOffset: number;
   blobHasLastSegment: boolean;
   isBlobMode: boolean;
-  initialWaveformPeaks: number[] | null;
+  waveformPeaks: number[] | null;
 }
 
 export interface CardStyles {
@@ -118,6 +118,22 @@ interface SidebarProps {
 }
 
 const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, cardStyles, socialLinksSettings }: SidebarProps) {
+  const hasSocialContent = socialLinksSettings &&
+    (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter);
+
+  const showSocialAbove = hasSocialContent && socialLinksSettings?.placement === "sidebar-above";
+  const showSocialBelow = hasSocialContent && (socialLinksSettings?.placement === "sidebar-below" || !socialLinksSettings?.placement);
+
+  const SocialCard = () => (
+    <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+      <SocialLinks
+        settings={socialLinksSettings!}
+        headingColor={cardStyles?.headingColor}
+        contentColor={cardStyles?.contentColor}
+      />
+    </CardContainer>
+  );
+
   return (
     <div className="space-y-6">
       {imageUrls.profile && (
@@ -142,6 +158,9 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
         </div>
       )}
 
+      {/* Social Links - Sidebar Above */}
+      {showSocialAbove && <SocialCard />}
+
       {(bandName || bandDescription) && (
         <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
           {bandName && (
@@ -159,11 +178,8 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
         </CardContainer>
       )}
 
-      {socialLinksSettings && socialLinksSettings.links.length > 0 && (
-        <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
-          <SocialLinks settings={socialLinksSettings} />
-        </CardContainer>
-      )}
+      {/* Social Links - Sidebar Below */}
+      {showSocialBelow && <SocialCard />}
     </div>
   );
 });
@@ -609,10 +625,38 @@ export function PlayerView({
           </div>
         )}
 
+        {/* Social Links - Above Content */}
+        {socialLinksSettings &&
+          socialLinksSettings.placement === "above-content" &&
+          (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
+          <div className="mb-8">
+            <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+              <SocialLinks
+                settings={socialLinksSettings}
+                headingColor={cardStyles?.headingColor}
+                contentColor={cardStyles?.contentColor}
+              />
+            </CardContainer>
+          </div>
+        )}
+
         {/* Two Column Layout */}
         <div className={`grid gap-8 ${hasSidebar ? "lg:grid-cols-[1fr_300px]" : ""}`}>
           {/* Left Column - Player */}
           <div className="space-y-6">
+            {/* Social Links - Above Player */}
+            {socialLinksSettings &&
+              socialLinksSettings.placement === "above-left" &&
+              (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
+              <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+                <SocialLinks
+                  settings={socialLinksSettings}
+                  headingColor={cardStyles?.headingColor}
+                  contentColor={cardStyles?.contentColor}
+                />
+              </CardContainer>
+            )}
+
             {/* Visualizer */}
             {cardStyles?.visualizerUseCardBg ? (
               <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
@@ -620,7 +664,8 @@ export function PlayerView({
                   audioElement={audioElement}
                   isPlaying={isPlaying}
                   currentTime={currentTime}
-                  initialWaveformPeaks={audio.initialWaveformPeaks}
+                  duration={duration}
+                  waveformPeaks={audio.waveformPeaks}
                   borderShow={cardStyles?.visualizerBorderShow}
                   borderColor={cardStyles?.visualizerBorderColor}
                   borderRadius={cardStyles?.visualizerBorderRadius}
@@ -633,7 +678,8 @@ export function PlayerView({
                   audioElement={audioElement}
                   isPlaying={isPlaying}
                   currentTime={currentTime}
-                  initialWaveformPeaks={audio.initialWaveformPeaks}
+                  duration={duration}
+                  waveformPeaks={audio.waveformPeaks}
                   borderShow={cardStyles?.visualizerBorderShow}
                   borderColor={cardStyles?.visualizerBorderColor}
                   borderRadius={cardStyles?.visualizerBorderRadius}
@@ -859,6 +905,19 @@ export function PlayerView({
                 )}
               </CardContainer>
             )}
+
+            {/* Social Links - Below Player */}
+            {socialLinksSettings &&
+              socialLinksSettings.placement === "below-left" &&
+              (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
+              <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+                <SocialLinks
+                  settings={socialLinksSettings}
+                  headingColor={cardStyles?.headingColor}
+                  contentColor={cardStyles?.contentColor}
+                />
+              </CardContainer>
+            )}
           </div>
 
           {/* Right Column - Sidebar */}
@@ -872,6 +931,21 @@ export function PlayerView({
             />
           )}
         </div>
+
+        {/* Social Links - Below All (Full Width) */}
+        {socialLinksSettings &&
+          socialLinksSettings.placement === "below-content" &&
+          (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
+          <div className="mt-8">
+            <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+              <SocialLinks
+                settings={socialLinksSettings}
+                headingColor={cardStyles?.headingColor}
+                contentColor={cardStyles?.contentColor}
+              />
+            </CardContainer>
+          </div>
+        )}
       </main>
     </div>
   );

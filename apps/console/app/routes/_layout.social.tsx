@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import type { Route } from "./+types/_layout.social";
 import { getSession, requireUserAuth } from "@secretlobby/auth";
-import { cn } from "@secretlobby/ui";
+import { cn, RichTextEditor } from "@secretlobby/ui";
 import { getSocialLinksSettings, updateSocialLinksSettings } from "~/lib/content.server";
 import { SOCIAL_PLATFORMS, type SocialLink, type SocialLinksSettings } from "~/lib/social-platforms";
 
@@ -42,6 +42,11 @@ export async function action({ request }: Route.ActionArgs) {
         const linksJson = formData.get("links") as string;
         const iconStyle = (formData.get("iconStyle") as "brand" | "mono") || "mono";
         const iconColor = (formData.get("iconColor") as string) || undefined;
+        const title = (formData.get("title") as string) || "";
+        const contentBefore = (formData.get("contentBefore") as string) || "";
+        const contentAfter = (formData.get("contentAfter") as string) || "";
+        const iconAlignment = (formData.get("iconAlignment") as "left" | "center" | "right") || "center";
+        const placement = (formData.get("placement") as "sidebar-above" | "sidebar-below" | "above-content" | "below-content" | "above-left" | "below-left") || "sidebar-below";
 
         let links: SocialLink[] = [];
         try {
@@ -57,6 +62,11 @@ export async function action({ request }: Route.ActionArgs) {
           links,
           iconStyle,
           iconColor: iconColor || undefined,
+          title: title || undefined,
+          contentBefore: contentBefore || undefined,
+          contentAfter: contentAfter || undefined,
+          iconAlignment,
+          placement,
         };
 
         await updateSocialLinksSettings(accountId, settings);
@@ -80,6 +90,11 @@ export default function SocialLinksPage() {
   const [links, setLinks] = useState<SocialLink[]>(socialLinks.links);
   const [iconStyle, setIconStyle] = useState<"brand" | "mono">(socialLinks.iconStyle);
   const [iconColor, setIconColor] = useState(socialLinks.iconColor || "");
+  const [title, setTitle] = useState(socialLinks.title || "");
+  const [contentBefore, setContentBefore] = useState(socialLinks.contentBefore || "");
+  const [contentAfter, setContentAfter] = useState(socialLinks.contentAfter || "");
+  const [iconAlignment, setIconAlignment] = useState<"left" | "center" | "right">(socialLinks.iconAlignment || "center");
+  const [placement, setPlacement] = useState<"sidebar-above" | "sidebar-below" | "above-content" | "below-content" | "above-left" | "below-left">(socialLinks.placement || "sidebar-below");
 
   function addLink(platformId: string) {
     if (links.some((l) => l.platform === platformId)) return;
@@ -117,6 +132,54 @@ export default function SocialLinksPage() {
         <input type="hidden" name="links" value={JSON.stringify(links)} />
         <input type="hidden" name="iconStyle" value={iconStyle} />
         <input type="hidden" name="iconColor" value={iconColor} />
+        <input type="hidden" name="title" value={title} />
+        <input type="hidden" name="contentBefore" value={contentBefore} />
+        <input type="hidden" name="contentAfter" value={contentAfter} />
+        <input type="hidden" name="iconAlignment" value={iconAlignment} />
+        <input type="hidden" name="placement" value={placement} />
+
+        {/* Card Content Section */}
+        <section className="bg-theme-secondary rounded-xl p-6 border border-theme mb-6">
+          <h2 className="text-lg font-semibold mb-4">Card Content</h2>
+          <p className="text-sm text-theme-secondary mb-6">
+            Add a title and custom content to your social links card.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Card Title</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Connect With Us, Follow Us, etc."
+                className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-(--color-accent)"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Content Before Icons</label>
+              <RichTextEditor
+                name="contentBeforeEditor"
+                defaultValue={contentBefore}
+                placeholder="Add content that appears above the social icons..."
+                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "html"]}
+                onChange={(html) => setContentBefore(html)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Content After Icons</label>
+              <RichTextEditor
+                name="contentAfterEditor"
+                defaultValue={contentAfter}
+                placeholder="Add content that appears below the social icons..."
+                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "html"]}
+                onChange={(html) => setContentAfter(html)}
+              />
+            </div>
+          </div>
+        </section>
 
         {/* Icon Style Section */}
         <section className="bg-theme-secondary rounded-xl p-6 border border-theme mb-6">
@@ -153,7 +216,7 @@ export default function SocialLinksPage() {
           </div>
 
           {iconStyle === "mono" && (
-            <div>
+            <div className="mb-4">
               <label className="block text-sm font-medium mb-2">Icon Color</label>
               <div className="flex items-center gap-3">
                 <input
@@ -175,6 +238,129 @@ export default function SocialLinksPage() {
               </p>
             </div>
           )}
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Icon Alignment</label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIconAlignment("left")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition",
+                  iconAlignment === "left"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Left
+              </button>
+              <button
+                type="button"
+                onClick={() => setIconAlignment("center")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition",
+                  iconAlignment === "center"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Center
+              </button>
+              <button
+                type="button"
+                onClick={() => setIconAlignment("right")}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-sm font-medium transition",
+                  iconAlignment === "right"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Right
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Card Placement</label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPlacement("sidebar-above")}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition",
+                  placement === "sidebar-above"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Sidebar Above
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlacement("sidebar-below")}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition",
+                  placement === "sidebar-below"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Sidebar Below
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlacement("above-left")}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition",
+                  placement === "above-left"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Above Player
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlacement("below-left")}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition",
+                  placement === "below-left"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Below Player
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlacement("above-content")}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition",
+                  placement === "above-content"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Above All (Full Width)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlacement("below-content")}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition",
+                  placement === "below-content"
+                    ? "bg-[var(--color-primary)] text-[var(--color-primary-text)]"
+                    : "bg-theme-tertiary text-theme-secondary hover:text-theme-primary"
+                )}
+              >
+                Below All (Full Width)
+              </button>
+            </div>
+            <p className="text-xs text-theme-muted mt-2">
+              Sidebar: appears in the right column. Player: appears in the left column with the player. Full Width: spans across both columns.
+            </p>
+          </div>
         </section>
 
         {/* Links Section */}

@@ -45,8 +45,12 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   // Whether the current blob includes the track's last segment
   const [blobHasLastSegment, setBlobHasLastSegment] = useState(false);
   const [isBlobMode, setIsBlobMode] = useState(false);
-  // Initial waveform peaks extracted from first segment (for visualizer before playback)
-  const [initialWaveformPeaks, setInitialWaveformPeaks] = useState<number[] | null>(null);
+  // Waveform peaks for all segments (for visualizer)
+  const [waveformPeaks, setWaveformPeaks] = useState<number[] | null>(null);
+  // Peaks per segment stored in a ref, combined into waveformPeaks when updated
+  const waveformPeaksPerSegmentRef = useRef<Map<number, number[]>>(new Map());
+  // Number of peaks per segment (consistent across all segments)
+  const PEAKS_PER_SEGMENT = 64;
 
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
@@ -107,12 +111,34 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     setBlobTimeOffset(0);
     setBlobHasLastSegment(false);
     setIsBlobMode(false);
-    setInitialWaveformPeaks(null);
+    setWaveformPeaks(null);
+    waveformPeaksPerSegmentRef.current.clear();
     blobStartIndexRef.current = 0;
   }, []);
 
-  // Extract waveform peaks from audio data for visualizer initial state
-  const extractWaveformPeaks = useCallback(async (audioData: ArrayBuffer): Promise<number[] | null> => {
+  // Combine all segment peaks into a single array and update state
+  const updateCombinedWaveformPeaks = useCallback(() => {
+    const manifest = manifestRef.current;
+    if (!manifest) return;
+
+    const allPeaks: number[] = [];
+    // Combine peaks from all segments in order
+    for (let i = 0; i < manifest.segments.length; i++) {
+      const segmentPeaks = waveformPeaksPerSegmentRef.current.get(i);
+      if (segmentPeaks) {
+        allPeaks.push(...segmentPeaks);
+      } else {
+        // Fill with zeros for missing segments (not yet downloaded)
+        for (let j = 0; j < PEAKS_PER_SEGMENT; j++) {
+          allPeaks.push(0);
+        }
+      }
+    }
+    setWaveformPeaks(allPeaks);
+  }, []);
+
+  // Extract waveform peaks from audio data for a segment
+  const extractWaveformPeaks = useCallback(async (audioData: ArrayBuffer, segmentIndex: number): Promise<void> => {
     try {
       // Create offline audio context for decoding
       const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -121,12 +147,11 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       // Get the channel data (mono or first channel)
       const channelData = audioBuffer.getChannelData(0);
 
-      // Calculate peaks - we want 64 bars worth of data (matching visualizer's halfBars * 2)
-      const numPeaks = 64;
-      const samplesPerPeak = Math.floor(channelData.length / numPeaks);
+      // Calculate peaks for this segment
+      const samplesPerPeak = Math.floor(channelData.length / PEAKS_PER_SEGMENT);
       const peaks: number[] = [];
 
-      for (let i = 0; i < numPeaks; i++) {
+      for (let i = 0; i < PEAKS_PER_SEGMENT; i++) {
         let sum = 0;
         const start = i * samplesPerPeak;
         const end = Math.min(start + samplesPerPeak, channelData.length);
@@ -142,12 +167,16 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       }
 
       await audioContext.close();
-      return peaks;
+
+      // Store peaks for this segment
+      waveformPeaksPerSegmentRef.current.set(segmentIndex, peaks);
+
+      // Update combined peaks
+      updateCombinedWaveformPeaks();
     } catch (e) {
-      console.error("Failed to extract waveform peaks:", e);
-      return null;
+      console.error("Failed to extract waveform peaks for segment", segmentIndex, e);
     }
-  }, []);
+  }, [updateCombinedWaveformPeaks]);
 
   // Fetch manifest
   const fetchManifest = useCallback(async (trackId: string): Promise<Manifest | null> => {
@@ -322,11 +351,14 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         setIsAllSegmentsCached(true);
       }
 
+      // Extract waveform peaks for visualizer (async, non-blocking)
+      extractWaveformPeaks(data, segmentIndex);
+
       await new Promise((r) => setTimeout(r, 10));
     }
 
     isDownloadingRef.current = false;
-  }, [fetchSegment, fetchManifest]);
+  }, [fetchSegment, fetchManifest, extractWaveformPeaks]);
 
   // Load track in blob mode (iOS fallback)
   const loadTrackBlob = useCallback(async (trackId: string, preloadToken?: string) => {
@@ -367,12 +399,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
           segmentCacheRef.current.set(i, data);
           setLoadingProgress(((i + 1) / manifest.segments.length) * 100);
 
-          // Extract waveform peaks from first segment for initial visualizer display
-          if (i === 0) {
-            extractWaveformPeaks(data).then((peaks) => {
-              if (peaks) setInitialWaveformPeaks(peaks);
-            });
-          }
+          // Extract waveform peaks for visualizer (async, non-blocking)
+          extractWaveformPeaks(data, i);
         }
       }
 
@@ -582,6 +610,9 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         setIsAllSegmentsCached(true);
       }
 
+      // Extract waveform peaks for visualizer (async, non-blocking)
+      extractWaveformPeaks(data, segmentIndex);
+
       // Try to flush to the source buffer
       await flushAppendQueue();
 
@@ -590,7 +621,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     }
 
     isDownloadingRef.current = false;
-  }, [fetchSegment, fetchManifest, flushAppendQueue]);
+  }, [fetchSegment, fetchManifest, flushAppendQueue, extractWaveformPeaks]);
 
   // Build a download queue starting from a given segment index
   const buildQueueFrom = useCallback((fromIndex: number) => {
@@ -724,6 +755,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
           const data = await fetchSegment(currentTrackIdRef.current!, segment);
           if (data) {
             segmentCacheRef.current.set(idx, data);
+            // Extract waveform peaks for visualizer (async, non-blocking)
+            extractWaveformPeaks(data, idx);
           }
           return { idx, success: !!data };
         });
@@ -894,12 +927,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
           appendedUpToRef.current = i;
           setLoadingProgress(((i + 1) / manifest.segments.length) * 100);
 
-          // Extract waveform peaks from first segment for initial visualizer display
-          if (i === 0) {
-            extractWaveformPeaks(data).then((peaks) => {
-              if (peaks) setInitialWaveformPeaks(peaks);
-            });
-          }
+          // Extract waveform peaks for visualizer (async, non-blocking)
+          extractWaveformPeaks(data, i);
         }
       }
 
@@ -957,6 +986,6 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     blobTimeOffset,
     blobHasLastSegment,
     isBlobMode,
-    initialWaveformPeaks,
+    waveformPeaks,
   };
 }

@@ -7,11 +7,18 @@ export interface SocialLinksSettings {
   links: SocialLink[];
   iconStyle: "brand" | "mono";
   iconColor?: string;
+  title?: string;
+  contentBefore?: string;
+  contentAfter?: string;
+  iconAlignment?: "left" | "center" | "right";
+  placement?: "sidebar-above" | "sidebar-below" | "above-content" | "below-content" | "above-left" | "below-left";
 }
 
 export const defaultSocialLinksSettings: SocialLinksSettings = {
   links: [],
   iconStyle: "mono",
+  iconAlignment: "center",
+  placement: "sidebar-below",
 };
 
 export const SOCIAL_PLATFORMS = [

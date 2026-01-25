@@ -4,7 +4,8 @@ interface AudioVisualizerProps {
   audioElement: HTMLAudioElement | null;
   isPlaying: boolean;
   currentTime?: number;
-  initialWaveformPeaks?: number[] | null;
+  duration?: number;
+  waveformPeaks?: number[] | null;
   borderShow?: boolean;
   borderColor?: string;
   borderRadius?: number;
@@ -28,7 +29,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(255, 255, 255, ${alpha})`;
 }
 
-export function AudioVisualizer({ audioElement, isPlaying, currentTime = 0, initialWaveformPeaks, borderShow, borderColor, borderRadius, blendMode }: AudioVisualizerProps) {
+export function AudioVisualizer({ audioElement, isPlaying, currentTime = 0, duration = 0, waveformPeaks, borderShow, borderColor, borderRadius, blendMode }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -231,28 +232,58 @@ export function AudioVisualizer({ audioElement, isPlaying, currentTime = 0, init
       gradient.addColorStop(0.6, barAltColor);
       gradient.addColorStop(1, glowColor);
 
-      for (let i = 0; i < halfBars; i++) {
-        let height: number;
+      // Calculate starting peak index based on current time
+      let startPeakIndex = 0;
+      if (waveformPeaks && waveformPeaks.length > 0 && duration > 0) {
+        // Map current time to peak index
+        const peaksPerSecond = waveformPeaks.length / duration;
+        startPeakIndex = Math.floor(currentTime * peaksPerSecond);
+        // Ensure we don't go past the end
+        startPeakIndex = Math.min(startPeakIndex, Math.max(0, waveformPeaks.length - halfBars));
+      }
 
-        if (initialWaveformPeaks && initialWaveformPeaks.length >= halfBars) {
-          // Use real waveform data from first segment
-          const value = initialWaveformPeaks[i] || 0;
-          height = Math.max(3, (value / 255) * centerY * 0.85);
-        } else {
-          // Fallback: deterministic pattern based on position (looks like quiet music)
-          height = 3 + Math.sin(i * 0.5) * 4 + Math.cos(i * 0.3) * 3;
+      // Collect peaks for this time window
+      const windowPeaks: number[] = [];
+      if (waveformPeaks && waveformPeaks.length >= halfBars && duration > 0) {
+        for (let i = 0; i < halfBars; i++) {
+          windowPeaks.push(waveformPeaks[startPeakIndex + i] || 0);
         }
+      } else if (waveformPeaks && waveformPeaks.length >= halfBars) {
+        for (let i = 0; i < halfBars; i++) {
+          windowPeaks.push(waveformPeaks[i] || 0);
+        }
+      } else {
+        // Fallback: deterministic pattern
+        for (let i = 0; i < halfBars; i++) {
+          windowPeaks.push(30 + Math.sin(i * 0.5) * 40 + Math.cos(i * 0.3) * 30);
+        }
+      }
 
+      // Sort peaks descending so highest values are in the center (like frequency display)
+      const sortedPeaks = [...windowPeaks].sort((a, b) => b - a);
+
+      for (let i = 0; i < halfBars; i++) {
+        const value = sortedPeaks[i];
+        const height = Math.max(3, (value / 255) * centerY * 0.85);
         const rightX = (halfBars + i) * barWidth;
         const leftX = (halfBars - 1 - i) * barWidth;
 
+        // Upper bars (grow up from center)
         ctx.fillStyle = gradient;
         ctx.fillRect(rightX + 1, centerY - height, barWidth - 2, height);
         ctx.fillRect(leftX + 1, centerY - height, barWidth - 2, height);
 
+        // Lower bars (mirror down from center, same height for vertical centering)
         ctx.fillStyle = hexToRgba(barColor, 0.3);
         ctx.fillRect(rightX + 1, centerY, barWidth - 2, height);
         ctx.fillRect(leftX + 1, centerY, barWidth - 2, height);
+
+        // Glow on peaks (matching drawBars behavior)
+        if (value > 180) {
+          ctx.fillStyle = hexToRgba(glowColor, (value / 255) * 0.2);
+          ctx.fillRect(rightX + 1, centerY - height - 2, barWidth - 2, 4);
+          ctx.fillRect(leftX + 1, centerY - height - 2, barWidth - 2, 4);
+        }
       }
     }
 
@@ -262,12 +293,9 @@ export function AudioVisualizer({ audioElement, isPlaying, currentTime = 0, init
         audioContextRef.current.resume();
       }
       draw();
-    } else if (!hasPlayedRef.current) {
-      // Initial idle state
-      drawStaticPattern();
     } else {
-      // Paused after playing - capture and draw current state
-      captureAndDraw();
+      // Paused or initial state - draw using waveform peaks at current time
+      drawStaticPattern();
     }
 
     return () => {
@@ -275,137 +303,7 @@ export function AudioVisualizer({ audioElement, isPlaying, currentTime = 0, init
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [audioElement, isPlaying, initialWaveformPeaks]);
-
-  // Respond to seek events (currentTime changes while paused)
-  useEffect(() => {
-    if (!audioElement || !canvasRef.current || !analyserRef.current) return;
-    if (isPlaying) return; // Don't interfere with real-time animation
-
-    const timeDiff = Math.abs(currentTime - lastTimeRef.current);
-    lastTimeRef.current = currentTime;
-
-    // Only redraw if time changed significantly (seek happened)
-    if (timeDiff < 0.5) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const analyser = analyserRef.current;
-    const bufferLength = analyser.frequencyBinCount;
-
-    // Get theme colors
-    const bgColor = getThemeColor(canvas, "--color-visualizer-bg", "#111827");
-    const bgOpacityStr = getThemeColor(canvas, "--color-visualizer-bg-opacity", "0");
-    const bgOpacity = parseFloat(bgOpacityStr) || 0;
-    const barColor = getThemeColor(canvas, "--color-visualizer-bar", "#ffffff");
-    const barAltColor = getThemeColor(canvas, "--color-visualizer-bar-alt", "#9ca3af");
-    const glowColor = getThemeColor(canvas, "--color-visualizer-glow", "#ffffff");
-
-    const halfBars = 32;
-    const barWidth = canvas.width / (halfBars * 2);
-    const centerY = canvas.height / 2;
-
-    // Resume audio context if suspended
-    if (audioContextRef.current?.state === "suspended") {
-      audioContextRef.current.resume();
-    }
-
-    // Get time-domain data
-    const timeDomainData = new Uint8Array(bufferLength);
-    analyser.getByteTimeDomainData(timeDomainData);
-
-    // Check for actual data
-    let hasData = false;
-    for (let i = 0; i < timeDomainData.length; i++) {
-      if (timeDomainData[i] !== 128) {
-        hasData = true;
-        break;
-      }
-    }
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (bgOpacity > 0) {
-      ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    const gradient = ctx.createLinearGradient(0, centerY, 0, 0);
-    gradient.addColorStop(0, barColor);
-    gradient.addColorStop(0.6, barAltColor);
-    gradient.addColorStop(1, glowColor);
-
-    if (hasData) {
-      // Draw from time-domain data
-      const samplesPerBar = Math.floor(timeDomainData.length / halfBars);
-      for (let i = 0; i < halfBars; i++) {
-        let sum = 0;
-        for (let j = 0; j < samplesPerBar; j++) {
-          const sample = (timeDomainData[i * samplesPerBar + j] - 128) / 128;
-          sum += sample * sample;
-        }
-        const rms = Math.sqrt(sum / samplesPerBar);
-        const value = Math.min(255, rms * 255 * 3);
-        const height = Math.max(3, (value / 255) * centerY * 0.85);
-
-        const rightX = (halfBars + i) * barWidth;
-        const leftX = (halfBars - 1 - i) * barWidth;
-
-        ctx.fillStyle = gradient;
-        ctx.fillRect(rightX + 1, centerY - height, barWidth - 2, height);
-        ctx.fillRect(leftX + 1, centerY - height, barWidth - 2, height);
-
-        ctx.fillStyle = hexToRgba(barColor, 0.3);
-        ctx.fillRect(rightX + 1, centerY, barWidth - 2, height);
-        ctx.fillRect(leftX + 1, centerY, barWidth - 2, height);
-      }
-    } else {
-      // Try frequency data
-      const freqData = new Uint8Array(bufferLength);
-      analyser.getByteFrequencyData(freqData);
-
-      let freqHasData = false;
-      for (let i = 0; i < freqData.length; i++) {
-        if (freqData[i] > 0) {
-          freqHasData = true;
-          break;
-        }
-      }
-
-      if (freqHasData) {
-        const logMap: number[] = [];
-        for (let i = 0; i < halfBars; i++) {
-          const t = i / halfBars;
-          const logIndex = Math.floor(Math.pow(t, 1.5) * (bufferLength * 0.75));
-          logMap.push(Math.min(logIndex, bufferLength - 1));
-        }
-
-        for (let i = 0; i < halfBars; i++) {
-          const idx = logMap[i];
-          const range = Math.max(1, Math.floor(bufferLength / halfBars / 2));
-          let sum = 0;
-          for (let j = 0; j < range; j++) {
-            sum += freqData[Math.min(idx + j, bufferLength - 1)];
-          }
-          const value = sum / range;
-          const height = (value / 255) * centerY * 0.85;
-
-          const rightX = (halfBars + i) * barWidth;
-          const leftX = (halfBars - 1 - i) * barWidth;
-
-          ctx.fillStyle = gradient;
-          ctx.fillRect(rightX + 1, centerY - height, barWidth - 2, height);
-          ctx.fillRect(leftX + 1, centerY - height, barWidth - 2, height);
-
-          ctx.fillStyle = hexToRgba(barColor, 0.3);
-          ctx.fillRect(rightX + 1, centerY, barWidth - 2, height);
-          ctx.fillRect(leftX + 1, centerY, barWidth - 2, height);
-        }
-      }
-    }
-  }, [currentTime, isPlaying, audioElement]);
+  }, [audioElement, isPlaying, waveformPeaks, duration, currentTime]);
 
   return (
     <canvas

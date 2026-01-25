@@ -681,7 +681,7 @@ export default function LobbyIndex() {
               blobTimeOffset: audioHook.blobTimeOffset,
               blobHasLastSegment: audioHook.blobHasLastSegment,
               isBlobMode: audioHook.isBlobMode,
-              initialWaveformPeaks: audioHook.initialWaveformPeaks,
+              waveformPeaks: audioHook.waveformPeaks,
             }}
             isPlaying={isPlaying}
             onPlayingChange={setIsPlaying}
