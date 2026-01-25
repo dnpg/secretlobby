@@ -245,7 +245,9 @@ export function PlayerView({
     const totalDuration = estimatedDuration || 0;
 
     const updateProgress = () => {
-      if (totalDuration > 0 && !isDraggingRef.current) {
+      // Don't update progress while dragging or during seek loading
+      // This keeps the scrubber at the target position until seek completes
+      if (totalDuration > 0 && !isDraggingRef.current && !seekLoadingRef.current) {
         const realTime = audio.currentTime + blobTimeOffset;
         setCurrentTime(realTime);
         setProgress((realTime / totalDuration) * 100);
@@ -739,7 +741,7 @@ export function PlayerView({
             {/* Playlist */}
             <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
               <h3 className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
-              <div className="space-y-1">
+              <div className="flex flex-col">
                 {tracks.map((track, index) => {
                   const isCurrent = currentTrack?.id === track.id;
                   const isHovered = hoveredTrackId === track.id;
@@ -803,7 +805,7 @@ export function PlayerView({
                         >
                           {track.title}
                         </p>
-                        {track.artist && (
+                        {track.artist && track.artist !== "" && (
                           <p className="text-sm truncate" style={{ color: cardStyles?.mutedColor }}>{track.artist}</p>
                         )}
                       </div>

@@ -75,7 +75,7 @@ export async function action({ request }: Route.ActionArgs) {
             data: {
               lobbyId: lobby.id,
               title,
-              artist: artist || "Unknown",
+              artist: artist,
               filename: key,
               duration: duration && duration > 0 ? duration : null,
               position: (lastTrack?.position ?? -1) + 1,
@@ -99,6 +99,23 @@ export async function action({ request }: Route.ActionArgs) {
         }
         break;
       }
+
+      case "edit-track": {
+        const id = formData.get("id") as string;
+        const title = formData.get("title") as string;
+        const artist = formData.get("artist") as string;
+        if (id && title) {
+          await prisma.track.update({
+            where: { id },
+            data: {
+              title,
+              artist: artist || null,
+            },
+          });
+          return { success: "Track updated" };
+        }
+        return { error: "Please provide a title" };
+      }
     }
   } catch {
     return { error: "Operation failed" };
@@ -114,6 +131,9 @@ export default function AdminPlaylist() {
   const isSubmitting = navigation.state === "submitting";
   const [showAddTrack, setShowAddTrack] = useState(false);
   const [fileDuration, setFileDuration] = useState<number | null>(null);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editArtist, setEditArtist] = useState("");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -134,6 +154,18 @@ export default function AdminPlaylist() {
       URL.revokeObjectURL(url);
     });
     audio.src = url;
+  };
+
+  const startEditing = (track: { id: string; title: string; artist: string }) => {
+    setEditingTrackId(track.id);
+    setEditTitle(track.title);
+    setEditArtist(track.artist);
+  };
+
+  const cancelEditing = () => {
+    setEditingTrackId(null);
+    setEditTitle("");
+    setEditArtist("");
   };
 
   return (
@@ -221,41 +253,116 @@ export default function AdminPlaylist() {
             playlist.map((track, index) => (
               <div
                 key={track.id}
-                className="flex items-center justify-between p-3 bg-theme-tertiary rounded-lg"
+                className="p-3 bg-theme-tertiary rounded-lg"
               >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-full btn-primary flex items-center justify-center text-sm">
-                    {index + 1}
-                  </span>
-                  <div>
-                    <p className="font-medium text-theme-primary">{track.title}</p>
-                    <p className="text-sm text-theme-secondary">{track.artist}</p>
-                  </div>
-                </div>
-                <Form method="post">
-                  <input type="hidden" name="intent" value="remove-track" />
-                  <input type="hidden" name="id" value={track.id} />
-                  <input type="hidden" name="filename" value={track.filename} />
-                  <button
-                    type="submit"
-                    className="p-2 hover:bg-red-600/20 rounded-lg transition text-red-400"
-                    title="Remove track"
+                {editingTrackId === track.id ? (
+                  <Form
+                    method="post"
+                    className="space-y-3"
+                    onSubmit={() => cancelEditing()}
                   >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </Form>
+                    <input type="hidden" name="intent" value="edit-track" />
+                    <input type="hidden" name="id" value={track.id} />
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-full btn-primary flex items-center justify-center text-sm shrink-0">
+                        {index + 1}
+                      </span>
+                      <div className="flex-1 grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          name="title"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          required
+                          placeholder="Title"
+                          className="px-3 py-1.5 bg-theme-secondary rounded border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-sm"
+                        />
+                        <input
+                          type="text"
+                          name="artist"
+                          value={editArtist}
+                          onChange={(e) => setEditArtist(e.target.value)}
+                          placeholder="Artist"
+                          className="px-3 py-1.5 bg-theme-secondary rounded border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="px-3 py-1.5 text-sm rounded border border-theme hover:bg-theme-secondary transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="px-3 py-1.5 text-sm btn-primary rounded transition disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </Form>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-full btn-primary flex items-center justify-center text-sm">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <p className="font-medium text-theme-primary">{track.title}</p>
+                        <p className="text-sm text-theme-secondary">{track.artist}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => startEditing(track)}
+                        className="p-2 hover:bg-theme-secondary rounded-lg transition text-theme-secondary hover:text-theme-primary"
+                        title="Edit track"
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                      </button>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="remove-track" />
+                        <input type="hidden" name="id" value={track.id} />
+                        <input type="hidden" name="filename" value={track.filename} />
+                        <button
+                          type="submit"
+                          className="p-2 hover:bg-red-600/20 rounded-lg transition text-red-400"
+                          title="Remove track"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
+                      </Form>
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           )}

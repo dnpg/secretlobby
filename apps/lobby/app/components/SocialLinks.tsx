@@ -24,7 +24,7 @@ export function SocialLinks({ settings }: SocialLinksProps) {
   const monoStyle = iconStyle === "mono" && iconColor ? { color: iconColor } : undefined;
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3">
+    <div className="flex flex-wrap items-center justify-center">
       {links.map((link) => {
         const platform = link.platform as SocialPlatform;
         const IconComponent = icons[platform];
@@ -33,17 +33,19 @@ export function SocialLinks({ settings }: SocialLinksProps) {
         const isEmail = platform === "email";
         const href = isEmail ? `mailto:${link.url}` : link.url;
 
+        const iconClass = platform === "instagram" ? "h-5 w-auto" : "h-6 w-auto";
+
         return (
           <a
             key={platform}
             href={href}
             target={isEmail ? undefined : "_blank"}
             rel={isEmail ? undefined : "noopener noreferrer"}
-            className="p-2 rounded-lg transition hover:opacity-70"
+            className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70"
             title={getPlatformLabel(platform)}
             style={monoStyle}
           >
-            <IconComponent className="w-5 h-5" />
+            <IconComponent className={iconClass} />
           </a>
         );
       })}

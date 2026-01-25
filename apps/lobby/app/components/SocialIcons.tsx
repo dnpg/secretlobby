@@ -87,7 +87,7 @@ export function TikTokBrand({ className, style }: IconProps) {
 export function FacebookBrand({ className, style }: IconProps) {
   return (
     <svg className={className} style={style} viewBox="0 0 24 24" fill="none">
-      <path d="M24 12.073c0-5.523-4.477-10-10-10s-10 4.477-10 10c0 4.99 3.657 9.128 8.438 9.878v-6.987h-2.54V12.07h2.54V9.536c0-2.507 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562v1.876h2.773l-.443 2.89h-2.33v6.988C20.343 21.2 24 17.063 24 12.073z" fill="#1877F2"/>
+      <path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4v-8.5z" fill="#1877F2"/>
     </svg>
   );
 }
@@ -203,7 +203,7 @@ export function TikTokMono({ className, style }: IconProps) {
 export function FacebookMono({ className, style }: IconProps) {
   return (
     <svg className={className} style={style} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M24 12.073c0-5.523-4.477-10-10-10s-10 4.477-10 10c0 4.99 3.657 9.128 8.438 9.878v-6.987h-2.54V12.07h2.54V9.536c0-2.507 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562v1.876h2.773l-.443 2.89h-2.33v6.988C20.343 21.2 24 17.063 24 12.073z"/>
+      <path d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.326-.043-1.557-.14-2.857-.14C11.928 2 10 3.657 10 6.7v2.8H7v4h3V22h4v-8.5z"/>
     </svg>
   );
 }
