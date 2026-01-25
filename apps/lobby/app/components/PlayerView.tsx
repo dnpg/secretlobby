@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, memo } from "react";
+import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
@@ -25,10 +25,15 @@ export interface AudioControls {
   audioRef: React.RefObject<HTMLAudioElement | null>;
   loadTrack: (trackId: string, preloadToken?: string) => Promise<boolean>;
   isLoading: boolean;
+  isSeeking: boolean;
   loadingProgress: number;
   isReady: boolean;
   seekTo: (time: number) => Promise<void>;
   estimatedDuration: number;
+  isAllSegmentsCached: boolean;
+  blobTimeOffset: number;
+  blobHasLastSegment: boolean;
+  isBlobMode: boolean;
 }
 
 export interface CardStyles {
@@ -185,7 +190,7 @@ export function PlayerView({
   cardStyles,
   socialLinksSettings,
 }: PlayerViewProps) {
-  const { audioRef, loadTrack: loadSegmentedTrack, isLoading, loadingProgress, isReady, seekTo, estimatedDuration } = audio;
+  const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, estimatedDuration, isAllSegmentsCached, blobTimeOffset, blobHasLastSegment, isBlobMode } = audio;
 
   const [currentTrack, setCurrentTrack] = useState<Track | null>(
     tracks[0] || null
@@ -196,12 +201,35 @@ export function PlayerView({
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
   const [hoveredTrackId, setHoveredTrackId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPercent, setDragPercent] = useState(0);
+  const [seekLoading, setSeekLoading] = useState(false);
+  const seekLoadingRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const dragPercentRef = useRef(0);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+
+  // Refs for document-level mouse handlers (need stable references)
+  const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
+  const mouseUpHandlerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (audioRef.current) {
       setAudioElement(audioRef.current);
     }
   }, [isReady, audioRef]);
+
+  // Cleanup document listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (mouseMoveHandlerRef.current) {
+        document.removeEventListener("mousemove", mouseMoveHandlerRef.current);
+      }
+      if (mouseUpHandlerRef.current) {
+        document.removeEventListener("mouseup", mouseUpHandlerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (estimatedDuration > 0 && !isFinite(duration)) {
@@ -213,62 +241,90 @@ export function PlayerView({
     const audio = audioRef.current;
     if (!audio) return;
 
-    const getEffectiveDuration = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        return audio.duration;
-      }
-      return estimatedDuration || 0;
-    };
+    // Total track duration (from manifest/DB, not from the partial blob)
+    const totalDuration = estimatedDuration || 0;
 
     const updateProgress = () => {
-      const effectiveDuration = getEffectiveDuration();
-      if (effectiveDuration > 0) {
-        setCurrentTime(audio.currentTime);
-        setProgress((audio.currentTime / effectiveDuration) * 100);
+      if (totalDuration > 0 && !isDraggingRef.current) {
+        const realTime = audio.currentTime + blobTimeOffset;
+        setCurrentTime(realTime);
+        setProgress((realTime / totalDuration) * 100);
       }
     };
 
     const handleLoadedMetadata = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setDuration(audio.duration);
-      } else if (estimatedDuration > 0) {
-        setDuration(estimatedDuration);
-      }
-    };
-
-    const handleDurationChange = () => {
-      if (audio.duration && isFinite(audio.duration)) {
-        setDuration(audio.duration);
+      // Always use estimatedDuration (full track) for UI, not audio.duration (partial blob)
+      if (totalDuration > 0) {
+        setDuration(totalDuration);
       }
     };
 
     const handleEnded = () => {
+      // If a seek is actively loading, ignore — the seek will handle playback
+      if (seekLoadingRef.current) return;
+
+      if (isBlobMode) {
+        // BLOB MODE: Check if the blob includes the last segment
+        const realTime = audio.currentTime + blobTimeOffset;
+
+        if (!blobHasLastSegment) {
+          // Partial blob ended — extend by seeking slightly past current position
+          seekTo(realTime + 0.2);
+          return;
+        }
+
+        // Blob has last segment — verify we're actually near the track's end
+        if (totalDuration > 0 && realTime < totalDuration - 2) {
+          return;
+        }
+      }
+      // MSE MODE or track truly ended: advance to next track
       onPlayingChange(false);
       playNext();
     };
 
+    const handlePlaying = () => {
+      // Audio started playing — clear seek loading state
+      if (seekLoadingRef.current) {
+        console.log("[handlePlaying] clearing seekLoading");
+        seekLoadingRef.current = false;
+        setSeekLoading(false);
+      }
+    };
+
+    const handlePlay = () => onPlayingChange(true);
+    const handlePause = () => {
+      // Don't report pause if we're in the middle of a seek (blob swap causes pause)
+      if (!seekLoadingRef.current) {
+        onPlayingChange(false);
+      }
+    };
+
     audio.addEventListener("timeupdate", updateProgress);
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
-    audio.addEventListener("durationchange", handleDurationChange);
     audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
 
     return () => {
       audio.removeEventListener("timeupdate", updateProgress);
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      audio.removeEventListener("durationchange", handleDurationChange);
       audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
     };
-  }, [isReady, estimatedDuration, audioRef]);
+  }, [estimatedDuration, blobTimeOffset, blobHasLastSegment, isBlobMode, audioRef]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || seekLoadingRef.current) return;
 
-    if (isPlaying) {
+    if (!audio.paused) {
       audio.pause();
-      onPlayingChange(false);
     } else {
-      audio.play().then(() => onPlayingChange(true)).catch(() => {});
+      audio.play().catch(() => {});
     }
   };
 
@@ -283,6 +339,8 @@ export function PlayerView({
     setProgress(0);
     setCurrentTime(0);
     setDuration(0);
+    seekLoadingRef.current = false;
+    setSeekLoading(false);
 
     const success = await loadSegmentedTrack(track.id);
 
@@ -315,20 +373,37 @@ export function PlayerView({
     playTrack(tracks[prevIndex]);
   };
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const performSeek = (percent: number) => {
     const audio = audioRef.current;
     const effectiveDuration = duration || estimatedDuration;
     if (!audio || !effectiveDuration || effectiveDuration <= 0) return;
 
+    const clampedPercent = Math.max(0, Math.min(1, percent));
+    const newTime = clampedPercent * effectiveDuration;
+
+    // Show loading spinner and freeze the progress bar at target
+    seekLoadingRef.current = true;
+    setSeekLoading(true);
+    setProgress(clampedPercent * 100);
+    setCurrentTime(newTime);
+
+    // Safety: clear seek loading if it takes too long (e.g., autoplay blocked on iOS)
+    setTimeout(() => {
+      if (seekLoadingRef.current) {
+        seekLoadingRef.current = false;
+        setSeekLoading(false);
+      }
+    }, 10000);
+
+    // Perform the seek — the hook downloads required segment and resumes playback
+    seekTo(newTime);
+  };
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDragging) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const newTime = percent * effectiveDuration;
-
-    seekTo(newTime);
-
-    if (!isPlaying) {
-      audio.play().then(() => onPlayingChange(true)).catch(() => {});
-    }
+    performSeek(percent);
   };
 
   const handleProgressHover = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -339,6 +414,92 @@ export function PlayerView({
 
   const handleProgressLeave = () => {
     setHoverPercent(null);
+  };
+
+  // Mouse drag handlers for desktop
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const bar = progressBarRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    isDraggingRef.current = true;
+    dragPercentRef.current = percent;
+    setIsDragging(true);
+    setDragPercent(percent);
+    setHoverPercent(null);
+
+    // Create handlers and store in refs for cleanup
+    const moveHandler = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const barEl = progressBarRef.current;
+      if (!barEl) return;
+      const r = barEl.getBoundingClientRect();
+      const p = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+      dragPercentRef.current = p;
+      setDragPercent(p);
+    };
+
+    const upHandler = () => {
+      if (mouseMoveHandlerRef.current) {
+        document.removeEventListener("mousemove", mouseMoveHandlerRef.current);
+      }
+      if (mouseUpHandlerRef.current) {
+        document.removeEventListener("mouseup", mouseUpHandlerRef.current);
+      }
+      mouseMoveHandlerRef.current = null;
+      mouseUpHandlerRef.current = null;
+
+      const finalPercent = dragPercentRef.current;
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      setHoverPercent(null);
+      performSeek(finalPercent);
+    };
+
+    mouseMoveHandlerRef.current = moveHandler;
+    mouseUpHandlerRef.current = upHandler;
+    document.addEventListener("mousemove", moveHandler);
+    document.addEventListener("mouseup", upHandler);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault(); // Prevent mouse events from firing
+    setHoverPercent(null); // Clear hover tooltip
+    const bar = progressBarRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const touch = e.touches[0];
+    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    isDraggingRef.current = true;
+    dragPercentRef.current = percent;
+    setIsDragging(true);
+    setDragPercent(percent);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    e.preventDefault(); // Prevent scrolling while dragging
+    const bar = progressBarRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const touch = e.touches[0];
+    const percent = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    dragPercentRef.current = percent;
+    setDragPercent(percent);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.preventDefault(); // Prevent mouse events from firing after touch
+    setHoverPercent(null); // Clear hover tooltip
+    if (!isDraggingRef.current) {
+      setIsDragging(false); // Ensure dragging is cleared even if ref wasn't set
+      return;
+    }
+    const finalPercent = dragPercentRef.current;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    performSeek(finalPercent);
   };
 
   const formatTime = (seconds: number) => {
@@ -468,13 +629,19 @@ export function PlayerView({
             )}
 
             {/* Progress Bar */}
-            <div>
+            <div className="py-2 sm:py-0">
               <div
-                className="group relative h-2 rounded-full cursor-pointer"
+                ref={progressBarRef}
+                className="group relative h-2 rounded-full cursor-pointer touch-none"
                 style={{ backgroundColor: "color-mix(in srgb, var(--color-accent) 20%, transparent)" }}
                 onClick={seek}
+                onMouseDown={handleMouseDown}
                 onMouseMove={handleProgressHover}
                 onMouseLeave={handleProgressLeave}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
               >
                 {/* Download progress indicator */}
                 {loadingProgress > 0 && (
@@ -486,12 +653,15 @@ export function PlayerView({
                 {/* Played progress */}
                 <div
                   className="absolute top-0 bottom-0 rounded-full"
-                  style={{ width: `${progress}%`, backgroundColor: "var(--color-accent)" }}
+                  style={{ width: `${isDragging ? dragPercent * 100 : progress}%`, backgroundColor: "var(--color-accent)" }}
                 />
-                {/* Position ball */}
+                {/* Scrubber - always visible on touch devices, hover on desktop */}
                 <div
-                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
-                  style={{ left: `calc(${progress}% - 6px)`, backgroundColor: "var(--color-accent)" }}
+                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
+                  style={{
+                    left: `calc(${isDragging ? dragPercent * 100 : progress}% - 8px)`,
+                    backgroundColor: "var(--color-accent)",
+                  }}
                 />
                 {/* Hover tooltip */}
                 {hoverPercent !== null && (duration || estimatedDuration) > 0 && (
@@ -500,6 +670,15 @@ export function PlayerView({
                     style={{ left: `${hoverPercent * 100}%`, color: "var(--color-text-primary)" }}
                   >
                     {formatTime(hoverPercent * (duration || estimatedDuration))}
+                  </div>
+                )}
+                {/* Drag tooltip */}
+                {isDragging && (duration || estimatedDuration) > 0 && (
+                  <div
+                    className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-xs pointer-events-none"
+                    style={{ left: `${dragPercent * 100}%`, color: "var(--color-text-primary)" }}
+                  >
+                    {formatTime(dragPercent * (duration || estimatedDuration))}
                   </div>
                 )}
               </div>
@@ -513,7 +692,7 @@ export function PlayerView({
             <div className="flex justify-center items-center gap-6">
               <button
                 onClick={playPrev}
-                className="p-3 transition hover:opacity-80"
+                className="p-3 transition hover:opacity-80 cursor-pointer"
                 style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
@@ -523,14 +702,14 @@ export function PlayerView({
 
               <button
                 onClick={togglePlay}
-                className="p-4 hover:scale-105 transition"
+                className="p-4 hover:scale-105 transition cursor-pointer"
                 style={{
                   borderRadius: `${cardStyles?.playButtonBorderRadius ?? 50}%`,
                   backgroundColor: "var(--color-primary)",
                   color: "var(--color-primary-text)",
                 }}
               >
-                {isLoading ? (
+                {isLoading || seekLoading ? (
                   <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -548,7 +727,7 @@ export function PlayerView({
 
               <button
                 onClick={playNext}
-                className="p-3 transition hover:opacity-80"
+                className="p-3 transition hover:opacity-80 cursor-pointer"
                 style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">

@@ -55,6 +55,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     select: {
       id: true,
       filename: true,
+      duration: true,
     },
   });
 
@@ -63,7 +64,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   }
 
   // Generate manifest with segment tokens
-  const manifest = await generateManifest(trackId, track.filename);
+  const manifest = await generateManifest(trackId, track.filename, track.duration);
 
   if (!manifest) {
     return Response.json({ error: "Failed to generate manifest" }, { status: 500 });

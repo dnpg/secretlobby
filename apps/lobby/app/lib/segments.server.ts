@@ -17,11 +17,13 @@ export interface Manifest {
   segmentSize: number;
   segments: Segment[];
   expiresAt: number;
+  duration?: number; // Track duration in seconds (from DB metadata)
 }
 
 export async function generateManifest(
   trackId: string,
-  filename: string
+  filename: string,
+  duration?: number | null
 ): Promise<Manifest | null> {
   try {
     const fileInfo = await getFileInfo(filename);
@@ -56,6 +58,7 @@ export async function generateManifest(
       segmentSize: SEGMENT_SIZE,
       segments,
       expiresAt: Date.now() + 55000, // Manifest expires in 55 seconds
+      duration: duration ?? undefined,
     };
   } catch (err) {
     console.error("[segments] generateManifest error:", err);

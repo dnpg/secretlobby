@@ -13,6 +13,7 @@ interface Manifest {
   segmentSize: number;
   segments: Segment[];
   expiresAt: number;
+  duration?: number; // Actual track duration in seconds (from DB)
 }
 
 // Estimate bytes per second for MP3 (default 128kbps)
@@ -33,10 +34,17 @@ function canUseMSE(): boolean {
 
 export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | null>) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isSeeking, setIsSeeking] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [estimatedDuration, setEstimatedDuration] = useState(0);
+  const [isAllSegmentsCached, setIsAllSegmentsCached] = useState(false);
+  // Blob mode: time offset of the current blob's first segment relative to track start
+  const [blobTimeOffset, setBlobTimeOffset] = useState(0);
+  // Whether the current blob includes the track's last segment
+  const [blobHasLastSegment, setBlobHasLastSegment] = useState(false);
+  const [isBlobMode, setIsBlobMode] = useState(false);
 
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
@@ -59,6 +67,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   const isAppendingRef = useRef(false);
   // Separate abort controller for the current fetch (so we can abort one fetch without killing everything)
   const fetchAbortRef = useRef<AbortController | null>(null);
+  // Blob mode: which segment the current blob starts from
+  const blobStartIndexRef = useRef<number>(0);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -91,6 +101,11 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     setIsReady(false);
     setLoadingProgress(0);
     setEstimatedDuration(0);
+    setIsAllSegmentsCached(false);
+    setBlobTimeOffset(0);
+    setBlobHasLastSegment(false);
+    setIsBlobMode(false);
+    blobStartIndexRef.current = 0;
   }, []);
 
   // Fetch manifest
@@ -137,31 +152,66 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
 
   // --- Blob mode helpers (iOS fallback) ---
 
-  // Build a Blob from all cached segments in order
-  const buildBlobFromCache = useCallback((): Blob | null => {
+  // Get the duration of a single segment in seconds
+  const getSegmentDuration = useCallback((): number => {
+    const manifest = manifestRef.current;
+    if (!manifest) return 5; // fallback
+    if (manifest.duration && manifest.duration > 0) {
+      return manifest.duration / manifest.segments.length;
+    }
+    // Fallback: estimate from bytes (assumes 128kbps)
+    return manifest.segmentSize / DEFAULT_BYTES_PER_SEC;
+  }, []);
+
+  // Get the start time (seconds) of a segment
+  const getSegmentStartTime = useCallback((index: number): number => {
+    return index * getSegmentDuration();
+  }, [getSegmentDuration]);
+
+  // Calculate which segment index a time position falls in
+  const timeToSegmentIndex = useCallback((time: number): number => {
+    const manifest = manifestRef.current;
+    if (!manifest) return 0;
+    const segDuration = getSegmentDuration();
+    const index = Math.floor(time / segDuration);
+    return Math.max(0, Math.min(index, manifest.segments.length - 1));
+  }, [getSegmentDuration]);
+
+  // Get full track duration (from manifest metadata or estimate)
+  const getTrackDuration = useCallback((): number => {
+    const manifest = manifestRef.current;
+    if (!manifest) return 0;
+    if (manifest.duration && manifest.duration > 0) return manifest.duration;
+    return manifest.totalSize / DEFAULT_BYTES_PER_SEC;
+  }, []);
+
+  // Build a Blob from cached segments starting at startIndex, going forward until a gap
+  const buildBlobFromIndex = useCallback((startIndex: number): { blob: Blob; endIndex: number } | null => {
     const manifest = manifestRef.current;
     if (!manifest) return null;
 
     const parts: ArrayBuffer[] = [];
-    for (let i = 0; i < manifest.segments.length; i++) {
+    let endIndex = startIndex - 1;
+    for (let i = startIndex; i < manifest.segments.length; i++) {
       const data = segmentCacheRef.current.get(i);
       if (!data) break; // Stop at first gap
       parts.push(data);
+      endIndex = i;
     }
     if (parts.length === 0) return null;
-    return new Blob(parts, { type: "audio/mpeg" });
+    return { blob: new Blob(parts, { type: "audio/mpeg" }), endIndex };
   }, []);
 
-  // Update the audio element with the current blob
-  const updateBlobSrc = useCallback((preservePlayback: boolean) => {
+  // Set the audio element's source to a blob starting from startIndex
+  const setBlobSrc = useCallback((startIndex: number, seekTimeInBlob?: number, autoPlay?: boolean) => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const blob = buildBlobFromCache();
-    if (!blob) return;
+    const result = buildBlobFromIndex(startIndex);
+    if (!result) return;
 
-    const savedTime = audio.currentTime;
-    const wasPlaying = !audio.paused;
+    const { blob, endIndex } = result;
+    const manifest = manifestRef.current;
 
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
@@ -170,11 +220,18 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     objectUrlRef.current = url;
     audio.src = url;
 
-    if (preservePlayback && savedTime > 0) {
+    blobStartIndexRef.current = startIndex;
+    const offset = getSegmentStartTime(startIndex);
+    setBlobTimeOffset(offset);
+    setBlobHasLastSegment(manifest ? endIndex >= manifest.segments.length - 1 : false);
+
+    if (seekTimeInBlob !== undefined || autoPlay) {
       const onCanPlay = () => {
         audio.removeEventListener("canplay", onCanPlay);
-        audio.currentTime = savedTime;
-        if (wasPlaying) {
+        if (seekTimeInBlob !== undefined && seekTimeInBlob > 0) {
+          audio.currentTime = seekTimeInBlob;
+        }
+        if (autoPlay) {
           audio.play().catch(() => {});
         }
       };
@@ -182,9 +239,9 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     }
 
     audio.load();
-  }, [audioRef, buildBlobFromCache]);
+  }, [audioRef, buildBlobFromIndex, getSegmentStartTime]);
 
-  // Process download queue in blob mode
+  // Process download queue in blob mode — simple background downloader
   const processBlobQueue = useCallback(async () => {
     if (isDownloadingRef.current) return;
     isDownloadingRef.current = true;
@@ -220,17 +277,15 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       segmentCacheRef.current.set(segmentIndex, data);
       const totalCached = segmentCacheRef.current.size;
       setLoadingProgress((totalCached / manifest.segments.length) * 100);
+      if (totalCached === manifest.segments.length) {
+        setIsAllSegmentsCached(true);
+      }
 
       await new Promise((r) => setTimeout(r, 10));
     }
 
-    // All segments downloaded - update blob with complete file
-    if (segmentCacheRef.current.size === manifest.segments.length) {
-      updateBlobSrc(true);
-    }
-
     isDownloadingRef.current = false;
-  }, [fetchSegment, fetchManifest, updateBlobSrc]);
+  }, [fetchSegment, fetchManifest]);
 
   // Load track in blob mode (iOS fallback)
   const loadTrackBlob = useCallback(async (trackId: string, preloadToken?: string) => {
@@ -240,6 +295,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     currentTrackIdRef.current = trackId;
     preloadTokenRef.current = preloadToken || null;
     useBlobModeRef.current = true;
+    setIsBlobMode(true);
     setIsLoading(true);
     setError(null);
     setIsReady(false);
@@ -253,11 +309,14 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       }
       manifestRef.current = manifest;
 
-      const estDuration = manifest.totalSize / DEFAULT_BYTES_PER_SEC;
-      setEstimatedDuration(estDuration);
+      // Use actual duration from DB if available, otherwise estimate
+      const trackDuration = manifest.duration && manifest.duration > 0
+        ? manifest.duration
+        : manifest.totalSize / DEFAULT_BYTES_PER_SEC;
+      setEstimatedDuration(trackDuration);
 
-      // Download initial segments
-      const initialSegments = Math.min(3, manifest.segments.length);
+      // Download initial segments (first 2 for faster start)
+      const initialSegments = Math.min(2, manifest.segments.length);
 
       for (let i = 0; i < initialSegments; i++) {
         if (abortControllerRef.current?.signal.aborted) break;
@@ -269,8 +328,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         }
       }
 
-      // Create initial blob and set as audio src
-      updateBlobSrc(false);
+      // Create initial blob starting from segment 0
+      setBlobSrc(0);
 
       setIsReady(true);
       setIsLoading(false);
@@ -292,7 +351,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       setIsLoading(false);
       return false;
     }
-  }, [cleanup, fetchManifest, fetchSegment, updateBlobSrc, processBlobQueue]);
+  }, [cleanup, fetchManifest, fetchSegment, setBlobSrc, processBlobQueue]);
 
   // --- MSE mode helpers (desktop) ---
 
@@ -361,14 +420,6 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       }
     });
   }, [waitForBuffer]);
-
-  // Calculate which segment index a time position falls in
-  const timeToSegmentIndex = useCallback((time: number): number => {
-    const manifest = manifestRef.current;
-    if (!manifest) return 0;
-    const byteOffset = Math.floor(time * DEFAULT_BYTES_PER_SEC);
-    return Math.min(Math.floor(byteOffset / manifest.segmentSize), manifest.segments.length - 1);
-  }, []);
 
   // Calculate the time offset for a segment index
   const segmentIndexToTime = useCallback((index: number): number => {
@@ -479,6 +530,9 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
 
       const totalCached = segmentCacheRef.current.size;
       setLoadingProgress((totalCached / manifest.segments.length) * 100);
+      if (totalCached === manifest.segments.length) {
+        setIsAllSegmentsCached(true);
+      }
 
       // Try to flush to the source buffer
       await flushAppendQueue();
@@ -553,9 +607,80 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
 
     if (!audio || !manifest) return;
 
-    // In blob mode, just set currentTime directly (browser handles seeking in the blob)
+    // In blob mode: build blob from target segment forward (no need for contiguous from 0)
     if (useBlobModeRef.current) {
-      audio.currentTime = time;
+      const targetSegment = timeToSegmentIndex(time);
+      const segStartTime = getSegmentStartTime(targetSegment);
+      const offsetInSegment = time - segStartTime; // How far into the target segment
+
+
+      // Abort any in-progress fetch to reprioritize
+      fetchAbortRef.current?.abort();
+      isDownloadingRef.current = false;
+
+      // Determine how many contiguous segments we have from target onwards
+      let contiguousEnd = targetSegment - 1;
+      for (let i = targetSegment; i < manifest.segments.length; i++) {
+        if (segmentCacheRef.current.has(i)) {
+          contiguousEnd = i;
+        } else {
+          break;
+        }
+      }
+      const hasEnoughBuffer = contiguousEnd >= targetSegment + 2; // At least 3 segments (~15s)
+
+      if (hasEnoughBuffer) {
+        // We have enough cached segments — play immediately
+        setBlobSrc(targetSegment, offsetInSegment, true);
+        setIsSeeking(false);
+      } else {
+        // Need to fetch more segments for smooth playback
+        audio.pause();
+        setIsSeeking(true);
+
+        // Fetch target + next 4 segments in parallel (gives ~25s buffer)
+        const segmentsToFetch: number[] = [];
+        for (let i = targetSegment; i < Math.min(targetSegment + 5, manifest.segments.length); i++) {
+          if (!segmentCacheRef.current.has(i)) {
+            segmentsToFetch.push(i);
+          }
+        }
+
+        // Fetch all needed segments in parallel
+        const fetchPromises = segmentsToFetch.map(async (idx) => {
+          const segment = manifest.segments[idx];
+          const data = await fetchSegment(currentTrackIdRef.current!, segment);
+          if (data) {
+            segmentCacheRef.current.set(idx, data);
+          }
+          return { idx, success: !!data };
+        });
+
+        await Promise.all(fetchPromises);
+
+        const totalCached = segmentCacheRef.current.size;
+        setLoadingProgress((totalCached / manifest.segments.length) * 100);
+        if (totalCached === manifest.segments.length) {
+          setIsAllSegmentsCached(true);
+        }
+
+        // Now build blob with all available segments from target
+        if (segmentCacheRef.current.has(targetSegment)) {
+          setBlobSrc(targetSegment, offsetInSegment, true);
+        }
+        setIsSeeking(false);
+      }
+
+      // Rebuild background download queue: from where we left off, then earlier segments
+      const newQueue: number[] = [];
+      for (let i = targetSegment; i < manifest.segments.length; i++) {
+        if (!segmentCacheRef.current.has(i)) newQueue.push(i);
+      }
+      for (let i = 0; i < targetSegment; i++) {
+        if (!segmentCacheRef.current.has(i)) newQueue.push(i);
+      }
+      downloadQueueRef.current = newQueue;
+      processBlobQueue();
       return;
     }
 
@@ -585,7 +710,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     // Set currentTime immediately - the audio element will wait/stall
     // until data is buffered at this position (browser handles this gracefully)
     audio.currentTime = time;
-  }, [audioRef, isTimeBuffered, timeToSegmentIndex, rebuildBufferFrom, buildQueueFrom, processQueue]);
+  }, [audioRef, isTimeBuffered, timeToSegmentIndex, getSegmentStartTime, setBlobSrc, fetchSegment, rebuildBufferFrom, buildQueueFrom, processQueue, processBlobQueue]);
 
   // Resume downloading remaining segments (after preload-only load)
   const continueDownload = useCallback(() => {
@@ -643,8 +768,10 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       }
       manifestRef.current = manifest;
 
-      // Estimate duration from file size (assuming 128kbps MP3)
-      const estDuration = manifest.totalSize / DEFAULT_BYTES_PER_SEC;
+      // Use actual duration from DB if available, otherwise estimate from bytes
+      const estDuration = manifest.duration && manifest.duration > 0
+        ? manifest.duration
+        : manifest.totalSize / DEFAULT_BYTES_PER_SEC;
       setEstimatedDuration(estDuration);
 
       // Create MediaSource
@@ -742,9 +869,14 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     cleanup,
     seekTo,
     isLoading,
+    isSeeking,
     loadingProgress,
     isReady,
     error,
     estimatedDuration,
+    isAllSegmentsCached,
+    blobTimeOffset,
+    blobHasLastSegment,
+    isBlobMode,
   };
 }

@@ -669,10 +669,15 @@ export default function LobbyIndex() {
           audioRef,
           loadTrack: audioHook.loadTrack,
           isLoading: audioHook.isLoading,
+          isSeeking: audioHook.isSeeking,
           loadingProgress: audioHook.loadingProgress,
           isReady: audioHook.isReady,
           seekTo: audioHook.seekTo,
           estimatedDuration: audioHook.estimatedDuration,
+          isAllSegmentsCached: audioHook.isAllSegmentsCached,
+          blobTimeOffset: audioHook.blobTimeOffset,
+          blobHasLastSegment: audioHook.blobHasLastSegment,
+          isBlobMode: audioHook.isBlobMode,
         }}
         isPlaying={isPlaying}
         onPlayingChange={setIsPlaying}
