@@ -20,6 +20,7 @@ export default [
     route("theme", "routes/_layout.theme.tsx"),
     route("login-page", "routes/_layout.login.tsx"),
     route("social", "routes/_layout.social.tsx"),
+    route("technical-info", "routes/_layout.technical-info.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
   ]),
 ] satisfies RouteConfig;

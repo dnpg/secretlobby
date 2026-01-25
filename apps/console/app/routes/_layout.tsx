@@ -58,6 +58,7 @@ const navItems = [
   { to: "theme", label: "Theme" },
   { to: "login-page", label: "Login" },
   { to: "social", label: "Social" },
+  { to: "technical-info", label: "Tech Info" },
   { to: "settings", label: "Settings" },
 ];
 

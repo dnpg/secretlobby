@@ -291,6 +291,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       cardStyles: computeCardStyles(defaultTheme),
       bodyBg: getBodyBgCSS(defaultTheme),
       socialLinksSettings: null as SocialLinksSettings | null,
+      technicalInfo: null as { title: string; content: string } | null,
     };
   }
 
@@ -324,6 +325,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       cardStyles: computeCardStyles(defaultTheme),
       bodyBg: getBodyBgCSS(defaultTheme),
       socialLinksSettings: null as SocialLinksSettings | null,
+      technicalInfo: null as { title: string; content: string } | null,
     };
   }
 
@@ -341,6 +343,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let loginLogoImageUrl: string | null = null;
   let themeSettings: ThemeSettings = defaultTheme;
   let socialLinksSettings: SocialLinksSettings | null = null;
+  let technicalInfo: { title: string; content: string } | null = null;
 
   if (account.settings && typeof account.settings === "object") {
     const accountSettings = account.settings as Record<string, unknown>;
@@ -352,6 +355,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
     if (accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
       socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
+    }
+    if (accountSettings.technicalInfo && typeof accountSettings.technicalInfo === "object") {
+      const ti = accountSettings.technicalInfo as { title?: string; content?: string };
+      if (ti.title || ti.content) {
+        technicalInfo = { title: ti.title || "", content: ti.content || "" };
+      }
     }
   }
   if (loginPageSettings.logoType === "image" && loginPageSettings.logoImage) {
@@ -429,6 +438,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     cardStyles,
     bodyBg,
     socialLinksSettings,
+    technicalInfo,
   };
 }
 
@@ -560,7 +570,7 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings } = data;
+  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
 
   // Password required state
   if (requiresPassword) {
@@ -683,6 +693,7 @@ export default function LobbyIndex() {
         onPlayingChange={setIsPlaying}
         cardStyles={cardStyles}
         socialLinksSettings={socialLinksSettings}
+        technicalInfo={technicalInfo}
       />
       {/* Audio element */}
       <audio ref={audioRef} style={{ display: "none" }} />

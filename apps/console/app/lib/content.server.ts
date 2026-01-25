@@ -261,11 +261,17 @@ export type { SocialLink, SocialLinksSettings } from "./social-platforms";
 import { defaultSocialLinksSettings, type SocialLinksSettings } from "./social-platforms";
 export { defaultSocialLinksSettings, SOCIAL_PLATFORMS } from "./social-platforms";
 
+interface TechnicalInfo {
+  title: string;
+  content: string;
+}
+
 interface AccountSettings {
   theme?: ThemeSettings;
   allowUserColorMode?: boolean;
   loginPage?: Partial<LoginPageSettings>;
   socialLinks?: SocialLinksSettings;
+  technicalInfo?: TechnicalInfo;
   [key: string]: unknown;
 }
 
@@ -411,4 +417,23 @@ export async function getSocialLinksSettings(accountId: string): Promise<SocialL
 
 export async function updateSocialLinksSettings(accountId: string, socialLinks: SocialLinksSettings): Promise<void> {
   await updateAccountSettings(accountId, { socialLinks });
+}
+
+export interface TechnicalInfoSettings {
+  title: string;
+  content: string;
+}
+
+export const defaultTechnicalInfoSettings: TechnicalInfoSettings = {
+  title: "",
+  content: "",
+};
+
+export async function getTechnicalInfoSettings(accountId: string): Promise<TechnicalInfoSettings> {
+  const settings = await getAccountSettings(accountId);
+  return { ...defaultTechnicalInfoSettings, ...settings.technicalInfo };
+}
+
+export async function updateTechnicalInfoSettings(accountId: string, technicalInfo: TechnicalInfoSettings): Promise<void> {
+  await updateAccountSettings(accountId, { technicalInfo });
 }

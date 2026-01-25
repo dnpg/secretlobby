@@ -167,6 +167,11 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
   );
 });
 
+export interface TechnicalInfo {
+  title: string;
+  content: string;
+}
+
 interface PlayerViewProps {
   tracks: Track[];
   imageUrls: ImageUrls;
@@ -177,6 +182,7 @@ interface PlayerViewProps {
   onPlayingChange: (playing: boolean) => void;
   cardStyles?: CardStyles;
   socialLinksSettings?: SocialLinksSettings | null;
+  technicalInfo?: TechnicalInfo | null;
 }
 
 export function PlayerView({
@@ -189,6 +195,7 @@ export function PlayerView({
   onPlayingChange,
   cardStyles,
   socialLinksSettings,
+  technicalInfo,
 }: PlayerViewProps) {
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, estimatedDuration, isAllSegmentsCached, blobTimeOffset, blobHasLastSegment, isBlobMode } = audio;
 
@@ -819,6 +826,24 @@ export function PlayerView({
                 })}
               </div>
             </CardContainer>
+
+            {/* Technical Info */}
+            {technicalInfo && (technicalInfo.title || technicalInfo.content) && (
+              <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
+                {technicalInfo.title && (
+                  <h3 className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>
+                    {technicalInfo.title}
+                  </h3>
+                )}
+                {technicalInfo.content && (
+                  <div
+                    className="text-sm prose-content"
+                    style={{ color: cardStyles?.contentColor }}
+                    dangerouslySetInnerHTML={{ __html: technicalInfo.content }}
+                  />
+                )}
+              </CardContainer>
+            )}
           </div>
 
           {/* Right Column - Sidebar */}
