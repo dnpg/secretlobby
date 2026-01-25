@@ -613,6 +613,30 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       const segStartTime = getSegmentStartTime(targetSegment);
       const offsetInSegment = time - segStartTime; // How far into the target segment
 
+      // Check if target is within the current blob's range - if so, just seek directly
+      const currentBlobStart = blobStartIndexRef.current;
+      const currentBlobOffset = getSegmentStartTime(currentBlobStart);
+
+      // Find end of current blob by checking contiguous cached segments from blobStartIndexRef
+      let currentBlobEnd = currentBlobStart - 1;
+      for (let i = currentBlobStart; i < manifest.segments.length; i++) {
+        if (segmentCacheRef.current.has(i)) {
+          currentBlobEnd = i;
+        } else {
+          break;
+        }
+      }
+
+      // If target is within current blob, just seek directly (instant, no rebuild needed)
+      if (targetSegment >= currentBlobStart && targetSegment <= currentBlobEnd) {
+        const blobRelativeTime = time - currentBlobOffset;
+        audio.currentTime = blobRelativeTime;
+        // Resume playback if paused
+        if (audio.paused) {
+          audio.play().catch(() => {});
+        }
+        return;
+      }
 
       // Abort any in-progress fetch to reprioritize
       fetchAbortRef.current?.abort();

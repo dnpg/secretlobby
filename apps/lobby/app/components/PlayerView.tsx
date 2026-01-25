@@ -295,7 +295,15 @@ export function PlayerView({
     const handlePlaying = () => {
       // Audio started playing — clear seek loading state
       if (seekLoadingRef.current) {
-        console.log("[handlePlaying] clearing seekLoading");
+        seekLoadingRef.current = false;
+        setSeekLoading(false);
+      }
+    };
+
+    const handleSeeked = () => {
+      // Seek completed — clear seek loading state
+      // This handles instant seeks within cached blob where 'playing' doesn't re-fire
+      if (seekLoadingRef.current) {
         seekLoadingRef.current = false;
         setSeekLoading(false);
       }
@@ -313,6 +321,7 @@ export function PlayerView({
     audio.addEventListener("loadedmetadata", handleLoadedMetadata);
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("playing", handlePlaying);
+    audio.addEventListener("seeked", handleSeeked);
     audio.addEventListener("play", handlePlay);
     audio.addEventListener("pause", handlePause);
 
@@ -321,6 +330,7 @@ export function PlayerView({
       audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("playing", handlePlaying);
+      audio.removeEventListener("seeked", handleSeeked);
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("pause", handlePause);
     };
@@ -402,7 +412,7 @@ export function PlayerView({
         seekLoadingRef.current = false;
         setSeekLoading(false);
       }
-    }, 10000);
+    }, 3000);
 
     // Perform the seek — the hook downloads required segment and resumes playback
     seekTo(newTime);
