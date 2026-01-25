@@ -34,6 +34,7 @@ export interface AudioControls {
   blobTimeOffset: number;
   blobHasLastSegment: boolean;
   isBlobMode: boolean;
+  initialWaveformPeaks: number[] | null;
 }
 
 export interface CardStyles {
@@ -618,6 +619,8 @@ export function PlayerView({
                 <AudioVisualizer
                   audioElement={audioElement}
                   isPlaying={isPlaying}
+                  currentTime={currentTime}
+                  initialWaveformPeaks={audio.initialWaveformPeaks}
                   borderShow={cardStyles?.visualizerBorderShow}
                   borderColor={cardStyles?.visualizerBorderColor}
                   borderRadius={cardStyles?.visualizerBorderRadius}
@@ -629,6 +632,8 @@ export function PlayerView({
                 <AudioVisualizer
                   audioElement={audioElement}
                   isPlaying={isPlaying}
+                  currentTime={currentTime}
+                  initialWaveformPeaks={audio.initialWaveformPeaks}
                   borderShow={cardStyles?.visualizerBorderShow}
                   borderColor={cardStyles?.visualizerBorderColor}
                   borderRadius={cardStyles?.visualizerBorderRadius}

@@ -45,6 +45,8 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
   // Whether the current blob includes the track's last segment
   const [blobHasLastSegment, setBlobHasLastSegment] = useState(false);
   const [isBlobMode, setIsBlobMode] = useState(false);
+  // Initial waveform peaks extracted from first segment (for visualizer before playback)
+  const [initialWaveformPeaks, setInitialWaveformPeaks] = useState<number[] | null>(null);
 
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
@@ -105,7 +107,46 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     setBlobTimeOffset(0);
     setBlobHasLastSegment(false);
     setIsBlobMode(false);
+    setInitialWaveformPeaks(null);
     blobStartIndexRef.current = 0;
+  }, []);
+
+  // Extract waveform peaks from audio data for visualizer initial state
+  const extractWaveformPeaks = useCallback(async (audioData: ArrayBuffer): Promise<number[] | null> => {
+    try {
+      // Create offline audio context for decoding
+      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const audioBuffer = await audioContext.decodeAudioData(audioData.slice(0));
+
+      // Get the channel data (mono or first channel)
+      const channelData = audioBuffer.getChannelData(0);
+
+      // Calculate peaks - we want 64 bars worth of data (matching visualizer's halfBars * 2)
+      const numPeaks = 64;
+      const samplesPerPeak = Math.floor(channelData.length / numPeaks);
+      const peaks: number[] = [];
+
+      for (let i = 0; i < numPeaks; i++) {
+        let sum = 0;
+        const start = i * samplesPerPeak;
+        const end = Math.min(start + samplesPerPeak, channelData.length);
+
+        // Calculate RMS for this chunk
+        for (let j = start; j < end; j++) {
+          sum += channelData[j] * channelData[j];
+        }
+        const rms = Math.sqrt(sum / (end - start));
+        // Normalize to 0-255 range (matching visualizer's data format)
+        const normalizedValue = Math.min(255, Math.floor(rms * 255 * 3));
+        peaks.push(normalizedValue);
+      }
+
+      await audioContext.close();
+      return peaks;
+    } catch (e) {
+      console.error("Failed to extract waveform peaks:", e);
+      return null;
+    }
   }, []);
 
   // Fetch manifest
@@ -325,6 +366,13 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
         if (data) {
           segmentCacheRef.current.set(i, data);
           setLoadingProgress(((i + 1) / manifest.segments.length) * 100);
+
+          // Extract waveform peaks from first segment for initial visualizer display
+          if (i === 0) {
+            extractWaveformPeaks(data).then((peaks) => {
+              if (peaks) setInitialWaveformPeaks(peaks);
+            });
+          }
         }
       }
 
@@ -351,7 +399,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       setIsLoading(false);
       return false;
     }
-  }, [cleanup, fetchManifest, fetchSegment, setBlobSrc, processBlobQueue]);
+  }, [cleanup, fetchManifest, fetchSegment, setBlobSrc, processBlobQueue, extractWaveformPeaks]);
 
   // --- MSE mode helpers (desktop) ---
 
@@ -845,6 +893,13 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
           await appendToSourceBuffer(sourceBuffer, data);
           appendedUpToRef.current = i;
           setLoadingProgress(((i + 1) / manifest.segments.length) * 100);
+
+          // Extract waveform peaks from first segment for initial visualizer display
+          if (i === 0) {
+            extractWaveformPeaks(data).then((peaks) => {
+              if (peaks) setInitialWaveformPeaks(peaks);
+            });
+          }
         }
       }
 
@@ -871,7 +926,7 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
       setIsLoading(false);
       return false;
     }
-  }, [cleanup, fetchManifest, fetchSegment, appendToSourceBuffer, processQueue, audioRef]);
+  }, [cleanup, fetchManifest, fetchSegment, appendToSourceBuffer, processQueue, audioRef, extractWaveformPeaks]);
 
   // Main loadTrack - picks MSE or blob based on browser support
   const loadTrack = useCallback(async (trackId: string, preloadToken?: string) => {
@@ -902,5 +957,6 @@ export function useSegmentedAudio(audioRef: React.RefObject<HTMLAudioElement | n
     blobTimeOffset,
     blobHasLastSegment,
     isBlobMode,
+    initialWaveformPeaks,
   };
 }
