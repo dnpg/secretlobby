@@ -572,16 +572,18 @@ export default function LobbyIndex() {
 
   const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
 
-  // Password required state
-  if (requiresPassword) {
-    const lp = loginPageSettings;
+  // Compute content based on authentication state
+  const lp = loginPageSettings;
+  const loginTitle = lp.title || null;
+  const loginDescription = lp.description || null;
+  const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
+  const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
 
-    // Use login page settings title/description if set, otherwise fall back to lobby data
-    const title = lp.title || null;
-    const description = lp.description || null;
-
-    return (
-      <>
+  // Single return with conditional content - audio element always at the same position
+  return (
+    <>
+      {requiresPassword ? (
+        // Login page content
         <div
           className="min-h-screen flex items-center justify-center"
           style={{ backgroundColor: lp.bgColor }}
@@ -606,14 +608,14 @@ export default function LobbyIndex() {
                     <img src={loginLogoImageUrl} alt="" className="max-w-[180px] max-h-[60px] object-contain" />
                   </div>
                 )}
-                {title && (
+                {loginTitle && (
                   <h1 className="text-2xl font-bold" style={{ color: lp.textColor }}>
-                    {title}
+                    {loginTitle}
                   </h1>
                 )}
-                {description && (
+                {loginDescription && (
                   <p className="mt-2" style={{ color: lp.textColor, opacity: 0.7 }}>
-                    {description}
+                    {loginDescription}
                   </p>
                 )}
               </div>
@@ -658,46 +660,39 @@ export default function LobbyIndex() {
             </div>
           </div>
         </div>
-        {/* Audio element persists even on login page */}
-        <audio ref={audioRef} style={{ display: "none" }} />
-      </>
-    );
-  }
-
-  // Authenticated state - show player
-  const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
-  const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
-
-  return (
-    <div style={data.themeVars as React.CSSProperties}>
-      <PlayerView
-        tracks={tracks}
-        imageUrls={imageUrls}
-        bandName={bandName}
-        bandDescription={bandDescription}
-        audio={{
-          audioRef,
-          loadTrack: audioHook.loadTrack,
-          isLoading: audioHook.isLoading,
-          isSeeking: audioHook.isSeeking,
-          loadingProgress: audioHook.loadingProgress,
-          isReady: audioHook.isReady,
-          seekTo: audioHook.seekTo,
-          estimatedDuration: audioHook.estimatedDuration,
-          isAllSegmentsCached: audioHook.isAllSegmentsCached,
-          blobTimeOffset: audioHook.blobTimeOffset,
-          blobHasLastSegment: audioHook.blobHasLastSegment,
-          isBlobMode: audioHook.isBlobMode,
-          initialWaveformPeaks: audioHook.initialWaveformPeaks,
-        }}
-        isPlaying={isPlaying}
-        onPlayingChange={setIsPlaying}
-        cardStyles={cardStyles}
-        socialLinksSettings={socialLinksSettings}
-        technicalInfo={technicalInfo}
-      />
-      {/* Audio element */}
+      ) : (
+        // Authenticated player content
+        <div style={data.themeVars as React.CSSProperties}>
+          <PlayerView
+            tracks={tracks}
+            imageUrls={imageUrls}
+            bandName={bandName}
+            bandDescription={bandDescription}
+            audio={{
+              audioRef,
+              loadTrack: audioHook.loadTrack,
+              isLoading: audioHook.isLoading,
+              isSeeking: audioHook.isSeeking,
+              loadingProgress: audioHook.loadingProgress,
+              isReady: audioHook.isReady,
+              seekTo: audioHook.seekTo,
+              estimatedDuration: audioHook.estimatedDuration,
+              isAllSegmentsCached: audioHook.isAllSegmentsCached,
+              blobTimeOffset: audioHook.blobTimeOffset,
+              blobHasLastSegment: audioHook.blobHasLastSegment,
+              isBlobMode: audioHook.isBlobMode,
+              initialWaveformPeaks: audioHook.initialWaveformPeaks,
+            }}
+            isPlaying={isPlaying}
+            onPlayingChange={setIsPlaying}
+            cardStyles={cardStyles}
+            socialLinksSettings={socialLinksSettings}
+            technicalInfo={technicalInfo}
+          />
+        </div>
+      )}
+      {/* Audio element - always rendered in the same position to persist across login */}
       <audio ref={audioRef} style={{ display: "none" }} />
-    </div>
+    </>
   );
 }
