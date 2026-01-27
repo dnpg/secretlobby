@@ -88,8 +88,9 @@ ARG PNPM_VERSION
 
 WORKDIR /app
 
-# Install security updates
-RUN apk upgrade --no-cache
+# Install security updates and FFmpeg (needed for HLS generation)
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ffmpeg
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \

@@ -211,6 +211,10 @@ model Track {
   filename String // Storage reference
   duration Int? // Duration in seconds
 
+  // HLS streaming
+  hlsReady      Boolean @default(false)
+  waveformPeaks Json? // number[] — pre-computed waveform peak amplitudes
+
   // Ordering
   position Int @default(0)
 

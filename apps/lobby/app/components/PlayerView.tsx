@@ -10,6 +10,8 @@ export interface Track {
   artist?: string | null;
   filename?: string;
   duration?: number | null;
+  hlsReady?: boolean;
+  waveformPeaks?: number[] | null;
 }
 
 export interface ImageUrls {
@@ -23,18 +25,21 @@ export interface ImageUrls {
 
 export interface AudioControls {
   audioRef: React.RefObject<HTMLAudioElement | null>;
-  loadTrack: (trackId: string, preloadToken?: string) => Promise<boolean>;
+  loadTrack: (trackId: string, preloadToken?: string, options?: { hlsReady?: boolean; duration?: number | null; waveformPeaks?: number[] | null }) => Promise<boolean>;
   isLoading: boolean;
   isSeeking: boolean;
   loadingProgress: number;
   isReady: boolean;
   seekTo: (time: number) => Promise<void>;
+  cancelAutoPlay: () => void;
   estimatedDuration: number;
   isAllSegmentsCached: boolean;
   blobTimeOffset: number;
   blobHasLastSegment: boolean;
   isBlobMode: boolean;
   waveformPeaks: number[] | null;
+  isExtendingBlobRef: React.RefObject<boolean>;
+  lastSaneTimeRef: React.RefObject<number>;
 }
 
 export interface CardStyles {
@@ -214,7 +219,7 @@ export function PlayerView({
   socialLinksSettings,
   technicalInfo,
 }: PlayerViewProps) {
-  const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, estimatedDuration, isAllSegmentsCached, blobTimeOffset, blobHasLastSegment, isBlobMode } = audio;
+  const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, cancelAutoPlay, estimatedDuration } = audio;
 
   const [currentTrack, setCurrentTrack] = useState<Track | null>(
     tracks[0] || null
@@ -231,6 +236,8 @@ export function PlayerView({
   const seekLoadingRef = useRef(false);
   const isDraggingRef = useRef(false);
   const dragPercentRef = useRef(0);
+  // Ref that always has the latest track duration (avoids stale closure issues)
+  const trackDurationRef = useRef(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
 
   // Refs for document-level mouse handlers (need stable references)
@@ -259,6 +266,9 @@ export function PlayerView({
     if (estimatedDuration > 0 && !isFinite(duration)) {
       setDuration(estimatedDuration);
     }
+    if (estimatedDuration > 0) {
+      trackDurationRef.current = estimatedDuration;
+    }
   }, [estimatedDuration]);
 
   useEffect(() => {
@@ -270,9 +280,8 @@ export function PlayerView({
 
     const updateProgress = () => {
       // Don't update progress while dragging or during seek loading
-      // This keeps the scrubber at the target position until seek completes
       if (totalDuration > 0 && !isDraggingRef.current && !seekLoadingRef.current) {
-        const realTime = audio.currentTime + blobTimeOffset;
+        const realTime = audio.currentTime;
         setCurrentTime(realTime);
         setProgress((realTime / totalDuration) * 100);
       }
@@ -286,25 +295,10 @@ export function PlayerView({
     };
 
     const handleEnded = () => {
-      // If a seek is actively loading, ignore — the seek will handle playback
+      // If a seek is in progress, ignore
       if (seekLoadingRef.current) return;
 
-      if (isBlobMode) {
-        // BLOB MODE: Check if the blob includes the last segment
-        const realTime = audio.currentTime + blobTimeOffset;
-
-        if (!blobHasLastSegment) {
-          // Partial blob ended — extend by seeking slightly past current position
-          seekTo(realTime + 0.2);
-          return;
-        }
-
-        // Blob has last segment — verify we're actually near the track's end
-        if (totalDuration > 0 && realTime < totalDuration - 2) {
-          return;
-        }
-      }
-      // MSE MODE or track truly ended: advance to next track
+      // Track ended: advance to next track
       onPlayingChange(false);
       playNext();
     };
@@ -328,7 +322,6 @@ export function PlayerView({
 
     const handlePlay = () => onPlayingChange(true);
     const handlePause = () => {
-      // Don't report pause if we're in the middle of a seek (blob swap causes pause)
       if (!seekLoadingRef.current) {
         onPlayingChange(false);
       }
@@ -351,7 +344,7 @@ export function PlayerView({
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("pause", handlePause);
     };
-  }, [estimatedDuration, blobTimeOffset, blobHasLastSegment, isBlobMode, audioRef]);
+  }, [estimatedDuration, audioRef, seekTo, onPlayingChange]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -359,6 +352,7 @@ export function PlayerView({
 
     if (!audio.paused) {
       audio.pause();
+      cancelAutoPlay(); // Cancel any pending auto-play from blob transitions
     } else {
       audio.play().catch(() => {});
     }
@@ -378,7 +372,11 @@ export function PlayerView({
     seekLoadingRef.current = false;
     setSeekLoading(false);
 
-    const success = await loadSegmentedTrack(track.id);
+    const success = await loadSegmentedTrack(track.id, undefined, {
+      hlsReady: track.hlsReady ?? false,
+      duration: track.duration,
+      waveformPeaks: track.waveformPeaks,
+    });
 
     if (success && audioRef.current) {
       try {

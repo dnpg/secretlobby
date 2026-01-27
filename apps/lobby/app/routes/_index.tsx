@@ -9,7 +9,7 @@ import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
 import type { SocialLinksSettings } from "~/components/SocialLinks";
-import { useSegmentedAudio } from "~/hooks/useSegmentedAudio";
+import { useHlsAudio } from "~/hooks/useHlsAudio";
 
 interface LoginPageSettings {
   title: string;
@@ -397,6 +397,8 @@ export async function loader({ request }: Route.LoaderArgs) {
           duration: true,
           position: true,
           filename: true,
+          hlsReady: true,
+          waveformPeaks: true,
         },
       });
 
@@ -486,7 +488,7 @@ export default function LobbyIndex() {
 
   // Audio state lives here so it persists across login → player transition
   const audioRef = useRef<HTMLAudioElement>(null);
-  const audioHook = useSegmentedAudio(audioRef);
+  const audioHook = useHlsAudio(audioRef);
   const [isPlaying, setIsPlaying] = useState(false);
   const loadedTrackRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
@@ -513,7 +515,7 @@ export default function LobbyIndex() {
         artist: t.artist,
         filename: t.filename,
       }))
-    : data.tracks;
+    : (data.tracks as Track[]);
 
   // Stop audio on logout (authenticated → unauthenticated transition)
   useEffect(() => {
@@ -530,22 +532,30 @@ export default function LobbyIndex() {
   useEffect(() => {
     if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
       loadedTrackRef.current = data.preloadTrackId;
-      audioHook.loadTrack(data.preloadTrackId, data.preloadToken);
+      // Find the first track's HLS info for preload (it won't be in tracks array since needsPassword)
+      // We can't know hlsReady for preload; the API routes handle fallback
+      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true });
     }
   }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
 
   // After login: continue downloading remaining segments or load from scratch
-  const firstTrackId = tracks[0]?.id;
+  const firstTrack = tracks[0];
+  const firstTrackId = firstTrack?.id;
   useEffect(() => {
     if (!firstTrackId || data.requiresPassword) return;
 
     if (loadedTrackRef.current === firstTrackId) {
-      // Track was preloaded — resume full download with session auth
+      // Track was preloaded — resume with session auth
       audioHook.continueDownload();
     } else {
       // No preload — load from scratch
       loadedTrackRef.current = firstTrackId;
-      audioHook.loadTrack(firstTrackId);
+      const hlsOpts = firstTrack ? {
+        hlsReady: (firstTrack as { hlsReady?: boolean }).hlsReady ?? false,
+        duration: firstTrack.duration,
+        waveformPeaks: (firstTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
+      } : undefined;
+      audioHook.loadTrack(firstTrackId, undefined, hlsOpts);
     }
   }, [firstTrackId, data.requiresPassword]);
 
@@ -676,12 +686,15 @@ export default function LobbyIndex() {
               loadingProgress: audioHook.loadingProgress,
               isReady: audioHook.isReady,
               seekTo: audioHook.seekTo,
+              cancelAutoPlay: audioHook.cancelAutoPlay,
               estimatedDuration: audioHook.estimatedDuration,
               isAllSegmentsCached: audioHook.isAllSegmentsCached,
               blobTimeOffset: audioHook.blobTimeOffset,
               blobHasLastSegment: audioHook.blobHasLastSegment,
               isBlobMode: audioHook.isBlobMode,
               waveformPeaks: audioHook.waveformPeaks,
+              isExtendingBlobRef: audioHook.isExtendingBlobRef,
+              lastSaneTimeRef: audioHook.lastSaneTimeRef,
             }}
             isPlaying={isPlaying}
             onPlayingChange={setIsPlaying}

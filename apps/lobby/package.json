@@ -18,6 +18,7 @@
     "@secretlobby/db": "workspace:*",
     "@secretlobby/storage": "workspace:*",
     "@secretlobby/ui": "workspace:*",
+    "hls.js": "^1.6.15",
     "isbot": "^5.1.31",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",

@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Route } from "./+types/_layout.playlist";
 import { getSession, isAdmin } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
-import { uploadFile, deleteFile } from "@secretlobby/storage";
+import { uploadFile, deleteFile, generateHls, deleteHlsFiles } from "@secretlobby/storage";
 import { cn } from "@secretlobby/ui";
 
 export function meta() {
@@ -71,7 +71,7 @@ export async function action({ request }: Route.ActionArgs) {
             orderBy: { position: "desc" },
           });
 
-          await prisma.track.create({
+          const track = await prisma.track.create({
             data: {
               lobbyId: lobby.id,
               title,
@@ -82,6 +82,22 @@ export async function action({ request }: Route.ActionArgs) {
             },
           });
 
+          // Generate HLS segments and waveform peaks
+          try {
+            const result = await generateHls(buffer, lobby.id, track.id);
+            await prisma.track.update({
+              where: { id: track.id },
+              data: {
+                hlsReady: true,
+                waveformPeaks: result.waveformPeaks,
+                duration: result.duration > 0 ? result.duration : (duration && duration > 0 ? duration : null),
+              },
+            });
+          } catch (e) {
+            console.error("HLS generation failed:", e);
+            // Track still playable via MP3 fallback
+          }
+
           return { success: "Track added" };
         }
         return { error: "Please provide a file and title" };
@@ -91,10 +107,20 @@ export async function action({ request }: Route.ActionArgs) {
         const id = formData.get("id") as string;
         const filename = formData.get("filename") as string;
         if (id) {
+          // Fetch track to check if HLS cleanup is needed
+          const track = await prisma.track.findUnique({
+            where: { id },
+            select: { hlsReady: true, lobbyId: true },
+          });
           await prisma.track.delete({ where: { id } });
           try {
             await deleteFile(filename);
           } catch {}
+          if (track?.hlsReady) {
+            try {
+              await deleteHlsFiles(track.lobbyId, id);
+            } catch {}
+          }
           return { success: "Track removed" };
         }
         break;
@@ -156,10 +182,10 @@ export default function AdminPlaylist() {
     audio.src = url;
   };
 
-  const startEditing = (track: { id: string; title: string; artist: string }) => {
+  const startEditing = (track: { id: string; title: string; artist: string | null }) => {
     setEditingTrackId(track.id);
     setEditTitle(track.title);
-    setEditArtist(track.artist);
+    setEditArtist(track.artist || "");
   };
 
   const cancelEditing = () => {
