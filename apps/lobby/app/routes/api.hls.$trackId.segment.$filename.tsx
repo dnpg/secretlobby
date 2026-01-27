@@ -3,7 +3,7 @@ import { getSession } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { verifyPreloadToken } from "~/lib/token.server";
-import { getFile } from "@secretlobby/storage";
+import { getFile, getMediaFolder } from "@secretlobby/storage";
 
 // Allowed filenames: init.mp4 or segment000.m4s through segment999.m4s
 const VALID_FILENAME = /^(init\.mp4|segment\d{3}\.m4s)$/;
@@ -58,7 +58,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       id: trackId,
       lobbyId: tenant.lobby.id,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      media: { select: { key: true } },
+    },
   });
 
   if (!track) {
@@ -66,19 +69,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   }
 
   // Fetch the segment file from R2
-  const key = `${tenant.lobby.id}/hls/${trackId}/${filename}`;
+  // New path: media folder (e.g. acct/media/song-abc/{filename})
+  // Legacy fallback: {lobbyId}/hls/{trackId}/{filename}
+  const mediaKey = track.media?.key;
+  const key = mediaKey
+    ? `${getMediaFolder(mediaKey)}/${filename}`
+    : `${tenant.lobby.id}/hls/${trackId}/${filename}`;
   const file = await getFile(key);
   if (!file) {
     return new Response(null, { status: 404 });
   }
 
-  const contentType = filename.endsWith(".m3u8")
-    ? "application/vnd.apple.mpegurl"
-    : filename.endsWith(".mp4")
-      ? "video/mp4"
-      : "video/iso.segment";
+  const contentType = filename.endsWith(".mp4")
+    ? "video/mp4"
+    : "video/iso.segment";
 
-  return new Response(file.body, {
+  return new Response(Buffer.from(file.body), {
     headers: {
       "Content-Type": contentType,
       "Content-Length": file.size.toString(),

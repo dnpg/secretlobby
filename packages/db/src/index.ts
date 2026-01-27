@@ -11,6 +11,7 @@ export type {
   Track,
   Domain,
   AuditLog,
+  Media,
 } from "./generated/client/client.js";
 
 // Re-export enums
@@ -18,6 +19,8 @@ export {
   UserRole,
   DomainStatus,
   SubscriptionTier,
+  MediaType,
+  EmbedProvider,
 } from "./generated/client/enums.js";
 
 // Re-export Prisma types for advanced queries

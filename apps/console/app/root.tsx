@@ -11,6 +11,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import { ColorModeProvider, type UserColorMode } from "@secretlobby/ui";
+import { Toaster } from "sonner";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -99,6 +100,7 @@ export default function App() {
   return (
     <ColorModeProvider initialColorMode={colorMode} allowUserColorMode={true}>
       <Outlet />
+      <Toaster theme="dark" position="bottom-right" richColors closeButton />
     </ColorModeProvider>
   );
 }

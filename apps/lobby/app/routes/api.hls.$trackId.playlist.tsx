@@ -3,7 +3,7 @@ import { getSession } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { verifyPreloadToken } from "~/lib/token.server";
-import { getFile } from "@secretlobby/storage";
+import { getFile, getMediaFolder } from "@secretlobby/storage";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { session } = await getSession(request);
@@ -53,15 +53,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     select: {
       id: true,
       hlsReady: true,
+      media: { select: { key: true, hlsReady: true } },
     },
   });
 
-  if (!track || !track.hlsReady) {
+  const hlsReady = track?.media?.hlsReady ?? track?.hlsReady ?? false;
+  if (!track || !hlsReady) {
     return new Response(null, { status: 404 });
   }
 
   // Fetch the m3u8 playlist from R2
-  const key = `${tenant.lobby.id}/hls/${trackId}/playlist.m3u8`;
+  // New path: media folder (e.g. acct/media/song-abc/playlist.m3u8)
+  // Legacy fallback: {lobbyId}/hls/{trackId}/playlist.m3u8
+  const mediaKey = track.media?.key;
+  const key = mediaKey
+    ? `${getMediaFolder(mediaKey)}/playlist.m3u8`
+    : `${tenant.lobby.id}/hls/${trackId}/playlist.m3u8`;
   const file = await getFile(key);
   if (!file) {
     return new Response(null, { status: 404 });

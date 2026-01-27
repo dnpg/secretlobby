@@ -123,6 +123,9 @@ interface SidebarProps {
 }
 
 const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, cardStyles, socialLinksSettings }: SidebarProps) {
+  const [profileError, setProfileError] = useState(false);
+  const showProfile = !!imageUrls.profile && !profileError;
+
   const hasSocialContent = socialLinksSettings &&
     (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter);
 
@@ -141,23 +144,25 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
 
   return (
     <div className="space-y-6">
-      {imageUrls.profile && (
+      {showProfile && (
         <div className="flex justify-center overflow-hidden border-2" style={{ borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`, borderColor: "var(--color-border)" }}>
           {imageUrls.profileDark ? (
             <PictureImage
               sources={[
                 { media: "(prefers-color-scheme: dark)", src: imageUrls.profileDark, widths: [300, 600] },
               ]}
-              fallback={{ src: imageUrls.profile, widths: [300, 600] }}
+              fallback={{ src: imageUrls.profile!, widths: [300, 600] }}
               alt={bandName || "Profile"}
               className="w-full object-cover"
+              onError={() => setProfileError(true)}
             />
           ) : (
             <ResponsiveImage
-              src={imageUrls.profile}
+              src={imageUrls.profile!}
               alt={bandName || "Profile"}
               widths={[300, 600]}
               className="w-full object-cover"
+              onError={() => setProfileError(true)}
             />
           )}
         </div>

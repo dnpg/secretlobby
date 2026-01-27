@@ -6,8 +6,9 @@ import { verifyPreloadToken } from "~/lib/token.server";
 import { getFile } from "@secretlobby/storage";
 
 /**
- * Fallback MP3 streaming route for legacy tracks without HLS.
- * Serves the full MP3 file with authentication.
+ * MP3 streaming route. Serves the full MP3 file with authentication.
+ * Used as fallback when HLS playback fails (e.g. legacy MP3-in-fMP4
+ * segments incompatible with the browser's MSE) or for tracks without HLS.
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { session } = await getSession(request);
@@ -56,6 +57,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     },
     select: {
       filename: true,
+      media: { select: { key: true } },
     },
   });
 
@@ -63,13 +65,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(null, { status: 404 });
   }
 
-  // Fetch full MP3 from R2
-  const file = await getFile(track.filename);
+  // Fetch full MP3 from R2 (prefer media key, fallback to legacy filename)
+  const fileKey = track.media?.key ?? track.filename;
+  const file = await getFile(fileKey);
   if (!file) {
     return new Response(null, { status: 404 });
   }
 
-  return new Response(file.body, {
+  return new Response(Buffer.from(file.body), {
     headers: {
       "Content-Type": "audio/mpeg",
       "Content-Length": file.size.toString(),

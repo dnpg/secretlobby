@@ -330,7 +330,6 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const { account, lobby } = tenant;
-  const settings = lobby.settings as Record<string, string> | null;
 
   // Check if lobby requires password and user is authenticated
   const isAuthenticated =
@@ -371,21 +370,39 @@ export async function loader({ request }: Route.LoaderArgs) {
   const cardStyles = computeCardStyles(themeSettings);
   const bodyBg = getBodyBgCSS(themeSettings);
 
-  // Compute image URLs
+  // Fetch lobby with media relations for image URL resolution
+  const lobbyWithMedia = await prisma.lobby.findUnique({
+    where: { id: lobby.id },
+    include: {
+      backgroundMedia: true,
+      backgroundMediaDark: true,
+      bannerMedia: true,
+      bannerMediaDark: true,
+      profileMedia: true,
+      profileMediaDark: true,
+    },
+  });
+
+  // Helper: resolve a Media record to its public URL
+  function mediaUrl(media: { key: string; type: string; embedUrl: string | null } | null | undefined): string | null {
+    if (!media) return null;
+    return media.type === "EMBED" ? (media.embedUrl || null) : getPublicUrl(media.key);
+  }
+
   const imageUrls: ImageUrls = {
-    background: lobby.backgroundImage ? getPublicUrl(lobby.backgroundImage) : null,
-    backgroundDark: settings?.backgroundImageDark ? getPublicUrl(settings.backgroundImageDark) : null,
-    banner: lobby.bannerImage ? getPublicUrl(lobby.bannerImage) : null,
-    bannerDark: settings?.bannerImageDark ? getPublicUrl(settings.bannerImageDark) : null,
-    profile: lobby.profileImage ? getPublicUrl(lobby.profileImage) : null,
-    profileDark: settings?.profileImageDark ? getPublicUrl(settings.profileImageDark) : null,
+    background: mediaUrl(lobbyWithMedia?.backgroundMedia),
+    backgroundDark: mediaUrl(lobbyWithMedia?.backgroundMediaDark),
+    banner: mediaUrl(lobbyWithMedia?.bannerMedia),
+    bannerDark: mediaUrl(lobbyWithMedia?.bannerMediaDark),
+    profile: mediaUrl(lobbyWithMedia?.profileMedia),
+    profileDark: mediaUrl(lobbyWithMedia?.profileMediaDark),
   };
 
   // Fetch tracks only if authenticated (but get first track ID for preloading)
   let preloadTrackId: string | null = null;
   let preloadToken: string | null = null;
 
-  const tracks = needsPassword
+  const rawTracks = needsPassword
     ? []
     : await prisma.track.findMany({
         where: { lobbyId: lobby.id },
@@ -399,8 +416,28 @@ export async function loader({ request }: Route.LoaderArgs) {
           filename: true,
           hlsReady: true,
           waveformPeaks: true,
+          media: {
+            select: {
+              key: true,
+              duration: true,
+              hlsReady: true,
+              waveformPeaks: true,
+            },
+          },
         },
       });
+
+  // Normalize: prefer media-level values over legacy track-level values
+  const tracks = rawTracks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    artist: t.artist,
+    duration: t.media?.duration ?? t.duration,
+    position: t.position,
+    filename: t.media?.key ?? t.filename,
+    hlsReady: t.media?.hlsReady ?? t.hlsReady,
+    waveformPeaks: t.media?.waveformPeaks ?? t.waveformPeaks,
+  }));
 
   // If password required, find first track for preloading
   if (needsPassword) {
@@ -532,8 +569,6 @@ export default function LobbyIndex() {
   useEffect(() => {
     if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
       loadedTrackRef.current = data.preloadTrackId;
-      // Find the first track's HLS info for preload (it won't be in tracks array since needsPassword)
-      // We can't know hlsReady for preload; the API routes handle fallback
       audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true });
     }
   }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
@@ -607,12 +642,6 @@ export default function LobbyIndex() {
               }}
             >
               <div className="text-center mb-8">
-                {lp.logoType === "svg" && lp.logoSvg && (
-                  <div
-                    className="flex justify-center mb-4 [&>svg]:max-w-[180px] [&>svg]:max-h-[60px]"
-                    dangerouslySetInnerHTML={{ __html: lp.logoSvg }}
-                  />
-                )}
                 {lp.logoType === "image" && loginLogoImageUrl && (
                   <div className="flex justify-center mb-4">
                     <img src={loginLogoImageUrl} alt="" className="max-w-[180px] max-h-[60px] object-contain" />

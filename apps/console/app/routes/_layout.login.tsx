@@ -1,9 +1,9 @@
-import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
+import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import type { Route } from "./+types/_layout.login";
 import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
-import { uploadFile, deleteFile, getPublicUrl } from "@secretlobby/storage";
-import { cn } from "@secretlobby/ui";
+import { getPublicUrl } from "@secretlobby/storage";
+import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import {
   getLoginPageSettings,
   updateLoginPageSettings,
@@ -75,56 +75,27 @@ export async function action({ request }: Route.ActionArgs) {
       }
 
       case "update-login-logo": {
-        const logoType = formData.get("logoType") as string;
-
-        if (logoType === "svg") {
-          const logoSvg = (formData.get("logoSvg") as string) || "";
-          // Remove old image if switching from image to SVG
-          const current = await getLoginPageSettings(accountId);
-          if (current.logoImage) {
-            try { await deleteFile(current.logoImage); } catch {}
-          }
-          await updateLoginPageSettings(accountId, {
-            logoType: "svg",
-            logoSvg,
-            logoImage: "",
-          });
-          return { success: "SVG logo updated" };
+        const mediaId = formData.get("mediaId") as string;
+        if (!mediaId) {
+          return { error: "No media selected" };
         }
 
-        if (logoType === "image") {
-          const file = formData.get("logoFile") as File | null;
-          if (!file || file.size === 0) {
-            return { error: "Please select an image file" };
-          }
-
-          const ext = file.name.split(".").pop() || "png";
-          const key = `${accountId}/login/logo-${Date.now()}.${ext}`;
-          const buffer = Buffer.from(await file.arrayBuffer());
-          await uploadFile(key, buffer, file.type || "image/png");
-
-          // Remove old image
-          const current = await getLoginPageSettings(accountId);
-          if (current.logoImage) {
-            try { await deleteFile(current.logoImage); } catch {}
-          }
-
-          await updateLoginPageSettings(accountId, {
-            logoType: "image",
-            logoImage: key,
-            logoSvg: "",
-          });
-          return { success: "Logo image uploaded" };
+        const media = await prisma.media.findFirst({
+          where: { id: mediaId, accountId },
+        });
+        if (!media) {
+          return { error: "Media not found" };
         }
 
-        return { error: "Invalid logo type" };
+        await updateLoginPageSettings(accountId, {
+          logoType: "image",
+          logoImage: media.key,
+          logoSvg: "",
+        });
+        return { success: "Logo updated" };
       }
 
       case "remove-login-logo": {
-        const current = await getLoginPageSettings(accountId);
-        if (current.logoImage) {
-          try { await deleteFile(current.logoImage); } catch {}
-        }
         await updateLoginPageSettings(accountId, {
           logoType: null,
           logoSvg: "",
@@ -213,6 +184,14 @@ export default function AdminLogin() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+  const submit = useSubmit();
+
+  const handleLogoSelect = (media: MediaItem) => {
+    submit(
+      { intent: "update-login-logo", mediaId: media.id },
+      { method: "post" },
+    );
+  };
 
   return (
     <div className="space-y-8">
@@ -235,84 +214,44 @@ export default function AdminLogin() {
           Add a logo that appears above the login form title.
         </p>
 
-        {/* Current logo preview */}
-        {loginSettings.logoType === "svg" && loginSettings.logoSvg && (
-          <div className="mb-4 p-4 bg-theme-tertiary rounded-lg border border-theme">
-            <p className="text-xs text-theme-muted mb-2">Current SVG logo:</p>
-            <div
-              className="max-w-[200px] max-h-[80px] [&>svg]:max-w-full [&>svg]:max-h-[80px]"
-              dangerouslySetInnerHTML={{ __html: loginSettings.logoSvg }}
-            />
+        {loginSettings.logoType === "image" && logoImageUrl ? (
+          <div className="flex items-center gap-4">
+            <div className="w-24 h-24 rounded-lg border border-theme overflow-hidden bg-theme-tertiary flex-shrink-0 flex items-center justify-center">
+              <img src={logoImageUrl} alt="Login logo" className="max-w-full max-h-full object-contain" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-theme-primary mb-2">Current logo</p>
+              <div className="flex gap-2">
+                <MediaPicker accept={["image/*"]} onSelect={handleLogoSelect}>
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 text-xs btn-secondary rounded-lg transition cursor-pointer"
+                  >
+                    Change
+                  </button>
+                </MediaPicker>
+                <Form method="post">
+                  <input type="hidden" name="intent" value="remove-login-logo" />
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={cn("px-3 py-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
+                  >
+                    Remove
+                  </button>
+                </Form>
+              </div>
+            </div>
           </div>
-        )}
-        {loginSettings.logoType === "image" && logoImageUrl && (
-          <div className="mb-4 p-4 bg-theme-tertiary rounded-lg border border-theme">
-            <p className="text-xs text-theme-muted mb-2">Current image logo:</p>
-            <img src={logoImageUrl} alt="Login logo" className="max-w-[200px] max-h-[80px] object-contain" />
-          </div>
-        )}
-
-        {/* SVG Logo Form */}
-        <details className="mb-4" open={loginSettings.logoType === "svg"}>
-          <summary className="cursor-pointer text-sm font-medium text-theme-secondary hover:text-theme-primary transition">
-            Use SVG Code
-          </summary>
-          <Form method="post" className="mt-3 space-y-3">
-            <input type="hidden" name="intent" value="update-login-logo" />
-            <input type="hidden" name="logoType" value="svg" />
-            <textarea
-              name="logoSvg"
-              rows={4}
-              defaultValue={loginSettings.logoSvg}
-              className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] resize-none font-mono text-sm"
-              placeholder="<svg>...</svg>"
-            />
+        ) : (
+          <MediaPicker accept={["image/*"]} onSelect={handleLogoSelect}>
             <button
-              type="submit"
-              disabled={isSubmitting}
-              className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
+              type="button"
+              className="w-full px-4 py-6 border-2 border-dashed border-theme rounded-xl text-sm text-theme-muted hover:text-theme-primary hover:border-[var(--color-accent)] transition cursor-pointer"
             >
-              Save SVG Logo
+              Choose from Media Library...
             </button>
-          </Form>
-        </details>
-
-        {/* Image Logo Form */}
-        <details className="mb-4" open={loginSettings.logoType === "image"}>
-          <summary className="cursor-pointer text-sm font-medium text-theme-secondary hover:text-theme-primary transition">
-            Upload Image
-          </summary>
-          <Form method="post" encType="multipart/form-data" className="mt-3 space-y-3">
-            <input type="hidden" name="intent" value="update-login-logo" />
-            <input type="hidden" name="logoType" value="image" />
-            <input
-              type="file"
-              name="logoFile"
-              accept="image/*"
-              className="w-full px-4 py-2 bg-theme-tertiary rounded-lg border border-theme file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-[var(--color-primary)] file:text-[var(--color-primary-text)] file:cursor-pointer"
-            />
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={cn("px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
-            >
-              Upload Logo Image
-            </button>
-          </Form>
-        </details>
-
-        {/* Remove Logo */}
-        {loginSettings.logoType && (
-          <Form method="post">
-            <input type="hidden" name="intent" value="remove-login-logo" />
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={cn("px-4 py-2 text-sm btn-secondary rounded-lg transition disabled:opacity-50", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
-            >
-              Remove Logo
-            </button>
-          </Form>
+          </MediaPicker>
         )}
       </section>
 

@@ -11,14 +11,22 @@ interface HlsResult {
 }
 
 /**
+ * Get the folder portion of a media key.
+ * e.g. "acct123/media/song-abc12345/song-abc12345.mp3" → "acct123/media/song-abc12345"
+ */
+export function getMediaFolder(mediaKey: string): string {
+  const lastSlash = mediaKey.lastIndexOf("/");
+  return lastSlash > 0 ? mediaKey.substring(0, lastSlash) : mediaKey;
+}
+
+/**
  * Generate HLS segments from an MP3 buffer using FFmpeg.
- * Uploads all output files to R2 under `{lobbyId}/hls/{trackId}/`.
+ * Uploads all output files to R2 under `{mediaFolder}/`.
  * Also extracts waveform peaks for the visualizer.
  */
 export async function generateHls(
   mp3Buffer: Buffer,
-  lobbyId: string,
-  trackId: string
+  mediaFolder: string
 ): Promise<HlsResult> {
   const workDir = await mkdtemp(join(tmpdir(), "hls-"));
 
@@ -30,11 +38,18 @@ export async function generateHls(
     // Write MP3 to temp file
     await writeFile(inputPath, mp3Buffer);
 
-    // Step 1: Generate HLS segments (acodec copy — no re-encoding)
+    // Step 1: Generate HLS fMP4 segments with AAC codec.
+    // AAC-LC (mp4a.40.2) is the only audio codec universally supported by
+    // MediaSource Extensions across Chrome, Firefox, Safari, and Edge.
+    // MP3-in-fMP4 fails on Chrome MSE (bufferAppendError).
     await ffmpeg([
       "-i", inputPath,
-      "-acodec", "copy",
-      "-hls_time", "6",
+      "-vn",              // strip any video stream (audio only)
+      "-c:a", "aac",      // transcode to AAC-LC
+      "-b:a", "128k",     // 128 kbps (Apple HLS spec recommends 32-160k)
+      "-ac", "2",         // stereo output
+      "-f", "hls",
+      "-hls_time", "6",   // 6-second segments (Apple recommendation)
       "-hls_segment_type", "fmp4",
       "-hls_list_size", "0",
       "-hls_playlist_type", "vod",
@@ -50,7 +65,6 @@ export async function generateHls(
     const duration = await probeDuration(inputPath);
 
     // Step 4: Upload all generated files to R2
-    const prefix = `${lobbyId}/hls/${trackId}`;
     const files = await readdir(workDir);
     const hlsFiles = files.filter(
       (f) => f === "playlist.m3u8" || f === "init.mp4" || f.endsWith(".m4s")
@@ -60,7 +74,7 @@ export async function generateHls(
     for (const file of hlsFiles) {
       const filePath = join(workDir, file);
       const fileBuffer = await readFile(filePath);
-      const key = `${prefix}/${file}`;
+      const key = `${mediaFolder}/${file}`;
 
       let contentType = "application/octet-stream";
       if (file.endsWith(".m3u8")) contentType = "application/vnd.apple.mpegurl";
@@ -82,13 +96,13 @@ export async function generateHls(
 }
 
 /**
- * Delete all HLS files for a track from R2.
+ * Delete all HLS files from a media folder in R2.
+ * Deletes playlist.m3u8, init.mp4, and segment*.m4s files.
  */
 export async function deleteHlsFiles(
-  lobbyId: string,
-  trackId: string
+  mediaFolder: string
 ): Promise<void> {
-  const prefix = `${lobbyId}/hls/${trackId}/`;
+  const prefix = `${mediaFolder}/`;
   const files = await listFiles(prefix);
   for (const file of files) {
     await deleteFile(file);
@@ -176,9 +190,25 @@ async function extractWaveformPeaks(inputPath: string): Promise<number[]> {
 }
 
 /**
- * Probe the duration of an audio file in seconds using FFmpeg.
+ * Probe the duration of an audio buffer in seconds using FFprobe.
+ * Writes to a temp file, probes, then cleans up.
  */
-function probeDuration(inputPath: string): Promise<number> {
+export async function probeAudioDuration(buffer: Buffer): Promise<number> {
+  const workDir = await mkdtemp(join(tmpdir(), "probe-"));
+  try {
+    const inputPath = join(workDir, "input");
+    await writeFile(inputPath, buffer);
+    return await probeDuration(inputPath);
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Probe the duration of an audio file in seconds using FFprobe.
+ * Accepts a file path to a local file.
+ */
+export function probeDuration(inputPath: string): Promise<number> {
   return new Promise((resolve) => {
     execFile(
       "ffprobe",

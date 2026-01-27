@@ -123,7 +123,7 @@ export default function Login() {
   const isWarning = actionData?.warning;
   const isLocked = actionData?.locked;
 
-  const { bgColor, panelBgColor, panelBorderColor, textColor, title, description, logoType, logoSvg } = loginSettings;
+  const { bgColor, panelBgColor, panelBorderColor, textColor, title, description, logoType } = loginSettings;
 
   return (
     <div
@@ -139,12 +139,6 @@ export default function Login() {
           }}
         >
           <div className="text-center mb-8">
-            {logoType === "svg" && logoSvg && (
-              <div
-                className="flex justify-center mb-4 [&>svg]:max-w-[180px] [&>svg]:max-h-[60px]"
-                dangerouslySetInnerHTML={{ __html: logoSvg }}
-              />
-            )}
             {logoType === "image" && logoImageUrl && (
               <div className="flex justify-center mb-4">
                 <img src={logoImageUrl} alt="" className="max-w-[180px] max-h-[60px] object-contain" />

@@ -35,6 +35,18 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
+enum MediaType {
+  IMAGE
+  AUDIO
+  VIDEO
+  EMBED
+}
+
+enum EmbedProvider {
+  YOUTUBE
+  VIMEO
+}
+
 // ============================================================================
 // ACCOUNT (Tenant)
 // ============================================================================
@@ -59,6 +71,7 @@ model Account {
   users          AccountUser[]
   lobbies        Lobby[]
   domains        Domain[]
+  media          Media[]
   defaultLobbyId String? // Reference to the default lobby
 
   @@index([slug])
@@ -178,10 +191,13 @@ model Lobby {
   // Includes: theme, background, banner, playlist, band info, etc.
   settings Json @default("{}")
 
-  // Media references
-  backgroundImage String?
-  bannerImage     String?
-  profileImage    String?
+  // Media references (FK to Media table)
+  backgroundMediaId     String?
+  backgroundMediaDarkId String?
+  bannerMediaId         String?
+  bannerMediaDarkId     String?
+  profileMediaId        String?
+  profileMediaDarkId    String?
 
   // Timestamps
   createdAt   DateTime  @default(now())
@@ -189,8 +205,14 @@ model Lobby {
   publishedAt DateTime?
 
   // Relations
-  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  tracks  Track[]
+  account             Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tracks              Track[]
+  backgroundMedia     Media?  @relation("LobbyBackground", fields: [backgroundMediaId], references: [id], onDelete: SetNull)
+  backgroundMediaDark Media?  @relation("LobbyBackgroundDark", fields: [backgroundMediaDarkId], references: [id], onDelete: SetNull)
+  bannerMedia         Media?  @relation("LobbyBanner", fields: [bannerMediaId], references: [id], onDelete: SetNull)
+  bannerMediaDark     Media?  @relation("LobbyBannerDark", fields: [bannerMediaDarkId], references: [id], onDelete: SetNull)
+  profileMedia        Media?  @relation("LobbyProfile", fields: [profileMediaId], references: [id], onDelete: SetNull)
+  profileMediaDark    Media?  @relation("LobbyProfileDark", fields: [profileMediaDarkId], references: [id], onDelete: SetNull)
 
   @@unique([accountId, slug])
   @@index([accountId])
@@ -208,12 +230,15 @@ model Track {
   // Track info
   title    String
   artist   String?
-  filename String // Storage reference
-  duration Int? // Duration in seconds
+  filename String // Storage reference (legacy — prefer media relation)
+  duration Int? // Duration in seconds (legacy — prefer media.duration)
 
-  // HLS streaming
+  // HLS streaming (legacy — prefer media.hlsReady / media.waveformPeaks)
   hlsReady      Boolean @default(false)
   waveformPeaks Json? // number[] — pre-computed waveform peak amplitudes
+
+  // Media reference (new)
+  mediaId String?
 
   // Ordering
   position Int @default(0)
@@ -224,9 +249,11 @@ model Track {
 
   // Relations
   lobby Lobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  media Media? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
 
   @@index([lobbyId])
   @@index([lobbyId, position])
+  @@index([mediaId])
 }
 
 // ============================================================================
@@ -262,6 +289,53 @@ model Domain {
 
   @@index([domain])
   @@index([accountId])
+}
+
+// ============================================================================
+// MEDIA (Centralized media library)
+// ============================================================================
+
+model Media {
+  id        String @id @default(cuid())
+  accountId String
+
+  filename  String       // Original filename
+  key       String       // R2 object key (empty for embeds)
+  mimeType  String       // e.g. "image/jpeg"
+  size      Int          // File size in bytes
+  type      MediaType
+
+  width     Int?         // Image-only
+  height    Int?         // Image-only
+  duration  Int?         // Audio/Video duration in seconds
+  alt       String?      // User-editable alt text (also used for search)
+
+  // Audio processing
+  hlsReady      Boolean @default(false)
+  waveformPeaks Json?   // number[] — pre-computed waveform peak amplitudes
+  metadata      Json?   // Additional metadata (e.g. audio codec info)
+
+  provider  EmbedProvider?  // YouTube or Vimeo
+  embedUrl  String?         // Full embed URL
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Inverse relations (Lobby media slots)
+  lobbyBackgrounds     Lobby[] @relation("LobbyBackground")
+  lobbyBackgroundDarks Lobby[] @relation("LobbyBackgroundDark")
+  lobbyBanners         Lobby[] @relation("LobbyBanner")
+  lobbyBannerDarks     Lobby[] @relation("LobbyBannerDark")
+  lobbyProfiles        Lobby[] @relation("LobbyProfile")
+  lobbyProfileDarks    Lobby[] @relation("LobbyProfileDark")
+
+  // Inverse relation (Tracks using this media)
+  tracks    Track[]
+
+  @@index([accountId, type])
+  @@index([accountId, createdAt])
 }
 
 // ============================================================================

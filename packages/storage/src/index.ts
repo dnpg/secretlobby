@@ -8,4 +8,4 @@ export {
   getFile,
 } from "./r2";
 
-export { generateHls, deleteHlsFiles } from "./hls";
+export { generateHls, deleteHlsFiles, probeAudioDuration, getMediaFolder } from "./hls";

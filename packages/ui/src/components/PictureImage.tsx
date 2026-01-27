@@ -20,6 +20,7 @@ interface PictureImageProps {
   quality?: number;
   loading?: "lazy" | "eager";
   className?: string;
+  onError?: React.ReactEventHandler<HTMLImageElement>;
 }
 
 export function PictureImage({
@@ -29,6 +30,7 @@ export function PictureImage({
   quality,
   loading = "lazy",
   className,
+  onError,
 }: PictureImageProps) {
   const { generateSrcSet, transformUrl } = useImageTransform();
 
@@ -59,6 +61,7 @@ export function PictureImage({
         sizes={fallback.sizes}
         alt={alt}
         loading={loading}
+        onError={onError}
       />
     </picture>
   );

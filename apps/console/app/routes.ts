@@ -1,6 +1,9 @@
 import { type RouteConfig, index, route, layout } from "@react-router/dev/routes";
 
 export default [
+  // API (no layout)
+  route("api/media", "routes/api.media.ts"),
+
   // Authentication
   route("login", "routes/login.tsx"),
   route("signup", "routes/signup.tsx"),
