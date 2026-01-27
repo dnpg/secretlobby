@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
+import { WaveformProgress } from "~/components/WaveformProgress";
 import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
 
 export interface Track {
@@ -25,7 +26,7 @@ export interface ImageUrls {
 
 export interface AudioControls {
   audioRef: React.RefObject<HTMLAudioElement | null>;
-  loadTrack: (trackId: string, preloadToken?: string, options?: { hlsReady?: boolean; duration?: number | null; waveformPeaks?: number[] | null }) => Promise<boolean>;
+  loadTrack: (trackId: string, preloadToken?: string, options?: { hlsReady?: boolean; duration?: number | null; waveformPeaks?: number[] | null; visualizerType?: "equalizer" | "waveform" }) => Promise<boolean>;
   isLoading: boolean;
   isSeeking: boolean;
   loadingProgress: number;
@@ -57,6 +58,7 @@ export interface CardStyles {
   visualizerBorderColor: string;
   visualizerBorderRadius: number;
   visualizerBlendMode: string;
+  visualizerType: "equalizer" | "waveform";
   cardBorderRadius: number;
   buttonBorderRadius: number;
   playButtonBorderRadius: number;
@@ -363,7 +365,7 @@ export function PlayerView({
     }
   };
 
-  const playTrack = async (track: Track) => {
+  const playTrack = async (track: Track, autoPlay = true) => {
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -381,9 +383,10 @@ export function PlayerView({
       hlsReady: track.hlsReady ?? false,
       duration: track.duration,
       waveformPeaks: track.waveformPeaks,
+      visualizerType: cardStyles?.visualizerType,
     });
 
-    if (success && audioRef.current) {
+    if (success && audioRef.current && autoPlay) {
       try {
         await audioRef.current.play();
         onPlayingChange(true);
@@ -395,21 +398,34 @@ export function PlayerView({
 
   const playNext = useCallback(() => {
     if (!currentTrack) return;
+    const audio = audioRef.current;
     const currentIndex = tracks.findIndex(
       (t) => t.id === currentTrack.id
     );
     const nextIndex = (currentIndex + 1) % tracks.length;
-    playTrack(tracks[nextIndex]);
+    const shouldPlay = audio ? !audio.paused : true;
+    playTrack(tracks[nextIndex], shouldPlay);
   }, [currentTrack, tracks]);
 
   const playPrev = () => {
     if (!currentTrack) return;
+    const audio = audioRef.current;
+
+    // If paused and more than 3 seconds in, seek to beginning first
+    if (audio && audio.paused && audio.currentTime > 3) {
+      audio.currentTime = 0;
+      setCurrentTime(0);
+      setProgress(0);
+      return;
+    }
+
     const currentIndex = tracks.findIndex(
       (t) => t.id === currentTrack.id
     );
     const prevIndex =
       currentIndex === 0 ? tracks.length - 1 : currentIndex - 1;
-    playTrack(tracks[prevIndex]);
+    const shouldPlay = audio ? !audio.paused : true;
+    playTrack(tracks[prevIndex], shouldPlay);
   };
 
   const performSeek = (percent: number) => {
@@ -661,35 +677,34 @@ export function PlayerView({
             )}
 
             {/* Visualizer */}
-            {cardStyles?.visualizerUseCardBg ? (
-              <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
-                <AudioVisualizer
-                  audioElement={audioElement}
-                  isPlaying={isPlaying}
-                  currentTime={currentTime}
-                  duration={duration}
-                  waveformPeaks={audio.waveformPeaks}
-                  borderShow={cardStyles?.visualizerBorderShow}
-                  borderColor={cardStyles?.visualizerBorderColor}
-                  borderRadius={cardStyles?.visualizerBorderRadius}
-                  blendMode={cardStyles?.visualizerBlendMode}
-                />
-              </CardContainer>
-            ) : (
-              <div className="overflow-hidden">
-                <AudioVisualizer
-                  audioElement={audioElement}
-                  isPlaying={isPlaying}
-                  currentTime={currentTime}
-                  duration={duration}
-                  waveformPeaks={audio.waveformPeaks}
-                  borderShow={cardStyles?.visualizerBorderShow}
-                  borderColor={cardStyles?.visualizerBorderColor}
-                  borderRadius={cardStyles?.visualizerBorderRadius}
-                  blendMode={cardStyles?.visualizerBlendMode}
-                />
-              </div>
-            )}
+            {(() => {
+              const visualizerProps = {
+                audioElement,
+                isPlaying,
+                currentTime,
+                duration,
+                waveformPeaks: audio.waveformPeaks,
+                borderShow: cardStyles?.visualizerBorderShow,
+                borderColor: cardStyles?.visualizerBorderColor,
+                borderRadius: cardStyles?.visualizerBorderRadius,
+                blendMode: cardStyles?.visualizerBlendMode,
+              };
+              const VisualizerEl = cardStyles?.visualizerType === "waveform" ? (
+                <WaveformProgress {...visualizerProps} />
+              ) : (
+                <AudioVisualizer {...visualizerProps} />
+              );
+
+              return cardStyles?.visualizerUseCardBg ? (
+                <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
+                  {VisualizerEl}
+                </CardContainer>
+              ) : (
+                <div className="overflow-hidden">
+                  {VisualizerEl}
+                </div>
+              );
+            })()}
 
             {/* Track Info */}
             {currentTrack && (

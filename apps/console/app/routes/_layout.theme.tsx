@@ -165,6 +165,12 @@ export async function action({ request }: Route.ActionArgs) {
         themeUpdate.visualizerBlendMode = visualizerBlendMode;
       }
 
+      // Visualizer type
+      const visualizerType = formData.get("visualizerType") as string;
+      if (visualizerType === "equalizer" || visualizerType === "waveform") {
+        themeUpdate.visualizerType = visualizerType;
+      }
+
       // Sync legacy fields for backward compatibility
       if (themeUpdate.bgPrimary) {
         themeUpdate.bgSecondary = themeUpdate.cardBgColor || themeUpdate.bgPrimary;
@@ -253,6 +259,7 @@ export default function AdminTheme() {
   const [visualizerBgOpacity, setVisualizerBgOpacity] = useState(theme?.visualizerBgOpacity ?? 0);
   const [visualizerBorderShow, setVisualizerBorderShow] = useState(theme?.visualizerBorderShow ?? false);
   const [visualizerBorderRadius, setVisualizerBorderRadius] = useState(theme?.visualizerBorderRadius ?? 8);
+  const [visualizerType, setVisualizerType] = useState<"equalizer" | "waveform">(theme?.visualizerType || "equalizer");
 
   if (!theme) return null;
 
@@ -640,6 +647,40 @@ export default function AdminTheme() {
             <h3 className="text-sm font-semibold mb-3 text-theme-secondary uppercase tracking-wide">
               Audio Visualizer
             </h3>
+
+            <div className="mb-6 p-4 bg-theme-tertiary rounded-lg border border-theme">
+              <h4 className="text-sm font-medium mb-3">Visualizer Type</h4>
+              <div className="flex flex-col gap-3">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="visualizerType"
+                    value="equalizer"
+                    checked={visualizerType === "equalizer"}
+                    onChange={() => setVisualizerType("equalizer")}
+                    className="accent-[var(--color-accent)] mt-1"
+                  />
+                  <div>
+                    <span className="text-sm font-medium">Equalizer</span>
+                    <p className="text-xs text-theme-muted">Real-time frequency bars powered by Web Audio API</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="visualizerType"
+                    value="waveform"
+                    checked={visualizerType === "waveform"}
+                    onChange={() => setVisualizerType("waveform")}
+                    className="accent-[var(--color-accent)] mt-1"
+                  />
+                  <div>
+                    <span className="text-sm font-medium">Waveform Progress</span>
+                    <p className="text-xs text-theme-muted">Pre-computed waveform bars that fill as playback progresses. Best compatibility with Safari/iOS (no Web Audio needed)</p>
+                  </div>
+                </label>
+              </div>
+            </div>
 
             <div className="mb-4">
               <label className="flex items-center gap-2 cursor-pointer">

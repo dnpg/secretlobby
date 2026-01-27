@@ -62,6 +62,7 @@ interface ThemeSettings {
   visualizerBorderColor: string;
   visualizerBorderRadius: number;
   visualizerBlendMode: string;
+  visualizerType: "equalizer" | "waveform";
   cardHeadingColor: string;
   cardContentColor: string;
   cardMutedColor: string;
@@ -109,6 +110,7 @@ const defaultTheme: ThemeSettings = {
   visualizerBorderColor: "#374151",
   visualizerBorderRadius: 8,
   visualizerBlendMode: "normal",
+  visualizerType: "equalizer",
   cardHeadingColor: "#ffffff",
   cardContentColor: "#9ca3af",
   cardMutedColor: "#6b7280",
@@ -171,6 +173,7 @@ interface CardStyles {
   visualizerBorderColor: string;
   visualizerBorderRadius: number;
   visualizerBlendMode: string;
+  visualizerType: "equalizer" | "waveform";
   cardBorderRadius: number;
   buttonBorderRadius: number;
   playButtonBorderRadius: number;
@@ -220,6 +223,7 @@ function computeCardStyles(theme: ThemeSettings): CardStyles {
     visualizerBorderColor: theme.visualizerBorderColor || theme.border,
     visualizerBorderRadius: theme.visualizerBorderRadius ?? 8,
     visualizerBlendMode: theme.visualizerBlendMode || "normal",
+    visualizerType: theme.visualizerType || "equalizer",
     cardBorderRadius: theme.cardBorderRadius ?? 12,
     buttonBorderRadius: theme.buttonBorderRadius ?? 24,
     playButtonBorderRadius: theme.playButtonBorderRadius ?? 50,
@@ -569,7 +573,7 @@ export default function LobbyIndex() {
   useEffect(() => {
     if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
       loadedTrackRef.current = data.preloadTrackId;
-      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true });
+      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true, visualizerType: cardStyles?.visualizerType });
     }
   }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
 
@@ -589,6 +593,7 @@ export default function LobbyIndex() {
         hlsReady: (firstTrack as { hlsReady?: boolean }).hlsReady ?? false,
         duration: firstTrack.duration,
         waveformPeaks: (firstTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
+        visualizerType: cardStyles?.visualizerType,
       } : undefined;
       audioHook.loadTrack(firstTrackId, undefined, hlsOpts);
     }

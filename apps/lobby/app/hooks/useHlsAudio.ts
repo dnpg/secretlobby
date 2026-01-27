@@ -25,6 +25,7 @@ interface LoadTrackOptions {
   hlsReady?: boolean;
   duration?: number | null;
   waveformPeaks?: number[] | null;
+  visualizerType?: "equalizer" | "waveform";
 }
 
 interface HlsAudioReturn {
@@ -215,7 +216,11 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       const HlsClass = await getHls();
       const hlsJsSupported = HlsClass?.isSupported() ?? false;
 
-      if (HlsClass && hlsJsSupported && !isSafari) {
+      // Safari blob mode is only needed for the equalizer (Web Audio API).
+      // When using waveform visualizer, Safari can use hls.js or native HLS directly.
+      const needsBlobMode = isSafari && options?.visualizerType !== "waveform";
+
+      if (HlsClass && hlsJsSupported && !needsBlobMode) {
         return new Promise<boolean>((resolve) => {
           const hls = new HlsClass({
             enableWorker: true,
@@ -274,7 +279,7 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       //    blob, and set as audio.src. A blob: URL is a standard source
       //    so createMediaElementSource captures audio for the visualiser.
       // ---------------------------------------------------------------
-      if (isSafari) {
+      if (needsBlobMode) {
         console.log("[useHlsAudio] Safari — using blob mode for Web Audio compatibility");
         try {
           // Fetch and parse the m3u8 playlist

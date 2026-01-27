@@ -37,6 +37,7 @@ export interface ThemeSettings {
   visualizerBorderColor: string;
   visualizerBorderRadius: number;
   visualizerBlendMode: string;
+  visualizerType: "equalizer" | "waveform";
   // Card settings
   cardHeadingColor: string;
   cardContentColor: string;
@@ -86,6 +87,7 @@ export const defaultDarkTheme: ThemeSettings = {
   visualizerBorderColor: "#374151",
   visualizerBorderRadius: 8,
   visualizerBlendMode: "normal",
+  visualizerType: "equalizer",
   cardHeadingColor: "#ffffff",
   cardContentColor: "#9ca3af",
   cardMutedColor: "#6b7280",
@@ -134,6 +136,7 @@ export const defaultLightTheme: ThemeSettings = {
   visualizerBorderColor: "#d1d5db",
   visualizerBorderRadius: 8,
   visualizerBlendMode: "normal",
+  visualizerType: "equalizer",
   cardHeadingColor: "#111827",
   cardContentColor: "#4b5563",
   cardMutedColor: "#9ca3af",
