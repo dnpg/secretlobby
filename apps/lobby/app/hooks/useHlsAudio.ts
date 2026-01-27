@@ -29,7 +29,7 @@ interface LoadTrackOptions {
 
 interface HlsAudioReturn {
   loadTrack: (trackId: string, preloadToken?: string, options?: LoadTrackOptions) => Promise<boolean>;
-  continueDownload: () => void;
+  continueDownload: (options?: { waveformPeaks?: number[] | null; duration?: number | null }) => void;
   cleanup: () => void;
   seekTo: (time: number) => Promise<void>;
   cancelAutoPlay: () => void;
@@ -300,12 +300,20 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
     [audioRef]
   );
 
-  const continueDownload = useCallback(() => {
+  const continueDownload = useCallback((options?: { waveformPeaks?: number[] | null; duration?: number | null }) => {
     const trackId = currentTrackRef.current;
     if (!trackId) return;
 
     const audio = audioRef.current;
     if (!audio) return;
+
+    // Re-apply track metadata that may have been lost during navigation
+    if (options?.waveformPeaks) {
+      setWaveformPeaks(options.waveformPeaks);
+    }
+    if (options?.duration && options.duration > 0) {
+      setEstimatedDuration(options.duration);
+    }
 
     if (hlsRef.current) {
       hlsRef.current.loadSource(`/api/hls/${trackId}/playlist`);

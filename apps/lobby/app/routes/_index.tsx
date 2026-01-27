@@ -10,6 +10,7 @@ import { generatePreloadToken } from "~/lib/token.server";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
 import type { SocialLinksSettings } from "~/components/SocialLinks";
 import { useHlsAudio } from "~/hooks/useHlsAudio";
+import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
 
 interface LoginPageSettings {
   title: string;
@@ -288,6 +289,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       tracks: isAuthenticated ? content.playlist : [],
       preloadTrackId: null,
       preloadToken: null,
+      preloadTrackMeta: null,
       notFound: false,
       loginPageSettings: defaultLoginPageSettings,
       loginLogoImageUrl: null,
@@ -322,6 +324,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       tracks: [],
       preloadTrackId: null,
       preloadToken: null,
+      preloadTrackMeta: null,
       notFound: true,
       loginPageSettings: defaultLoginPageSettings,
       loginLogoImageUrl: null,
@@ -444,15 +447,33 @@ export async function loader({ request }: Route.LoaderArgs) {
   }));
 
   // If password required, find first track for preloading
+  let preloadTrackMeta: { hlsReady: boolean; duration: number | null; waveformPeaks: number[] | null } | null = null;
   if (needsPassword) {
     const firstTrack = await prisma.track.findFirst({
       where: { lobbyId: lobby.id },
       orderBy: { position: "asc" },
-      select: { id: true },
+      select: {
+        id: true,
+        duration: true,
+        hlsReady: true,
+        waveformPeaks: true,
+        media: {
+          select: {
+            duration: true,
+            hlsReady: true,
+            waveformPeaks: true,
+          },
+        },
+      },
     });
     if (firstTrack) {
       preloadTrackId = firstTrack.id;
       preloadToken = generatePreloadToken(firstTrack.id, lobby.id);
+      preloadTrackMeta = {
+        hlsReady: firstTrack.media?.hlsReady ?? firstTrack.hlsReady ?? false,
+        duration: firstTrack.media?.duration ?? firstTrack.duration ?? null,
+        waveformPeaks: (firstTrack.media?.waveformPeaks ?? firstTrack.waveformPeaks ?? null) as number[] | null,
+      };
     }
   }
 
@@ -474,6 +495,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     tracks,
     preloadTrackId,
     preloadToken,
+    preloadTrackMeta: preloadTrackMeta ?? null,
     notFound: false,
     loginPageSettings,
     loginLogoImageUrl,
@@ -531,6 +553,7 @@ export default function LobbyIndex() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioHook = useHlsAudio(audioRef);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const loadedTrackRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
 
@@ -558,6 +581,9 @@ export default function LobbyIndex() {
       }))
     : (data.tracks as Track[]);
 
+  // Prefetch the next track's HLS resources while the current track plays
+  useTrackPrefetcher({ tracks, currentTrackId: activeTrackId, isPlaying });
+
   // Stop audio on logout (authenticated → unauthenticated transition)
   useEffect(() => {
     if (data.requiresPassword && wasAuthenticatedRef.current) {
@@ -573,7 +599,7 @@ export default function LobbyIndex() {
   useEffect(() => {
     if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
       loadedTrackRef.current = data.preloadTrackId;
-      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true });
+      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, data.preloadTrackMeta ?? { hlsReady: true });
     }
   }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
 
@@ -584,8 +610,12 @@ export default function LobbyIndex() {
     if (!firstTrackId || data.requiresPassword) return;
 
     if (loadedTrackRef.current === firstTrackId) {
-      // Track was preloaded — resume with session auth
-      audioHook.continueDownload();
+      // Track was preloaded — resume with session auth, re-apply metadata
+      // that may have been lost during login navigation
+      audioHook.continueDownload({
+        waveformPeaks: (firstTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
+        duration: firstTrack?.duration ?? null,
+      });
     } else {
       // No preload — load from scratch
       loadedTrackRef.current = firstTrackId;
@@ -634,7 +664,7 @@ export default function LobbyIndex() {
       {requiresPassword ? (
         // Login page content
         <div
-          className="min-h-screen flex items-center justify-center"
+          className="min-h-dvh flex items-center justify-center overflow-hidden"
           style={{ backgroundColor: lp.bgColor }}
         >
           <div className="w-full max-w-md p-8">
@@ -732,6 +762,7 @@ export default function LobbyIndex() {
             }}
             isPlaying={isPlaying}
             onPlayingChange={setIsPlaying}
+            onTrackChange={setActiveTrackId}
             cardStyles={cardStyles}
             socialLinksSettings={socialLinksSettings}
             technicalInfo={technicalInfo}

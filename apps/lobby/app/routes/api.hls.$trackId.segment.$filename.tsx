@@ -30,6 +30,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const isAuthenticated =
     session.isAuthenticated && session.lobbyId === tenant.lobby.id;
 
+  let usedPreloadToken = false;
   if (tenant.lobby.password && !isAuthenticated) {
     const url = new URL(request.url);
     const preloadToken = url.searchParams.get("preload");
@@ -40,6 +41,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     if (!preloadResult.valid) {
       return new Response(null, { status: 401 });
     }
+    usedPreloadToken = true;
   }
 
   // Origin check
@@ -84,13 +86,21 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     ? "video/mp4"
     : "video/iso.segment";
 
+  const cacheHeaders = usedPreloadToken
+    ? {
+        "Cache-Control": "no-store, no-cache, must-revalidate, private",
+        "Pragma": "no-cache",
+        "Expires": "0",
+      }
+    : {
+        "Cache-Control": "private, max-age=30",
+      };
+
   return new Response(Buffer.from(file.body), {
     headers: {
       "Content-Type": contentType,
       "Content-Length": file.size.toString(),
-      "Cache-Control": "no-store, no-cache, must-revalidate, private",
-      "Pragma": "no-cache",
-      "Expires": "0",
+      ...cacheHeaders,
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "X-Robots-Tag": "noindex, nofollow",

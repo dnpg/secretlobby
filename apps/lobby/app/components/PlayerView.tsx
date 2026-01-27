@@ -211,6 +211,7 @@ interface PlayerViewProps {
   audio: AudioControls;
   isPlaying: boolean;
   onPlayingChange: (playing: boolean) => void;
+  onTrackChange?: (trackId: string) => void;
   cardStyles?: CardStyles;
   socialLinksSettings?: SocialLinksSettings | null;
   technicalInfo?: TechnicalInfo | null;
@@ -224,6 +225,7 @@ export function PlayerView({
   audio,
   isPlaying,
   onPlayingChange,
+  onTrackChange,
   cardStyles,
   socialLinksSettings,
   technicalInfo,
@@ -260,12 +262,21 @@ export function PlayerView({
     && !/Chrome/.test(navigator.userAgent);
 
   // PCM analyser for Safari equalizer: decodes MP3 to PCM and computes FFT.
-  const pcmEnabled = isSafari && (cardStyles?.visualizerType ?? "equalizer") === "equalizer";
+  // Only enabled for non-HLS tracks — HLS tracks must not trigger a full MP3
+  // download just for visualization. Safari + HLS falls back to waveform.
+  const currentTrackHlsReady = currentTrack?.hlsReady ?? false;
+  const pcmEnabled = isSafari && !currentTrackHlsReady && (cardStyles?.visualizerType ?? "equalizer") === "equalizer";
   const pcmAnalyser = usePcmAnalyser({
     enabled: pcmEnabled,
     trackId: currentTrack?.id ?? null,
     audioElement,
   });
+
+  // On Safari with HLS tracks, fall back to waveform visualization since the
+  // equalizer would require downloading the entire MP3 for PCM decoding.
+  const effectiveVisualizerType = (isSafari && currentTrackHlsReady && (cardStyles?.visualizerType ?? "equalizer") === "equalizer")
+    ? "waveform"
+    : (cardStyles?.visualizerType ?? "equalizer");
 
   useEffect(() => {
     if (audioRef.current) {
@@ -284,6 +295,13 @@ export function PlayerView({
       }
     };
   }, []);
+
+  // Notify parent when the current track changes
+  useEffect(() => {
+    if (currentTrack) {
+      onTrackChange?.(currentTrack.id);
+    }
+  }, [currentTrack?.id]);
 
   useEffect(() => {
     if (estimatedDuration > 0 && !isFinite(duration)) {
@@ -698,13 +716,13 @@ export function PlayerView({
                 isPlaying,
                 currentTime,
                 duration,
-                waveformPeaks: audio.waveformPeaks,
+                waveformPeaks: audio.waveformPeaks ?? currentTrack?.waveformPeaks ?? null,
                 borderShow: cardStyles?.visualizerBorderShow,
                 borderColor: cardStyles?.visualizerBorderColor,
                 borderRadius: cardStyles?.visualizerBorderRadius,
                 blendMode: cardStyles?.visualizerBlendMode,
               };
-              const VisualizerEl = cardStyles?.visualizerType === "waveform" ? (
+              const VisualizerEl = effectiveVisualizerType === "waveform" ? (
                 <WaveformProgress {...visualizerProps} />
               ) : (
                 <AudioVisualizer {...visualizerProps} pcmAnalyser={pcmAnalyser} />
