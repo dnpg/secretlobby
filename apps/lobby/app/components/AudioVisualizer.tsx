@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { PcmAnalyser } from "~/hooks/usePcmAnalyser";
 
 interface AudioVisualizerProps {
   audioElement: HTMLAudioElement | null;
@@ -10,6 +11,7 @@ interface AudioVisualizerProps {
   borderColor?: string;
   borderRadius?: number;
   blendMode?: string;
+  pcmAnalyser?: PcmAnalyser | null;
 }
 
 function getThemeColor(element: Element | null, varName: string, fallback: string): string {
@@ -29,7 +31,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(255, 255, 255, ${alpha})`;
 }
 
-export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderColor, borderRadius, blendMode }: AudioVisualizerProps) {
+export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderColor, borderRadius, blendMode, pcmAnalyser }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -40,6 +42,7 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
   // user gesture handler. Register a capture-phase listener so the
   // context is resumed *before* the play-button handler fires.
   useEffect(() => {
+    if (pcmAnalyser) return; // No Web Audio context when using PCM analyser
     const resume = () => {
       if (audioContextRef.current?.state === "suspended") {
         audioContextRef.current.resume();
@@ -51,7 +54,7 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
       document.removeEventListener("click", resume, { capture: true });
       document.removeEventListener("touchstart", resume, { capture: true });
     };
-  }, []);
+  }, [pcmAnalyser]);
 
   // Main draw effect.
   // AudioContext creation lives here (not in a separate effect) so the
@@ -59,19 +62,36 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
   useEffect(() => {
     if (!audioElement || !canvasRef.current) return;
 
-    // Create AudioContext once per audio element
-    if (!audioContextRef.current) {
-      try {
-        audioContextRef.current = new AudioContext();
-        analyserRef.current = audioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 256;
-        sourceRef.current = audioContextRef.current.createMediaElementSource(audioElement);
-        sourceRef.current.connect(analyserRef.current);
-        analyserRef.current.connect(audioContextRef.current.destination);
-      } catch {
-        console.error('Audio context no working');
-        // AudioContext creation failed
+    // Set up the frequency data source: either PCM analyser or Web Audio AnalyserNode
+    let getFrequencyData: (arr: Uint8Array<ArrayBuffer>) => void;
+    let bufferLength: number;
+
+    if (pcmAnalyser) {
+      // PCM analyser — decodes HLS segments to PCM and computes FFT.
+      // Used on Safari where createMediaElementSource can't capture audio
+      // from MSE or native HLS sources.
+      bufferLength = pcmAnalyser.frequencyBinCount;
+      getFrequencyData = (arr) => pcmAnalyser.getByteFrequencyData(arr);
+    } else {
+      // Web Audio AnalyserNode — captures real-time frequency data.
+      // Works on Chrome, Firefox, Edge where MSE sources are capturable.
+      if (!audioContextRef.current) {
+        try {
+          audioContextRef.current = new AudioContext();
+          analyserRef.current = audioContextRef.current.createAnalyser();
+          analyserRef.current.fftSize = 256;
+          sourceRef.current = audioContextRef.current.createMediaElementSource(audioElement);
+          sourceRef.current.connect(analyserRef.current);
+          analyserRef.current.connect(audioContextRef.current.destination);
+        } catch {
+          console.error('Audio context not working');
+        }
       }
+
+      const analyser = analyserRef.current;
+      if (!analyser) return;
+      bufferLength = analyser.frequencyBinCount;
+      getFrequencyData = (arr) => analyser.getByteFrequencyData(arr);
     }
 
     const canvas = canvasRef.current;
@@ -79,10 +99,6 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
     if (!ctxOrNull) return;
     const ctx = ctxOrNull;
 
-    const analyser = analyserRef.current;
-    if (!analyser) return;
-
-    const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
 
     // Theme colors (read once per effect run)
@@ -149,19 +165,19 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
     }
 
     if (isPlaying) {
-      if (audioContextRef.current?.state === "suspended") {
+      if (!pcmAnalyser && audioContextRef.current?.state === "suspended") {
         audioContextRef.current.resume();
       }
 
       const loop = () => {
         animationRef.current = requestAnimationFrame(loop);
-        analyser.getByteFrequencyData(dataArray);
+        getFrequencyData(dataArray);
         drawBars(dataArray);
       };
       loop();
     } else {
       // When paused, draw the current frequency snapshot (frozen)
-      analyser.getByteFrequencyData(dataArray);
+      getFrequencyData(dataArray);
       drawBars(dataArray);
     }
 
@@ -171,7 +187,7 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
         animationRef.current = null;
       }
     };
-  }, [audioElement, isPlaying]);
+  }, [audioElement, isPlaying, pcmAnalyser]);
 
   return (
     <canvas

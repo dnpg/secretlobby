@@ -3,6 +3,7 @@ import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { AudioVisualizer } from "~/components/AudioVisualizer";
 import { WaveformProgress } from "~/components/WaveformProgress";
+import { usePcmAnalyser } from "~/hooks/usePcmAnalyser";
 import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
 
 export interface Track {
@@ -26,7 +27,7 @@ export interface ImageUrls {
 
 export interface AudioControls {
   audioRef: React.RefObject<HTMLAudioElement | null>;
-  loadTrack: (trackId: string, preloadToken?: string, options?: { hlsReady?: boolean; duration?: number | null; waveformPeaks?: number[] | null; visualizerType?: "equalizer" | "waveform" }) => Promise<boolean>;
+  loadTrack: (trackId: string, preloadToken?: string, options?: { hlsReady?: boolean; duration?: number | null; waveformPeaks?: number[] | null }) => Promise<boolean>;
   isLoading: boolean;
   isSeeking: boolean;
   loadingProgress: number;
@@ -39,6 +40,7 @@ export interface AudioControls {
   blobHasLastSegment: boolean;
   isBlobMode: boolean;
   waveformPeaks: number[] | null;
+  isSafari: boolean;
   isExtendingBlobRef: React.RefObject<boolean>;
   lastSaneTimeRef: React.RefObject<number>;
 }
@@ -251,6 +253,20 @@ export function PlayerView({
   const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
   const mouseUpHandlerRef = useRef<(() => void) | null>(null);
 
+  // Detect Safari locally — createMediaElementSource can't capture audio
+  // from MSE or native HLS sources on Safari/iOS.
+  const isSafari = typeof navigator !== "undefined"
+    && /Safari/.test(navigator.userAgent)
+    && !/Chrome/.test(navigator.userAgent);
+
+  // PCM analyser for Safari equalizer: decodes MP3 to PCM and computes FFT.
+  const pcmEnabled = isSafari && (cardStyles?.visualizerType ?? "equalizer") === "equalizer";
+  const pcmAnalyser = usePcmAnalyser({
+    enabled: pcmEnabled,
+    trackId: currentTrack?.id ?? null,
+    audioElement,
+  });
+
   useEffect(() => {
     if (audioRef.current) {
       setAudioElement(audioRef.current);
@@ -383,7 +399,6 @@ export function PlayerView({
       hlsReady: track.hlsReady ?? false,
       duration: track.duration,
       waveformPeaks: track.waveformPeaks,
-      visualizerType: cardStyles?.visualizerType,
     });
 
     if (success && audioRef.current && autoPlay) {
@@ -692,7 +707,7 @@ export function PlayerView({
               const VisualizerEl = cardStyles?.visualizerType === "waveform" ? (
                 <WaveformProgress {...visualizerProps} />
               ) : (
-                <AudioVisualizer {...visualizerProps} />
+                <AudioVisualizer {...visualizerProps} pcmAnalyser={pcmAnalyser} />
               );
 
               return cardStyles?.visualizerUseCardBg ? (

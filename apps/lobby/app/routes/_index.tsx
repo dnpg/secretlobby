@@ -573,7 +573,7 @@ export default function LobbyIndex() {
   useEffect(() => {
     if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
       loadedTrackRef.current = data.preloadTrackId;
-      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true, visualizerType: cardStyles?.visualizerType });
+      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, { hlsReady: true });
     }
   }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
 
@@ -593,7 +593,6 @@ export default function LobbyIndex() {
         hlsReady: (firstTrack as { hlsReady?: boolean }).hlsReady ?? false,
         duration: firstTrack.duration,
         waveformPeaks: (firstTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
-        visualizerType: cardStyles?.visualizerType,
       } : undefined;
       audioHook.loadTrack(firstTrackId, undefined, hlsOpts);
     }
@@ -727,6 +726,7 @@ export default function LobbyIndex() {
               blobHasLastSegment: audioHook.blobHasLastSegment,
               isBlobMode: audioHook.isBlobMode,
               waveformPeaks: audioHook.waveformPeaks,
+              isSafari: audioHook.isSafari,
               isExtendingBlobRef: audioHook.isExtendingBlobRef,
               lastSaneTimeRef: audioHook.lastSaneTimeRef,
             }}

@@ -25,7 +25,6 @@ interface LoadTrackOptions {
   hlsReady?: boolean;
   duration?: number | null;
   waveformPeaks?: number[] | null;
-  visualizerType?: "equalizer" | "waveform";
 }
 
 interface HlsAudioReturn {
@@ -41,6 +40,7 @@ interface HlsAudioReturn {
   error: string | null;
   estimatedDuration: number;
   waveformPeaks: number[] | null;
+  isSafari: boolean;
   // Compat stubs for PlayerView (always safe defaults)
   isAllSegmentsCached: true;
   blobTimeOffset: 0;
@@ -74,7 +74,13 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
   const currentTrackRef = useRef<string | null>(null);
   const preloadTokenRef = useRef<string | null>(null);
   const autoPlayCancelledRef = useRef(false);
-  const blobUrlRef = useRef<string | null>(null);
+
+  // Detect Safari — createMediaElementSource can't capture audio from
+  // MSE or native HLS sources on Safari, so the PCM analyser is used instead.
+  const isSafari =
+    typeof navigator !== "undefined" &&
+    /Safari/.test(navigator.userAgent) &&
+    !/Chrome/.test(navigator.userAgent);
 
   // Compat stubs (never change)
   const isExtendingBlobRef = useRef(false);
@@ -89,10 +95,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
-    }
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
     }
     const audio = audioRef.current;
     if (audio) {
@@ -199,28 +201,16 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       const playlistUrl = `/api/hls/${trackId}/playlist${preloadQuery}`;
 
       // ---------------------------------------------------------------
-      // Detect Safari — needs blob mode for Web Audio API compatibility.
-      // Safari's MSE and native HLS implementations both prevent
-      // createMediaElementSource from capturing audio data, but a
-      // standard blob: URL source works. This matches the approach
-      // that worked at commit 416a553 (useSegmentedAudio blob mode).
-      // ---------------------------------------------------------------
-      const isSafari =
-        typeof navigator !== "undefined" &&
-        /Safari/.test(navigator.userAgent) &&
-        !/Chrome/.test(navigator.userAgent);
-
-      // ---------------------------------------------------------------
-      // 1. Try hls.js (MSE) — works on Chrome, Firefox, Edge.
+      // 1. Try hls.js (MSE) — works on all browsers with MSE support,
+      //    including Safari desktop and iOS 17.1+ (ManagedMediaSource).
+      //    On Safari, createMediaElementSource can't capture audio from
+      //    MSE sources, but the separate PCM analyser handles the
+      //    equalizer visualization instead.
       // ---------------------------------------------------------------
       const HlsClass = await getHls();
       const hlsJsSupported = HlsClass?.isSupported() ?? false;
 
-      // Safari blob mode is only needed for the equalizer (Web Audio API).
-      // When using waveform visualizer, Safari can use hls.js or native HLS directly.
-      const needsBlobMode = isSafari && options?.visualizerType !== "waveform";
-
-      if (HlsClass && hlsJsSupported && !needsBlobMode) {
+      if (HlsClass && hlsJsSupported) {
         return new Promise<boolean>((resolve) => {
           const hls = new HlsClass({
             enableWorker: true,
@@ -275,89 +265,7 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       }
 
       // ---------------------------------------------------------------
-      // 2. Safari blob mode — fetch HLS segments, concatenate into a
-      //    blob, and set as audio.src. A blob: URL is a standard source
-      //    so createMediaElementSource captures audio for the visualiser.
-      // ---------------------------------------------------------------
-      if (needsBlobMode) {
-        console.log("[useHlsAudio] Safari — using blob mode for Web Audio compatibility");
-        try {
-          // Fetch and parse the m3u8 playlist
-          const playlistRes = await fetch(playlistUrl);
-          if (!playlistRes.ok) return loadMp3();
-          const playlistText = await playlistRes.text();
-
-          // Extract init segment URI from #EXT-X-MAP:URI="..."
-          const initMatch = playlistText.match(/#EXT-X-MAP:URI="([^"]+)"/);
-          const initUrl = initMatch?.[1];
-
-          // Extract media segment URLs (non-comment lines starting with /)
-          const segmentUrls = playlistText
-            .split("\n")
-            .map((l) => l.trim())
-            .filter((l) => l.startsWith("/"));
-
-          if (!initUrl || segmentUrls.length === 0) return loadMp3();
-
-          // Download init + all media segments
-          const allUrls = [initUrl, ...segmentUrls];
-          const buffers: ArrayBuffer[] = [];
-
-          for (let i = 0; i < allUrls.length; i++) {
-            const res = await fetch(allUrls[i]);
-            if (!res.ok) return loadMp3();
-            buffers.push(await res.arrayBuffer());
-            setLoadingProgress(((i + 1) / allUrls.length) * 100);
-          }
-
-          // Concatenate into a single fMP4 blob
-          const totalSize = buffers.reduce((sum, b) => sum + b.byteLength, 0);
-          const combined = new Uint8Array(totalSize);
-          let offset = 0;
-          for (const buf of buffers) {
-            combined.set(new Uint8Array(buf), offset);
-            offset += buf.byteLength;
-          }
-
-          if (blobUrlRef.current) {
-            URL.revokeObjectURL(blobUrlRef.current);
-          }
-          const blob = new Blob([combined], { type: "audio/mp4" });
-          const blobUrl = URL.createObjectURL(blob);
-          blobUrlRef.current = blobUrl;
-
-          return new Promise<boolean>((resolve) => {
-            const onCanPlay = () => {
-              audio.removeEventListener("canplay", onCanPlay);
-              audio.removeEventListener("error", onErr);
-              setIsLoading(false);
-              setIsReady(true);
-              if (audio.duration && isFinite(audio.duration) && !options?.duration) {
-                setEstimatedDuration(Math.round(audio.duration));
-              }
-              resolve(true);
-            };
-            const onErr = () => {
-              audio.removeEventListener("canplay", onCanPlay);
-              audio.removeEventListener("error", onErr);
-              if (blobUrlRef.current) {
-                URL.revokeObjectURL(blobUrlRef.current);
-                blobUrlRef.current = null;
-              }
-              loadMp3().then(resolve);
-            };
-            audio.addEventListener("canplay", onCanPlay, { once: true });
-            audio.addEventListener("error", onErr, { once: true });
-            audio.src = blobUrl;
-            audio.load();
-          });
-        } catch {
-          return loadMp3();
-        }
-      }
-
-      // ---------------------------------------------------------------
-      // 3. Native HLS — non-Safari browsers with native support.
+      // 2. Native HLS — Safari/iOS without MSE, or other native support.
       // ---------------------------------------------------------------
       const nativeHls = audio.canPlayType("application/vnd.apple.mpegurl");
       if (nativeHls) {
@@ -385,7 +293,7 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       }
 
       // ---------------------------------------------------------------
-      // 4. No HLS support at all — direct MP3 stream.
+      // 3. No HLS support at all — direct MP3 stream.
       // ---------------------------------------------------------------
       return loadMp3();
     },
@@ -436,6 +344,7 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
     error,
     estimatedDuration,
     waveformPeaks,
+    isSafari,
     // Compat stubs
     isAllSegmentsCached: true as const,
     blobTimeOffset: 0 as const,
