@@ -667,26 +667,35 @@ export default function LobbyIndex() {
   // Prefetch the next track's HLS resources while the current track plays
   useTrackPrefetcher({ tracks, currentTrackId: activeTrackId, isPlaying });
 
-  // Stop audio on logout (authenticated → unauthenticated transition)
+  // Handle authentication state changes (login/logout) and tracking
   useEffect(() => {
-    if (data.requiresPassword && wasAuthenticatedRef.current) {
-      audioRef.current?.pause();
-      audioHook.cleanup();
-      setIsPlaying(false);
-      loadedTrackRef.current = null;
-    }
-    wasAuthenticatedRef.current = !data.requiresPassword;
-  }, [data.requiresPassword]);
+    const wasAuthenticated = wasAuthenticatedRef.current;
+    const isAuthenticated = !data.requiresPassword;
 
-  // Track login success event
-  useEffect(() => {
-    if (!data.requiresPassword && !wasAuthenticatedRef.current) {
-      // User just logged in successfully
+    // Track successful login (unauthenticated → authenticated transition)
+    if (isAuthenticated && !wasAuthenticated) {
       trackEvent('login', {
         event_category: 'authentication',
         method: 'password',
       });
     }
+
+    // Stop audio on logout (authenticated → unauthenticated transition)
+    if (data.requiresPassword && wasAuthenticated) {
+      // Track logout (server-side logout detection)
+      trackEvent('logout', {
+        event_category: 'authentication',
+        method: 'session_expired',
+      });
+
+      audioRef.current?.pause();
+      audioHook.cleanup();
+      setIsPlaying(false);
+      loadedTrackRef.current = null;
+    }
+
+    // Update ref after tracking and cleanup
+    wasAuthenticatedRef.current = isAuthenticated;
   }, [data.requiresPassword]);
 
   // Preload the first track on the password page (before authentication)

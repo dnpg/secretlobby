@@ -271,6 +271,7 @@ export function PlayerView({
   // Tracking refs for analytics
   const progressMilestonesRef = useRef<Set<number>>(new Set());
   const currentTrackIdRef = useRef<string | null>(null);
+  const technicalInfoRef = useRef<HTMLDivElement>(null);
 
   // Refs for document-level mouse handlers (need stable references)
   const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
@@ -316,6 +317,33 @@ export function PlayerView({
       }
     };
   }, []);
+
+  // Track clicks on custom links in WYSIWYG technical info content
+  useEffect(() => {
+    const handleLinkClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest('a');
+      if (link && link.href) {
+        trackEvent('wysiwyg_link_click', {
+          event_category: 'content',
+          event_label: link.textContent || 'Unknown',
+          url: link.href,
+          section: 'technical_info',
+        });
+      }
+    };
+
+    const techInfoEl = technicalInfoRef.current;
+    if (techInfoEl) {
+      techInfoEl.addEventListener('click', handleLinkClick);
+    }
+
+    return () => {
+      if (techInfoEl) {
+        techInfoEl.removeEventListener('click', handleLinkClick);
+      }
+    };
+  }, [technicalInfo?.content]);
 
   // Notify parent when the current track changes
   useEffect(() => {
@@ -465,8 +493,22 @@ export function PlayerView({
     if (!audio.paused) {
       audio.pause();
       cancelAutoPlay(); // Cancel any pending auto-play from blob transitions
+
+      // Track button click
+      trackEvent('player_control_click', {
+        event_category: 'player',
+        event_label: 'pause_button',
+        control: 'pause',
+      });
     } else {
       audio.play().catch(() => {});
+
+      // Track button click
+      trackEvent('player_control_click', {
+        event_category: 'player',
+        event_label: 'play_button',
+        control: 'play',
+      });
     }
   };
 
@@ -502,6 +544,14 @@ export function PlayerView({
 
   const playNext = useCallback(() => {
     if (!currentTrack) return;
+
+    // Track button click
+    trackEvent('player_control_click', {
+      event_category: 'player',
+      event_label: 'next_button',
+      control: 'next',
+    });
+
     const audio = audioRef.current;
     const currentIndex = tracks.findIndex(
       (t) => t.id === currentTrack.id
@@ -513,6 +563,14 @@ export function PlayerView({
 
   const playPrev = () => {
     if (!currentTrack) return;
+
+    // Track button click
+    trackEvent('player_control_click', {
+      event_category: 'player',
+      event_label: 'previous_button',
+      control: 'previous',
+    });
+
     const audio = audioRef.current;
 
     // If paused and more than 3 seconds in, seek to beginning first
@@ -714,6 +772,12 @@ export function PlayerView({
               borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
               backgroundColor: "var(--color-secondary)",
               color: "var(--color-secondary-text)",
+            }}
+            onClick={() => {
+              trackEvent('logout', {
+                event_category: 'authentication',
+                method: 'button_click',
+              });
             }}
           >
             Logout
@@ -945,10 +1009,40 @@ export function PlayerView({
                         if (isCurrentPlaying) {
                           audioRef.current?.pause();
                           onPlayingChange(false);
+
+                          // Track track pause
+                          trackEvent('track_click', {
+                            event_category: 'playlist',
+                            event_label: track.title,
+                            track_id: track.id,
+                            track_artist: track.artist,
+                            action: 'pause',
+                            position: index + 1,
+                          });
                         } else if (isCurrent && !isPlaying && !isLoading) {
                           audioRef.current?.play().then(() => onPlayingChange(true)).catch(() => {});
+
+                          // Track track resume
+                          trackEvent('track_click', {
+                            event_category: 'playlist',
+                            event_label: track.title,
+                            track_id: track.id,
+                            track_artist: track.artist,
+                            action: 'resume',
+                            position: index + 1,
+                          });
                         } else {
                           playTrack(track);
+
+                          // Track track selection
+                          trackEvent('track_click', {
+                            event_category: 'playlist',
+                            event_label: track.title,
+                            track_id: track.id,
+                            track_artist: track.artist,
+                            action: 'select',
+                            position: index + 1,
+                          });
                         }
                       }}
                       onMouseEnter={() => setHoveredTrackId(track.id)}
@@ -1020,6 +1114,7 @@ export function PlayerView({
                 )}
                 {technicalInfo.content && (
                   <div
+                    ref={technicalInfoRef}
                     className="text-sm prose-content"
                     style={{ color: cardStyles?.contentColor }}
                     dangerouslySetInnerHTML={{ __html: technicalInfo.content }}

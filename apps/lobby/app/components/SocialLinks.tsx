@@ -1,4 +1,23 @@
+import { useRef, useEffect } from "react";
 import { BRAND_ICONS, MONO_ICONS, type SocialPlatform } from "./SocialIcons";
+
+/**
+ * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
+ */
+function trackEvent(eventName: string, params: Record<string, any>) {
+  // Track with Google Analytics (gtag)
+  if (typeof (window as any).gtag === 'function') {
+    (window as any).gtag('event', eventName, params);
+  }
+
+  // Track with Google Tag Manager (dataLayer)
+  if (Array.isArray((window as any).dataLayer)) {
+    (window as any).dataLayer.push({
+      event: eventName,
+      ...params,
+    });
+  }
+}
 
 export interface SocialLink {
   platform: string;
@@ -28,6 +47,9 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
   const hasLinks = links && links.length > 0;
   const hasContent = title || contentBefore || contentAfter || hasLinks;
 
+  const contentBeforeRef = useRef<HTMLDivElement>(null);
+  const contentAfterRef = useRef<HTMLDivElement>(null);
+
   if (!hasContent) return null;
 
   const icons = iconStyle === "brand" ? BRAND_ICONS : MONO_ICONS;
@@ -39,6 +61,41 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
     right: "justify-end",
   }[iconAlignment];
 
+  // Track clicks on custom links in WYSIWYG content
+  useEffect(() => {
+    const handleLinkClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest('a');
+      if (link && link.href) {
+        trackEvent('wysiwyg_link_click', {
+          event_category: 'content',
+          event_label: link.textContent || 'Unknown',
+          url: link.href,
+          section: 'social_links',
+        });
+      }
+    };
+
+    const beforeEl = contentBeforeRef.current;
+    const afterEl = contentAfterRef.current;
+
+    if (beforeEl) {
+      beforeEl.addEventListener('click', handleLinkClick);
+    }
+    if (afterEl) {
+      afterEl.addEventListener('click', handleLinkClick);
+    }
+
+    return () => {
+      if (beforeEl) {
+        beforeEl.removeEventListener('click', handleLinkClick);
+      }
+      if (afterEl) {
+        afterEl.removeEventListener('click', handleLinkClick);
+      }
+    };
+  }, [contentBefore, contentAfter]);
+
   return (
     <div className="space-y-3">
       {title && (
@@ -49,6 +106,7 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
 
       {contentBefore && (
         <div
+          ref={contentBeforeRef}
           className="text-sm prose-content"
           style={{ color: contentColor }}
           dangerouslySetInnerHTML={{ __html: contentBefore }}
@@ -76,6 +134,14 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
                 className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70"
                 title={getPlatformLabel(platform)}
                 style={monoStyle}
+                onClick={() => {
+                  trackEvent('social_link_click', {
+                    event_category: 'social',
+                    event_label: getPlatformLabel(platform),
+                    platform: platform,
+                    url: link.url,
+                  });
+                }}
               >
                 <IconComponent className={iconClass} />
               </a>
@@ -86,6 +152,7 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
 
       {contentAfter && (
         <div
+          ref={contentAfterRef}
           className="text-sm prose-content"
           style={{ color: contentColor }}
           dangerouslySetInnerHTML={{ __html: contentAfter }}
