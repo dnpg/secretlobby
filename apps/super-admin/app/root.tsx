@@ -5,10 +5,19 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+
+const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
+
+export async function loader() {
+  const rawGaId = process.env.CONSOLE_GA_MEASUREMENT_ID ?? "";
+  const gaMeasurementId = GA_ID_RE.test(rawGaId) ? rawGaId : null;
+  return { gaMeasurementId };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -24,6 +33,9 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>();
+  const gaMeasurementId = data?.gaMeasurementId ?? null;
+
   return (
     <html lang="en" className="dark">
       <head>
@@ -31,6 +43,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        {gaMeasurementId && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaMeasurementId)}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(gaMeasurementId)});`,
+              }}
+            />
+          </>
+        )}
       </head>
       <body className="bg-gray-900 text-white">
         {children}

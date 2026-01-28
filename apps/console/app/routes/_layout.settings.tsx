@@ -1,7 +1,10 @@
+import { useEffect } from "react";
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.settings";
 import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
+import { getGoogleAnalyticsSettings, updateGoogleAnalyticsSettings } from "~/lib/content.server";
+import { toast } from "sonner";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { session } = await getSession(request);
@@ -38,6 +41,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Use CORE_DOMAIN from environment
   const baseDomain = process.env.CORE_DOMAIN || "secretlobby.io";
 
+  const gaSettings = await getGoogleAnalyticsSettings(accountId);
+
+  const hasVerifiedCustomDomain = account.domains.some(
+    (d) => d.status === "VERIFIED"
+  );
+
   return {
     account: {
       id: account.id,
@@ -49,6 +58,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     domains: account.domains,
     lobbies: account.lobbies,
     baseDomain,
+    gaSettings,
+    hasVerifiedCustomDomain,
   };
 }
 
@@ -147,6 +158,23 @@ export async function action({ request }: Route.ActionArgs) {
       return { success: "Subdomain updated successfully" };
     }
 
+    if (intent === "update-ga") {
+      const trackingId = (formData.get("trackingId") as string || "").trim();
+      const gtmContainerId = (formData.get("gtmContainerId") as string || "").trim();
+
+      // Allow empty string (to clear) or valid GA4/GT measurement IDs
+      if (trackingId && !/^G[T]?-[A-Z0-9]+$/i.test(trackingId)) {
+        return { error: "Invalid measurement ID format. Expected format: G-XXXXXXXXXX" };
+      }
+
+      if (gtmContainerId && !/^GTM-[A-Z0-9]+$/i.test(gtmContainerId)) {
+        return { error: "Invalid GTM Container ID format. Expected format: GTM-XXXXXXX" };
+      }
+
+      await updateGoogleAnalyticsSettings(accountId, { trackingId, gtmContainerId });
+      return { success: "Google Analytics settings saved" };
+    }
+
     return { error: "Invalid action" };
   } catch (error) {
     console.error("Settings action error:", error);
@@ -155,10 +183,19 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Settings() {
-  const { account, domains, lobbies, baseDomain } = useLoaderData<typeof loader>();
+  const { account, domains, lobbies, baseDomain, gaSettings, hasVerifiedCustomDomain } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   const defaultLobby = lobbies.find((l) => l.isDefault) || lobbies[0];
+
+  useEffect(() => {
+    if (actionData?.success) {
+      toast.success(actionData.success);
+    }
+    if (actionData?.error) {
+      toast.error(actionData.error);
+    }
+  }, [actionData]);
 
   return (
     <div className="space-y-8">
@@ -168,18 +205,6 @@ export default function Settings() {
           Configure how visitors access your lobby
         </p>
       </div>
-
-      {/* Success/Error Messages */}
-      {actionData?.success && (
-        <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400">
-          {actionData.success}
-        </div>
-      )}
-      {actionData?.error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400">
-          {actionData.error}
-        </div>
-      )}
 
       {/* Subdomain Settings */}
       <div className="bg-theme-secondary border border-theme rounded-lg p-6">
@@ -325,6 +350,71 @@ export default function Settings() {
         ) : (
           <p className="text-theme-secondary">No default lobby set</p>
         )}
+      </div>
+
+      {/* Google Analytics */}
+      <div className="bg-theme-secondary border border-theme rounded-lg p-6">
+        <h3 className="text-lg font-semibold mb-4">Google Analytics</h3>
+        <p className="text-sm text-theme-secondary mb-4">
+          Add your GA4 measurement ID to track visitor activity on your lobby.
+        </p>
+
+        <Form method="post" className="space-y-4">
+          <input type="hidden" name="intent" value="update-ga" />
+
+          <div>
+            <label htmlFor="trackingId" className="block text-sm font-medium text-theme-secondary mb-2">
+              Measurement ID
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                id="trackingId"
+                name="trackingId"
+                defaultValue={gaSettings.trackingId}
+                placeholder="G-XXXXXXXXXX"
+                className="flex-1 px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder:text-theme-secondary/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <p className="text-xs text-theme-secondary mt-2">
+              Find your measurement ID in Google Analytics under Admin &gt; Data Streams. Leave empty to disable tracking.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="gtmContainerId" className="block text-sm font-medium text-theme-secondary mb-2">
+              GTM Container ID
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                id="gtmContainerId"
+                name="gtmContainerId"
+                defaultValue={gaSettings.gtmContainerId}
+                placeholder="GTM-XXXXXXX"
+                disabled={!hasVerifiedCustomDomain}
+                className={`flex-1 px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder:text-theme-secondary/50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  !hasVerifiedCustomDomain ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 btn-primary rounded-lg transition"
+              >
+                Save
+              </button>
+            </div>
+            {!hasVerifiedCustomDomain ? (
+              <p className="text-xs text-theme-secondary mt-2">
+                Google Tag Manager is only available when a custom domain is verified. GTM requires an isolated domain for security.
+              </p>
+            ) : (
+              <p className="text-xs text-theme-secondary mt-2">
+                Find your container ID in Google Tag Manager under Admin &gt; Container Settings. Leave empty to disable.
+              </p>
+            )}
+          </div>
+        </Form>
       </div>
     </div>
   );

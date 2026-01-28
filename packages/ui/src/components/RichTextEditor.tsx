@@ -9,9 +9,15 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { cn } from "../lib/utils.js";
 import "./RichTextEditor.css";
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from "@codemirror/view";
+import { EditorState } from "@codemirror/state";
+import { html } from "@codemirror/lang-html";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 
 export type RichTextEditorFeature =
   | "bold"
@@ -27,7 +33,8 @@ export type RichTextEditorFeature =
   | "link"
   | "image"
   | "textAlign"
-  | "table";
+  | "table"
+  | "htmlSource";
 
 const ALL_FEATURES: RichTextEditorFeature[] = [
   "bold",
@@ -44,6 +51,7 @@ const ALL_FEATURES: RichTextEditorFeature[] = [
   "image",
   "textAlign",
   "table",
+  "htmlSource",
 ];
 
 interface RichTextEditorProps {
@@ -64,6 +72,15 @@ export function RichTextEditor({
   onChange,
 }: RichTextEditorProps) {
   const [hiddenValue, setHiddenValue] = useState(defaultValue);
+  const [showSource, setShowSource] = useState(false);
+  const [sourceHtml, setSourceHtml] = useState(defaultValue);
+  const [urlDialog, setUrlDialog] = useState<{
+    type: "link" | "image";
+    defaultValue: string;
+    defaultTarget: string;
+    selectionFrom: number;
+    selectionTo: number;
+  } | null>(null);
 
   const featureSet = new Set(features);
 
@@ -81,28 +98,70 @@ export function RichTextEditor({
 
   const setLink = useCallback(() => {
     if (!editor) return;
-    const previousUrl = editor.getAttributes("link").href;
-    const url = window.prompt("URL", previousUrl);
-    if (url === null) return;
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    const attrs = editor.getAttributes("link");
+    const { from, to } = editor.state.selection;
+    setUrlDialog({
+      type: "link",
+      defaultValue: attrs.href ?? "",
+      defaultTarget: attrs.target ?? "_self",
+      selectionFrom: from,
+      selectionTo: to,
+    });
   }, [editor]);
 
   const addImage = useCallback(() => {
     if (!editor) return;
-    const url = window.prompt("Image URL");
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run();
-    }
+    const { from, to } = editor.state.selection;
+    setUrlDialog({
+      type: "image",
+      defaultValue: "",
+      defaultTarget: "_self",
+      selectionFrom: from,
+      selectionTo: to,
+    });
   }, [editor]);
+
+  const handleUrlSubmit = useCallback((url: string, target: string) => {
+    if (!editor || !urlDialog) return;
+    const sel = { from: urlDialog.selectionFrom, to: urlDialog.selectionTo };
+    if (urlDialog.type === "link") {
+      if (url === "") {
+        // Remove link — extend to full mark range first
+        editor.chain().focus().setTextSelection(sel).extendMarkRange("link").unsetLink().run();
+      } else {
+        // Apply link to the saved selection in a single chain
+        editor.chain().focus().setTextSelection(sel).setLink({ href: url, target }).run();
+      }
+    } else if (urlDialog.type === "image" && url) {
+      editor.chain().focus().setTextSelection(sel).setImage({ src: url }).run();
+    }
+    setUrlDialog(null);
+  }, [editor, urlDialog]);
 
   const insertTable = useCallback(() => {
     if (!editor) return;
     editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
   }, [editor]);
+
+  const toggleSource = useCallback(() => {
+    if (!editor) return;
+    if (showSource) {
+      // Switching from source → WYSIWYG: apply edited HTML
+      editor.commands.setContent(sourceHtml, false);
+      setHiddenValue(sourceHtml);
+      onChange?.(sourceHtml);
+    } else {
+      // Switching from WYSIWYG → source: grab current HTML
+      setSourceHtml(editor.getHTML());
+    }
+    setShowSource(!showSource);
+  }, [editor, showSource, sourceHtml, onChange]);
+
+  const handleSourceInput = useCallback((value: string) => {
+    setSourceHtml(value);
+    setHiddenValue(value);
+    onChange?.(value);
+  }, [onChange]);
 
   if (!editor) return null;
 
@@ -318,13 +377,44 @@ export function RichTextEditor({
             </ToolbarButton>
           </>
         )}
+
+        {featureSet.has("htmlSource") && (
+          <>
+            <Separator />
+            <ToolbarButton
+              active={showSource}
+              onClick={toggleSource}
+              title="HTML Source"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14.6 16.6l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4zm-5.2 0L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zM14.5 4l-5 16h-1l5-16h1z"/>
+              </svg>
+            </ToolbarButton>
+          </>
+        )}
       </div>
 
-      {/* Editor Content */}
-      <EditorContent editor={editor} />
+      {/* Editor Content / HTML Source */}
+      {showSource ? (
+        <HtmlSourceEditor value={sourceHtml} onChange={handleSourceInput} />
+      ) : (
+        <EditorContent editor={editor} />
+      )}
 
       {/* Hidden input for form submission */}
       {name && <input type="hidden" name={name} value={hiddenValue} />}
+
+      {/* URL Dialog */}
+      {urlDialog && (
+        <UrlDialog
+          title={urlDialog.type === "link" ? "Insert Link" : "Insert Image"}
+          defaultValue={urlDialog.defaultValue}
+          defaultTarget={urlDialog.defaultTarget}
+          showTarget={urlDialog.type === "link"}
+          onSubmit={handleUrlSubmit}
+          onClose={() => setUrlDialog(null)}
+        />
+      )}
     </div>
   );
 }
@@ -346,7 +436,7 @@ function ToolbarButton({
       onClick={onClick}
       title={title}
       className={cn(
-        "p-1.5 rounded transition-colors",
+        "p-1.5 rounded transition-colors cursor-pointer",
         active
           ? "bg-[var(--color-accent)]/20 text-[var(--color-accent,#6366f1)]"
           : "hover:bg-white/10 text-current"
@@ -359,6 +449,155 @@ function ToolbarButton({
 
 function Separator() {
   return <div className="w-px h-6 self-center mx-1 bg-theme-border opacity-30" />;
+}
+
+function UrlDialog({
+  title,
+  defaultValue,
+  defaultTarget,
+  showTarget,
+  onSubmit,
+  onClose,
+}: {
+  title: string;
+  defaultValue: string;
+  defaultTarget: string;
+  showTarget: boolean;
+  onSubmit: (url: string, target: string) => void;
+  onClose: () => void;
+}) {
+  const [url, setUrl] = useState(defaultValue);
+  const [target, setTarget] = useState(defaultTarget || "_self");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const handleInsert = () => {
+    onSubmit(url, target);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleInsert();
+    } else if (e.key === "Escape") {
+      onClose();
+    }
+  };
+
+  const inputClasses = "w-full px-3 py-2 rounded-md border border-theme bg-theme-tertiary text-current text-sm outline-none focus:ring-1 focus:ring-[var(--color-accent,#6366f1)]";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="fixed inset-0 bg-black/50" />
+      <div
+        className="relative bg-theme-secondary border border-theme rounded-lg shadow-xl p-4 w-full max-w-md mx-4"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
+        <h3 className="text-sm font-medium mb-3">{title}</h3>
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className="block text-xs mb-1 opacity-70">URL</label>
+            <input
+              ref={inputRef}
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://"
+              className={inputClasses}
+            />
+          </div>
+          {showTarget && (
+            <div>
+              <label className="block text-xs mb-1 opacity-70">Open in</label>
+              <select
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                className={cn(inputClasses, "cursor-pointer")}
+              >
+                <option value="_self">Same tab</option>
+                <option value="_blank">New tab</option>
+              </select>
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm rounded-md hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleInsert}
+              className="px-3 py-1.5 text-sm rounded-md btn-primary cursor-pointer"
+            >
+              {defaultValue ? "Update" : "Insert"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HtmlSourceEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const state = EditorState.create({
+      doc: value,
+      extensions: [
+        lineNumbers(),
+        highlightActiveLine(),
+        highlightActiveLineGutter(),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        html(),
+        oneDark,
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            onChangeRef.current(update.state.doc.toString());
+          }
+        }),
+        EditorView.theme({
+          "&": { minHeight: "200px", fontSize: "13px" },
+          ".cm-scroller": { overflow: "auto" },
+          ".cm-content": { padding: "8px 0" },
+        }),
+        EditorView.lineWrapping,
+      ],
+    });
+
+    const view = new EditorView({ state, parent: containerRef.current });
+    viewRef.current = view;
+
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+  // Only create the editor once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return <div ref={containerRef} className="overflow-hidden" />;
 }
 
 function buildExtensions(featureSet: Set<RichTextEditorFeature>, placeholder?: string) {
@@ -384,7 +623,7 @@ function buildExtensions(featureSet: Set<RichTextEditorFeature>, placeholder?: s
     extensions.push(
       Link.configure({
         openOnClick: false,
-        HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
+        HTMLAttributes: { rel: "noopener noreferrer nofollow" },
       })
     );
   }

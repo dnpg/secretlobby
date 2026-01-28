@@ -6,6 +6,24 @@ import { WaveformProgress } from "~/components/WaveformProgress";
 import { usePcmAnalyser } from "~/hooks/usePcmAnalyser";
 import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
 
+/**
+ * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
+ */
+function trackEvent(eventName: string, params: Record<string, any>) {
+  // Track with Google Analytics (gtag)
+  if (typeof (window as any).gtag === 'function') {
+    (window as any).gtag('event', eventName, params);
+  }
+
+  // Track with Google Tag Manager (dataLayer)
+  if (Array.isArray((window as any).dataLayer)) {
+    (window as any).dataLayer.push({
+      event: eventName,
+      ...params,
+    });
+  }
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -250,6 +268,9 @@ export function PlayerView({
   // Ref that always has the latest track duration (avoids stale closure issues)
   const trackDurationRef = useRef(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
+  // Tracking refs for analytics
+  const progressMilestonesRef = useRef<Set<number>>(new Set());
+  const currentTrackIdRef = useRef<string | null>(null);
 
   // Refs for document-level mouse handlers (need stable references)
   const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
@@ -300,6 +321,12 @@ export function PlayerView({
   useEffect(() => {
     if (currentTrack) {
       onTrackChange?.(currentTrack.id);
+
+      // Reset progress milestones when track changes
+      if (currentTrackIdRef.current !== currentTrack.id) {
+        progressMilestonesRef.current.clear();
+        currentTrackIdRef.current = currentTrack.id;
+      }
     }
   }, [currentTrack?.id]);
 
@@ -323,8 +350,24 @@ export function PlayerView({
       // Don't update progress while dragging or during seek loading
       if (totalDuration > 0 && !isDraggingRef.current && !seekLoadingRef.current) {
         const realTime = audio.currentTime;
+        const progressPercent = (realTime / totalDuration) * 100;
         setCurrentTime(realTime);
-        setProgress((realTime / totalDuration) * 100);
+        setProgress(progressPercent);
+
+        // Track progress milestones (25%, 50%, 75%, 100%)
+        const milestones = [25, 50, 75, 100];
+        for (const milestone of milestones) {
+          if (progressPercent >= milestone && !progressMilestonesRef.current.has(milestone)) {
+            progressMilestonesRef.current.add(milestone);
+            trackEvent('audio_progress', {
+              event_category: 'audio',
+              event_label: currentTrack?.title || 'Unknown',
+              track_id: currentTrack?.id,
+              track_artist: currentTrack?.artist,
+              progress_percent: milestone,
+            });
+          }
+        }
       }
     };
 
@@ -338,6 +381,14 @@ export function PlayerView({
     const handleEnded = () => {
       // If a seek is in progress, ignore
       if (seekLoadingRef.current) return;
+
+      // Track ended event
+      trackEvent('audio_complete', {
+        event_category: 'audio',
+        event_label: currentTrack?.title || 'Unknown',
+        track_id: currentTrack?.id,
+        track_artist: currentTrack?.artist,
+      });
 
       // Track ended: advance to next track
       onPlayingChange(false);
@@ -361,10 +412,30 @@ export function PlayerView({
       }
     };
 
-    const handlePlay = () => onPlayingChange(true);
+    const handlePlay = () => {
+      onPlayingChange(true);
+
+      // Track play event
+      trackEvent('audio_play', {
+        event_category: 'audio',
+        event_label: currentTrack?.title || 'Unknown',
+        track_id: currentTrack?.id,
+        track_artist: currentTrack?.artist,
+      });
+    };
+
     const handlePause = () => {
       if (!seekLoadingRef.current) {
         onPlayingChange(false);
+
+        // Track pause event
+        trackEvent('audio_pause', {
+          event_category: 'audio',
+          event_label: currentTrack?.title || 'Unknown',
+          track_id: currentTrack?.id,
+          track_artist: currentTrack?.artist,
+          current_time: audio.currentTime,
+        });
       }
     };
 

@@ -309,7 +309,7 @@ export default function AdminContent() {
               name="bandDescription"
               defaultValue={lobby.description || ""}
               placeholder="Enter lobby description..."
-              features={["bold", "italic", "underline","textAlign", "heading", "bulletList", "orderedList", "link", "blockquote"]}
+              features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "htmlSource"]}
             />
           </div>
           <button

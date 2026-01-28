@@ -12,6 +12,24 @@ import type { SocialLinksSettings } from "~/components/SocialLinks";
 import { useHlsAudio } from "~/hooks/useHlsAudio";
 import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
 
+/**
+ * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
+ */
+function trackEvent(eventName: string, params: Record<string, any>) {
+  // Track with Google Analytics (gtag)
+  if (typeof (window as any).gtag === 'function') {
+    (window as any).gtag('event', eventName, params);
+  }
+
+  // Track with Google Tag Manager (dataLayer)
+  if (Array.isArray((window as any).dataLayer)) {
+    (window as any).dataLayer.push({
+      event: eventName,
+      ...params,
+    });
+  }
+}
+
 interface LoginPageSettings {
   title: string;
   description: string;
@@ -298,6 +316,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       bodyBg: getBodyBgCSS(defaultTheme),
       socialLinksSettings: null as SocialLinksSettings | null,
       technicalInfo: null as { title: string; content: string } | null,
+      gaTrackingId: null as string | null,
+      gtmContainerId: null as string | null,
     };
   }
 
@@ -333,6 +353,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       bodyBg: getBodyBgCSS(defaultTheme),
       socialLinksSettings: null as SocialLinksSettings | null,
       technicalInfo: null as { title: string; content: string } | null,
+      gaTrackingId: null as string | null,
+      gtmContainerId: null as string | null,
     };
   }
 
@@ -350,6 +372,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   let themeSettings: ThemeSettings = defaultTheme;
   let socialLinksSettings: SocialLinksSettings | null = null;
   let technicalInfo: { title: string; content: string } | null = null;
+  let gaTrackingId: string | null = null;
+  let gtmContainerId: string | null = null;
 
   if (account.settings && typeof account.settings === "object") {
     const accountSettings = account.settings as Record<string, unknown>;
@@ -366,6 +390,16 @@ export async function loader({ request }: Route.LoaderArgs) {
       const ti = accountSettings.technicalInfo as { title?: string; content?: string };
       if (ti.title || ti.content) {
         technicalInfo = { title: ti.title || "", content: ti.content || "" };
+      }
+    }
+    if (accountSettings.googleAnalytics && typeof accountSettings.googleAnalytics === "object") {
+      const ga = accountSettings.googleAnalytics as { trackingId?: string; gtmContainerId?: string };
+      if (ga.trackingId) {
+        gaTrackingId = ga.trackingId;
+      }
+      // Only expose GTM on custom domains for security
+      if (ga.gtmContainerId && tenant.isCustomDomain) {
+        gtmContainerId = ga.gtmContainerId;
       }
     }
   }
@@ -504,6 +538,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     bodyBg,
     socialLinksSettings,
     technicalInfo,
+    gaTrackingId,
+    gtmContainerId,
   };
 }
 
@@ -571,6 +607,53 @@ export default function LobbyIndex() {
     };
   }, [data.bodyBg]);
 
+  // Inject Google Analytics script
+  useEffect(() => {
+    const id = data.gaTrackingId;
+    if (!id || !/^G[T]?-[A-Z0-9]+$/i.test(id)) return;
+
+    const script = document.createElement("script");
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
+    document.head.appendChild(script);
+
+    const inlineScript = document.createElement("script");
+    inlineScript.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(id)});`;
+    document.head.appendChild(inlineScript);
+
+    return () => {
+      document.head.removeChild(script);
+      document.head.removeChild(inlineScript);
+    };
+  }, [data.gaTrackingId]);
+
+  // Inject Google Tag Manager (custom domains only)
+  useEffect(() => {
+    const id = data.gtmContainerId;
+    if (!id || !/^GTM-[A-Z0-9]+$/i.test(id)) return;
+
+    // Inject GTM script in head
+    const script = document.createElement("script");
+    script.textContent = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',${JSON.stringify(id)});`;
+    document.head.appendChild(script);
+
+    // Inject noscript iframe in body
+    const noscript = document.createElement("noscript");
+    const iframe = document.createElement("iframe");
+    iframe.src = `https://www.googletagmanager.com/ns.html?id=${encodeURIComponent(id)}`;
+    iframe.height = "0";
+    iframe.width = "0";
+    iframe.style.display = "none";
+    iframe.style.visibility = "hidden";
+    noscript.appendChild(iframe);
+    document.body.insertBefore(noscript, document.body.firstChild);
+
+    return () => {
+      document.head.removeChild(script);
+      document.body.removeChild(noscript);
+    };
+  }, [data.gtmContainerId]);
+
   // Resolve tracks for both localhost and multi-tenant
   const tracks: Track[] = data.isLocalhost
     ? (data.content?.playlist || []).map((t: FileTrack) => ({
@@ -593,6 +676,17 @@ export default function LobbyIndex() {
       loadedTrackRef.current = null;
     }
     wasAuthenticatedRef.current = !data.requiresPassword;
+  }, [data.requiresPassword]);
+
+  // Track login success event
+  useEffect(() => {
+    if (!data.requiresPassword && !wasAuthenticatedRef.current) {
+      // User just logged in successfully
+      trackEvent('login', {
+        event_category: 'authentication',
+        method: 'password',
+      });
+    }
   }, [data.requiresPassword]);
 
   // Preload the first track on the password page (before authentication)

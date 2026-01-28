@@ -163,7 +163,7 @@ export default function SocialLinksPage() {
                 name="contentBeforeEditor"
                 defaultValue={contentBefore}
                 placeholder="Add content that appears above the social icons..."
-                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "html"]}
+                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "htmlSource"]}
                 onChange={(html) => setContentBefore(html)}
               />
             </div>
@@ -174,7 +174,7 @@ export default function SocialLinksPage() {
                 name="contentAfterEditor"
                 defaultValue={contentAfter}
                 placeholder="Add content that appears below the social icons..."
-                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "html"]}
+                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "htmlSource"]}
                 onChange={(html) => setContentAfter(html)}
               />
             </div>

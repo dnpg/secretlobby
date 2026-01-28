@@ -105,7 +105,7 @@ export default function TechnicalInfoPage() {
                 name="contentEditor"
                 defaultValue={content}
                 placeholder="Enter your technical information here..."
-                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote"]}
+                features={["bold", "italic", "underline", "textAlign", "heading", "bulletList", "orderedList", "link", "blockquote", "htmlSource"]}
                 onChange={(html) => setContent(html)}
               />
             </div>

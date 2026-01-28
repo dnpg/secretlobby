@@ -275,6 +275,7 @@ interface AccountSettings {
   loginPage?: Partial<LoginPageSettings>;
   socialLinks?: SocialLinksSettings;
   technicalInfo?: TechnicalInfo;
+  googleAnalytics?: { trackingId: string };
   [key: string]: unknown;
 }
 
@@ -439,4 +440,23 @@ export async function getTechnicalInfoSettings(accountId: string): Promise<Techn
 
 export async function updateTechnicalInfoSettings(accountId: string, technicalInfo: TechnicalInfoSettings): Promise<void> {
   await updateAccountSettings(accountId, { technicalInfo });
+}
+
+export interface GoogleAnalyticsSettings {
+  trackingId: string;
+  gtmContainerId: string;
+}
+
+export const defaultGoogleAnalyticsSettings: GoogleAnalyticsSettings = {
+  trackingId: "",
+  gtmContainerId: "",
+};
+
+export async function getGoogleAnalyticsSettings(accountId: string): Promise<GoogleAnalyticsSettings> {
+  const settings = await getAccountSettings(accountId);
+  return { ...defaultGoogleAnalyticsSettings, ...settings.googleAnalytics };
+}
+
+export async function updateGoogleAnalyticsSettings(accountId: string, googleAnalytics: GoogleAnalyticsSettings): Promise<void> {
+  await updateAccountSettings(accountId, { googleAnalytics });
 }

@@ -5,10 +5,24 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
 import "./app.css";
+
+const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
+const GTM_ID_RE = /^GTM-[A-Z0-9]+$/i;
+
+export async function loader() {
+  const gaMeasurementId = process.env.GA_MEASUREMENT_ID ?? "";
+  const gtmContainerId = process.env.GTM_CONTAINER_ID ?? "";
+
+  return {
+    gaMeasurementId: GA_ID_RE.test(gaMeasurementId) ? gaMeasurementId : null,
+    gtmContainerId: GTM_ID_RE.test(gtmContainerId) ? gtmContainerId : null,
+  };
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -24,6 +38,10 @@ export const links: Route.LinksFunction = () => [
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>();
+  const gaMeasurementId = data?.gaMeasurementId ?? null;
+  const gtmContainerId = data?.gtmContainerId ?? null;
+
   return (
     <html lang="en">
       <head>
@@ -31,8 +49,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        {gtmContainerId && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',${JSON.stringify(gtmContainerId)});`,
+            }}
+          />
+        )}
+        {gaMeasurementId && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaMeasurementId)}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(gaMeasurementId)});`,
+              }}
+            />
+          </>
+        )}
       </head>
       <body>
+        {gtmContainerId && (
+          <noscript>
+            <iframe
+              src={`https://www.googletagmanager.com/ns.html?id=${encodeURIComponent(gtmContainerId)}`}
+              height="0"
+              width="0"
+              style={{ display: "none", visibility: "hidden" }}
+            />
+          </noscript>
+        )}
         {children}
         <ScrollRestoration />
         <Scripts />

@@ -13,6 +13,8 @@ import "./app.css";
 import { ColorModeProvider, type UserColorMode } from "@secretlobby/ui";
 import { Toaster } from "sonner";
 
+const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
+
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
@@ -42,13 +44,17 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const resolvedTheme: "dark" | "light" = colorMode === "system" ? "dark" : colorMode;
 
-  return { colorMode, resolvedTheme };
+  const rawGaId = process.env.CONSOLE_GA_MEASUREMENT_ID ?? "";
+  const gaMeasurementId = GA_ID_RE.test(rawGaId) ? rawGaId : null;
+
+  return { colorMode, resolvedTheme, gaMeasurementId };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useLoaderData<typeof loader>();
   const colorMode = data?.colorMode ?? "dark";
   const resolvedTheme = data?.resolvedTheme ?? "dark";
+  const gaMeasurementId = data?.gaMeasurementId ?? null;
 
   const colorModeScript = `
     (function() {
@@ -83,6 +89,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links />
         <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
+        {gaMeasurementId && (
+          <>
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaMeasurementId)}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(gaMeasurementId)});`,
+              }}
+            />
+          </>
+        )}
       </head>
       <body>
         {children}
