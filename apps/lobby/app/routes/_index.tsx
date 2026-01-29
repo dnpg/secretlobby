@@ -305,6 +305,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         profileDark: null,
       } satisfies ImageUrls,
       tracks: isAuthenticated ? content.playlist : [],
+      autoplayTrackId: null,
       preloadTrackId: null,
       preloadToken: null,
       preloadTrackMeta: null,
@@ -342,6 +343,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         profileDark: null,
       } satisfies ImageUrls,
       tracks: [],
+      autoplayTrackId: null,
       preloadTrackId: null,
       preloadToken: null,
       preloadTrackMeta: null,
@@ -480,10 +482,34 @@ export async function loader({ request }: Route.LoaderArgs) {
     waveformPeaks: t.media?.waveformPeaks ?? t.waveformPeaks,
   }));
 
-  // If password required, find first track for preloading
+  // Get autoplay track from lobby settings (or default to first track)
+  const lobbySettings = (lobby.settings as Record<string, unknown>) || {};
+  const autoplayTrackId = (lobbySettings.autoplayTrackId as string) || null;
+
+  // If password required, find the autoplay track (or first track) for preloading
   let preloadTrackMeta: { hlsReady: boolean; duration: number | null; waveformPeaks: number[] | null } | null = null;
   if (needsPassword) {
-    const firstTrack = await prisma.track.findFirst({
+    // Try to find the autoplay track, fall back to first track by position
+    const targetTrack = autoplayTrackId
+      ? await prisma.track.findFirst({
+          where: { lobbyId: lobby.id, id: autoplayTrackId },
+          select: {
+            id: true,
+            duration: true,
+            hlsReady: true,
+            waveformPeaks: true,
+            media: {
+              select: {
+                duration: true,
+                hlsReady: true,
+                waveformPeaks: true,
+              },
+            },
+          },
+        })
+      : null;
+
+    const firstTrack = targetTrack || await prisma.track.findFirst({
       where: { lobbyId: lobby.id },
       orderBy: { position: "asc" },
       select: {
@@ -527,6 +553,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     isAuthenticated: !needsPassword,
     imageUrls,
     tracks,
+    autoplayTrackId,
     preloadTrackId,
     preloadToken,
     preloadTrackMeta: preloadTrackMeta ?? null,
@@ -590,6 +617,7 @@ export default function LobbyIndex() {
   const audioHook = useHlsAudio(audioRef);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [autoplayEnabled, setAutoplayEnabled] = useState(true);
   const loadedTrackRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
 
@@ -707,36 +735,40 @@ export default function LobbyIndex() {
   }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
 
   // After login: continue downloading remaining segments or load from scratch
-  const firstTrack = tracks[0];
-  const firstTrackId = firstTrack?.id;
+  // Use the autoplay track if set, otherwise fall back to first track
+  const autoplayTrack = data.autoplayTrackId
+    ? tracks.find((t) => t.id === data.autoplayTrackId)
+    : null;
+  const initialTrack = autoplayTrack || tracks[0];
+  const initialTrackId = initialTrack?.id;
   useEffect(() => {
-    if (!firstTrackId || data.requiresPassword) return;
+    if (!initialTrackId || data.requiresPassword) return;
 
-    if (loadedTrackRef.current === firstTrackId) {
+    if (loadedTrackRef.current === initialTrackId) {
       // Track was preloaded — resume with session auth, re-apply metadata
       // that may have been lost during login navigation
       audioHook.continueDownload({
-        waveformPeaks: (firstTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
-        duration: firstTrack?.duration ?? null,
+        waveformPeaks: (initialTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
+        duration: initialTrack?.duration ?? null,
       });
     } else {
       // No preload — load from scratch
-      loadedTrackRef.current = firstTrackId;
-      const hlsOpts = firstTrack ? {
-        hlsReady: (firstTrack as { hlsReady?: boolean }).hlsReady ?? false,
-        duration: firstTrack.duration,
-        waveformPeaks: (firstTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
+      loadedTrackRef.current = initialTrackId;
+      const hlsOpts = initialTrack ? {
+        hlsReady: (initialTrack as { hlsReady?: boolean }).hlsReady ?? false,
+        duration: initialTrack.duration,
+        waveformPeaks: (initialTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
       } : undefined;
-      audioHook.loadTrack(firstTrackId, undefined, hlsOpts);
+      audioHook.loadTrack(initialTrackId, undefined, hlsOpts);
     }
-  }, [firstTrackId, data.requiresPassword]);
+  }, [initialTrackId, data.requiresPassword]);
 
-  // Auto-play when the first track becomes ready and user is authenticated
+  // Auto-play when the first track becomes ready and user is authenticated (if autoplay is enabled)
   useEffect(() => {
-    if (audioHook.isReady && !data.requiresPassword && !isPlaying) {
+    if (audioHook.isReady && !data.requiresPassword && !isPlaying && autoplayEnabled) {
       audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
     }
-  }, [audioHook.isReady, data.requiresPassword]);
+  }, [audioHook.isReady, data.requiresPassword, autoplayEnabled]);
 
   // Not found state
   if (data.notFound) {
@@ -834,6 +866,88 @@ export default function LobbyIndex() {
                 </button>
               </Form>
             </div>
+
+            {/* Audio autoplay toggle - separate box below login panel */}
+            {/* Uses same panel colors as login box for consistent contrast */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoplayEnabled}
+              aria-label={autoplayEnabled ? "Autoplay is on. Press to disable autoplay" : "Autoplay is off. Press to enable autoplay"}
+              onClick={() => setAutoplayEnabled(!autoplayEnabled)}
+              className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2"
+              style={{
+                backgroundColor: lp.panelBgColor,
+                border: `1px solid ${lp.panelBorderColor}`,
+                // Use panel border color for focus ring offset to match the background
+                // @ts-expect-error CSS custom property
+                "--tw-ring-offset-color": lp.bgColor,
+                "--tw-ring-color": "#3b82f6",
+              }}
+            >
+              <span
+                className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-200"
+                style={{
+                  backgroundColor: autoplayEnabled ? "rgba(59, 130, 246, 0.25)" : "rgba(128, 128, 128, 0.25)",
+                }}
+                aria-hidden="true"
+              >
+                {autoplayEnabled ? (
+                  <svg
+                    className="w-5 h-5"
+                    style={{ color: "#3b82f6" }}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-5 h-5"
+                    style={{ color: lp.textColor, opacity: 0.5 }}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                    />
+                  </svg>
+                )}
+              </span>
+              <span className="flex-1 text-left">
+                <span
+                  className="block text-sm font-medium"
+                  style={{ color: lp.textColor }}
+                  aria-live="polite"
+                >
+                  {autoplayEnabled ? "Music will play automatically" : "Autoplay disabled"}
+                </span>
+                <span
+                  className="block text-xs"
+                  style={{ color: lp.textColor, opacity: 0.7 }}
+                >
+                  {autoplayEnabled
+                    ? "Click to enter silently"
+                    : "Click to enable autoplay"}
+                </span>
+              </span>
+            </button>
           </div>
         </div>
       ) : (
@@ -869,6 +983,7 @@ export default function LobbyIndex() {
             cardStyles={cardStyles}
             socialLinksSettings={socialLinksSettings}
             technicalInfo={technicalInfo}
+            initialTrackId={data.autoplayTrackId}
           />
         </div>
       )}

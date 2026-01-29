@@ -233,6 +233,7 @@ interface PlayerViewProps {
   cardStyles?: CardStyles;
   socialLinksSettings?: SocialLinksSettings | null;
   technicalInfo?: TechnicalInfo | null;
+  initialTrackId?: string | null;
 }
 
 export function PlayerView({
@@ -247,12 +248,20 @@ export function PlayerView({
   cardStyles,
   socialLinksSettings,
   technicalInfo,
+  initialTrackId,
 }: PlayerViewProps) {
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, cancelAutoPlay, estimatedDuration } = audio;
 
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(
-    tracks[0] || null
-  );
+  // Find initial track: use initialTrackId if provided, otherwise first track
+  const getInitialTrack = () => {
+    if (initialTrackId) {
+      const found = tracks.find((t) => t.id === initialTrackId);
+      if (found) return found;
+    }
+    return tracks[0] || null;
+  };
+
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(getInitialTrack);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);

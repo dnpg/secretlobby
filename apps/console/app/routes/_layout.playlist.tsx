@@ -60,7 +60,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     mediaId: track.mediaId,
   }));
 
-  return { playlist };
+  // Get autoplay track from lobby settings
+  const lobbySettings = (lobby?.settings as Record<string, unknown>) || {};
+  const autoplayTrackId = (lobbySettings.autoplayTrackId as string) || null;
+
+  return { playlist, autoplayTrackId };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -167,6 +171,22 @@ export async function action({ request }: Route.ActionArgs) {
         return { success: "Playlist reordered" };
       }
 
+      case "set-autoplay-track": {
+        const trackId = formData.get("trackId") as string;
+        // Merge into existing lobby settings
+        const existingSettings = (lobby.settings as Record<string, unknown>) || {};
+        await prisma.lobby.update({
+          where: { id: lobby.id },
+          data: {
+            settings: {
+              ...existingSettings,
+              autoplayTrackId: trackId || null,
+            },
+          },
+        });
+        return { success: "Autoplay track updated" };
+      }
+
       case "move-track-up":
       case "move-track-down": {
         const id = formData.get("id") as string;
@@ -249,6 +269,7 @@ function SortableTrackRow({
   editArtist,
   isSubmitting,
   changingFileTrackId,
+  isAutoplay,
   onStartEditing,
   onCancelEditing,
   onEditTitleChange,
@@ -256,6 +277,7 @@ function SortableTrackRow({
   onChangeFile,
   onMoveUp,
   onMoveDown,
+  onSetAutoplay,
 }: {
   track: PlaylistTrack;
   index: number;
@@ -266,6 +288,7 @@ function SortableTrackRow({
   editArtist: string;
   isSubmitting: boolean;
   changingFileTrackId: string | null;
+  isAutoplay: boolean;
   onStartEditing: (track: PlaylistTrack) => void;
   onCancelEditing: () => void;
   onEditTitleChange: (v: string) => void;
@@ -273,6 +296,7 @@ function SortableTrackRow({
   onChangeFile: (trackId: string, media: MediaItem) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
+  onSetAutoplay: (id: string | null) => void;
 }) {
   const {
     attributes,
@@ -409,6 +433,21 @@ function SortableTrackRow({
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* Autoplay toggle */}
+            <button
+              type="button"
+              onClick={() => onSetAutoplay(isAutoplay ? null : track.id)}
+              className={`p-2 rounded-lg transition cursor-pointer ${
+                isAutoplay
+                  ? "bg-amber-500/20 text-amber-400"
+                  : "hover:bg-theme-secondary text-theme-muted hover:text-amber-400"
+              }`}
+              title={isAutoplay ? "Remove autoplay (will use first track)" : "Set as autoplay track"}
+            >
+              <svg className="w-4 h-4" fill={isAutoplay ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              </svg>
+            </button>
             {/* Move up */}
             <button
               type="button"
@@ -479,7 +518,7 @@ function SortableTrackRow({
 // Main component
 // ---------------------------------------------------------------------------
 export default function AdminPlaylist() {
-  const { playlist } = useLoaderData<typeof loader>();
+  const { playlist, autoplayTrackId } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -595,6 +634,16 @@ export default function AdminPlaylist() {
     );
   };
 
+  const handleSetAutoplay = useCallback(
+    (trackId: string | null) => {
+      submit(
+        { intent: "set-autoplay-track", trackId: trackId || "" },
+        { method: "post" },
+      );
+    },
+    [submit],
+  );
+
   const startEditing = (track: PlaylistTrack) => {
     setEditingTrackId(track.id);
     setEditTitle(track.title);
@@ -661,6 +710,7 @@ export default function AdminPlaylist() {
                     editArtist={editArtist}
                     isSubmitting={isSubmitting}
                     changingFileTrackId={changingFileTrackId ?? null}
+                    isAutoplay={track.id === autoplayTrackId}
                     onStartEditing={startEditing}
                     onCancelEditing={cancelEditing}
                     onEditTitleChange={setEditTitle}
@@ -668,6 +718,7 @@ export default function AdminPlaylist() {
                     onChangeFile={handleChangeFile}
                     onMoveUp={handleMoveUp}
                     onMoveDown={handleMoveDown}
+                    onSetAutoplay={handleSetAutoplay}
                   />
                 ))}
               </SortableContext>
