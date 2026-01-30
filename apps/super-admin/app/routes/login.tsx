@@ -27,11 +27,16 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Invalid form data" };
   }
 
-  const user = await authenticateWithPassword(email, password);
+  const result = await authenticateWithPassword(email, password);
 
-  if (!user) {
+  if (!result.success) {
+    if (result.error === "account_locked") {
+      return { error: `Account locked. Try again after ${result.lockedUntil.toLocaleTimeString()}.` };
+    }
     return { error: "Invalid email or password" };
   }
+
+  const user = result.user;
 
   if (user.accounts.length === 0) {
     return { error: "You don't have access to any accounts." };

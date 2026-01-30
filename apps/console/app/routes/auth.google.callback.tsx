@@ -56,10 +56,19 @@ export async function loader({ request }: Route.LoaderArgs) {
       throw new Error("Failed to fetch user info from Google");
     }
 
-    const googleUser = (await userInfoResponse.json()) as {
+    const googleUserInfo = (await userInfoResponse.json()) as {
+      id: string; // Google v2 API uses 'id', not 'sub'
       email: string;
       name?: string;
       picture?: string;
+    };
+
+    // Map to GoogleUser format expected by authenticateWithGoogle
+    const googleUser = {
+      sub: googleUserInfo.id, // Map 'id' to 'sub' for compatibility
+      email: googleUserInfo.email,
+      name: googleUserInfo.name,
+      picture: googleUserInfo.picture,
     };
 
     // Authenticate or create user

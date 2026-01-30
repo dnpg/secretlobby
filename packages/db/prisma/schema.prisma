@@ -35,6 +35,21 @@ enum SubscriptionTier {
   ENTERPRISE
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  PAUSED
+  TRIALING
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  PENDING
+  FAILED
+  REFUNDED
+}
+
 enum MediaType {
   IMAGE
   AUDIO
@@ -72,6 +87,9 @@ model Account {
   lobbies        Lobby[]
   domains        Domain[]
   media          Media[]
+  subscriptions  Subscription[]
+  paymentMethods PaymentMethod[]
+  paymentHistory PaymentHistory[]
   defaultLobbyId String? // Reference to the default lobby
 
   @@index([slug])
@@ -367,4 +385,164 @@ model AuditLog {
   @@index([userId])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+// ============================================================================
+// SUBSCRIPTION (Payment subscriptions)
+// ============================================================================
+
+model Subscription {
+  id        String @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Gateway info
+  gatewayId             String // 'stripe', 'paypal', etc.
+  gatewaySubscriptionId String // External subscription ID
+  gatewayCustomerId     String // External customer ID
+
+  // Subscription details
+  tier                SubscriptionTier
+  status              SubscriptionStatus @default(ACTIVE)
+  billingPeriod       String?            // 'monthly' or 'yearly'
+
+  // Billing cycle
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean  @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([gatewayId, gatewaySubscriptionId])
+  @@index([accountId])
+  @@index([status])
+}
+
+// ============================================================================
+// PAYMENT METHOD
+// ============================================================================
+
+model PaymentMethod {
+  id        String @id @default(cuid())
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // Gateway info
+  gatewayId               String
+  gatewayPaymentMethodId  String
+
+  // Card details (for display only - no sensitive data)
+  type        String    // 'card', 'paypal', 'bank_account'
+  last4       String?
+  brand       String?   // 'visa', 'mastercard', etc.
+  expiryMonth Int?
+  expiryYear  Int?
+
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+}
+
+// ============================================================================
+// PAYMENT HISTORY
+// ============================================================================
+
+model PaymentHistory {
+  id             String  @id @default(cuid())
+  accountId      String
+  account        Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+
+  // Gateway info
+  gatewayId        String
+  gatewayPaymentId String
+
+  // Payment details
+  amount      Int           // In cents
+  currency    String        @default("usd")
+  status      PaymentStatus
+  description String?
+
+  // URLs for receipts/invoices
+  invoiceUrl  String?
+  receiptUrl  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// SYSTEM SETTINGS (Platform-wide configuration)
+// ============================================================================
+
+model SystemSettings {
+  id    String @id @default("default") // Singleton - always "default"
+
+  // Payment Gateway Configuration
+  enabledGateways  String[] @default(["stripe"]) // ['stripe', 'paypal']
+  defaultGateway   String   @default("stripe")
+
+  // Platform Settings
+  platformName     String   @default("SecretLobby")
+  supportEmail     String   @default("support@secretlobby.io")
+
+  // Feature Flags
+  allowSignups     Boolean  @default(true)
+  maintenanceMode  Boolean  @default(false)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================================
+// SUBSCRIPTION PLAN (Configurable subscription plans)
+// ============================================================================
+
+model SubscriptionPlan {
+  id          String  @id @default(cuid())
+
+  // Plan Identity
+  name        String           // Display name (e.g., "Starter")
+  slug        String  @unique  // Internal identifier (e.g., "STARTER")
+  description String?          // Short description
+
+  // Pricing (in cents)
+  priceMonthly Int    @default(0)
+  priceYearly  Int    @default(0)
+  currency     String @default("usd")
+
+  // External Gateway Price IDs
+  stripePriceMonthly String?  // Stripe price ID for monthly
+  stripePriceYearly  String?  // Stripe price ID for yearly
+  paypalPlanMonthly  String?  // PayPal plan ID for monthly
+  paypalPlanYearly   String?  // PayPal plan ID for yearly
+
+  // Features (JSON array of feature strings)
+  features Json @default("[]")
+
+  // Limits
+  maxSongs     Int     @default(5)     // Max songs allowed
+  maxLobbies   Int     @default(1)     // Max lobbies allowed
+  maxStorage   Int     @default(100)   // Max storage in MB
+  customDomain Boolean @default(false) // Allow custom domains
+  apiAccess    Boolean @default(false) // Allow API access
+
+  // Display
+  highlighted Boolean @default(false)  // Show as "Most Popular"
+  position    Int     @default(0)      // Sort order
+  isActive    Boolean @default(true)   // Show in pricing page
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([isActive, position])
 }

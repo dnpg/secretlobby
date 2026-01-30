@@ -73,3 +73,5 @@ redis_data/
 temp
 tmp
 *.tmp
+
+.claude-memory

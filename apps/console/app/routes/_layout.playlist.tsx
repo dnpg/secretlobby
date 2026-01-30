@@ -1,8 +1,6 @@
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import { useState, useEffect, useCallback } from "react";
 import type { Route } from "./+types/_layout.playlist";
-import { getSession, isAdmin } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
 import { MediaPicker, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
 import {
@@ -29,9 +27,13 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, isAdmin } = await import("@secretlobby/auth");
+  const { getDefaultLobbyWithTracks } = await import("~/models/queries/lobby.server");
+
   const { session } = await getSession(request);
   if (!isAdmin(session)) {
-    return { playlist: [] };
+    return { playlist: [], autoplayTrackId: null };
   }
 
   const accountId = session.currentAccountId;
@@ -39,15 +41,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/login");
   }
 
-  const lobby = await prisma.lobby.findFirst({
-    where: { accountId, isDefault: true },
-    include: {
-      tracks: {
-        orderBy: { position: "asc" },
-        include: { media: true },
-      },
-    },
-  });
+  const lobby = await getDefaultLobbyWithTracks(accountId);
 
   const playlist = (lobby?.tracks || []).map((track) => ({
     id: track.id,
@@ -68,6 +62,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, isAdmin } = await import("@secretlobby/auth");
+  const { getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
+  const { getMediaByIds, getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
+  const { getLastTrackByLobbyId, getTrackIdsByLobbyId } = await import("~/models/queries/track.server");
+  const { createTrack, updateTrack, deleteTrack, reorderTracks, swapTrackPositions } = await import("~/models/mutations/track.server");
+  const { updateLobbySettings } = await import("~/models/mutations/lobby.server");
+
   const { session } = await getSession(request);
   if (!isAdmin(session)) {
     return { error: "Unauthorized" };
@@ -78,9 +80,7 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Not authenticated" };
   }
 
-  const lobby = await prisma.lobby.findFirst({
-    where: { accountId, isDefault: true },
-  });
+  const lobby = await getDefaultLobbyByAccountId(accountId);
 
   if (!lobby) {
     return { error: "No lobby found" };
@@ -98,18 +98,13 @@ export async function action({ request }: Route.ActionArgs) {
           return { error: "No tracks selected" };
         }
 
-        const mediaItems = await prisma.media.findMany({
-          where: { id: { in: mediaIds }, accountId },
-        });
+        const mediaItems = await getMediaByIds(mediaIds, accountId);
 
         if (mediaItems.length === 0) {
           return { error: "No valid media found" };
         }
 
-        const lastTrack = await prisma.track.findFirst({
-          where: { lobbyId: lobby.id },
-          orderBy: { position: "desc" },
-        });
+        const lastTrack = await getLastTrackByLobbyId(lobby.id);
         let nextPosition = (lastTrack?.position ?? -1) + 1;
 
         let addedCount = 0;
@@ -117,15 +112,13 @@ export async function action({ request }: Route.ActionArgs) {
           // Strip file extension for track title
           const title = media.filename.replace(/\.[^/.]+$/, "");
 
-          await prisma.track.create({
-            data: {
-              lobbyId: lobby.id,
-              title,
-              artist: null,
-              filename: media.key,
-              mediaId: media.id,
-              position: nextPosition++,
-            },
+          await createTrack({
+            lobbyId: lobby.id,
+            title,
+            artist: null,
+            filename: media.key,
+            mediaId: media.id,
+            position: nextPosition++,
           });
 
           addedCount++;
@@ -137,7 +130,7 @@ export async function action({ request }: Route.ActionArgs) {
       case "remove-track": {
         const id = formData.get("id") as string;
         if (id) {
-          await prisma.track.delete({ where: { id } });
+          await deleteTrack(id);
           return { success: "Track removed" };
         }
         break;
@@ -148,12 +141,9 @@ export async function action({ request }: Route.ActionArgs) {
         const title = formData.get("title") as string;
         const artist = formData.get("artist") as string;
         if (id && title) {
-          await prisma.track.update({
-            where: { id },
-            data: {
-              title,
-              artist: artist || null,
-            },
+          await updateTrack(id, {
+            title,
+            artist: artist || null,
           });
           return { success: "Track updated" };
         }
@@ -163,11 +153,7 @@ export async function action({ request }: Route.ActionArgs) {
       case "reorder-tracks": {
         const orderJson = formData.get("order") as string;
         const order: string[] = JSON.parse(orderJson);
-        await prisma.$transaction(
-          order.map((id, idx) =>
-            prisma.track.update({ where: { id }, data: { position: idx } })
-          )
-        );
+        await reorderTracks(order);
         return { success: "Playlist reordered" };
       }
 
@@ -175,14 +161,9 @@ export async function action({ request }: Route.ActionArgs) {
         const trackId = formData.get("trackId") as string;
         // Merge into existing lobby settings
         const existingSettings = (lobby.settings as Record<string, unknown>) || {};
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: {
-            settings: {
-              ...existingSettings,
-              autoplayTrackId: trackId || null,
-            },
-          },
+        await updateLobbySettings(lobby.id, {
+          ...existingSettings,
+          autoplayTrackId: trackId || null,
         });
         return { success: "Autoplay track updated" };
       }
@@ -190,18 +171,11 @@ export async function action({ request }: Route.ActionArgs) {
       case "move-track-up":
       case "move-track-down": {
         const id = formData.get("id") as string;
-        const tracks = await prisma.track.findMany({
-          where: { lobbyId: lobby.id },
-          orderBy: { position: "asc" },
-          select: { id: true },
-        });
+        const tracks = await getTrackIdsByLobbyId(lobby.id);
         const idx = tracks.findIndex((t) => t.id === id);
         const swapIdx = intent === "move-track-up" ? idx - 1 : idx + 1;
         if (idx < 0 || swapIdx < 0 || swapIdx >= tracks.length) break;
-        await prisma.$transaction([
-          prisma.track.update({ where: { id: tracks[idx].id }, data: { position: swapIdx } }),
-          prisma.track.update({ where: { id: tracks[swapIdx].id }, data: { position: idx } }),
-        ]);
+        await swapTrackPositions(tracks[idx].id, swapIdx, tracks[swapIdx].id, idx);
         return { success: "Track moved" };
       }
 
@@ -212,20 +186,15 @@ export async function action({ request }: Route.ActionArgs) {
           return { error: "Missing track or media" };
         }
 
-        const media = await prisma.media.findFirst({
-          where: { id: mediaId, accountId },
-        });
+        const media = await getMediaByIdAndAccountId(mediaId, accountId);
         if (!media) {
           return { error: "Media not found" };
         }
 
         // Just swap the media reference — HLS lives with the Media, not the Track
-        await prisma.track.update({
-          where: { id },
-          data: {
-            mediaId: media.id,
-            filename: media.key,
-          },
+        await updateTrack(id, {
+          mediaId: media.id,
+          filename: media.key,
         });
 
         return { success: "Track file updated" };

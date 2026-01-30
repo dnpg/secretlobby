@@ -1,20 +1,19 @@
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import type { Route } from "./+types/_layout.login";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
-import { getPublicUrl } from "@secretlobby/storage";
 import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
-import {
-  getLoginPageSettings,
-  updateLoginPageSettings,
-  type LoginPageSettings,
-} from "~/lib/content.server";
+import type { LoginPageSettings } from "~/lib/content.server";
 
 export function meta() {
   return [{ title: "Login Page Settings - Admin" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getPublicUrl } = await import("@secretlobby/storage");
+  const { getLoginPageSettings } = await import("~/lib/content.server");
+  const { getDefaultLobbyPassword } = await import("~/models/queries/lobby.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -26,10 +25,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const loginSettings = await getLoginPageSettings(accountId);
 
   // Get lobby password
-  const lobby = await prisma.lobby.findFirst({
-    where: { accountId, isDefault: true },
-    select: { password: true },
-  });
+  const lobby = await getDefaultLobbyPassword(accountId);
 
   return {
     loginSettings,
@@ -39,6 +35,13 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { updateLoginPageSettings } = await import("~/lib/content.server");
+  const { getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
+  const { getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
+  const { updateLobbyPassword } = await import("~/models/mutations/lobby.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -80,9 +83,7 @@ export async function action({ request }: Route.ActionArgs) {
           return { error: "No media selected" };
         }
 
-        const media = await prisma.media.findFirst({
-          where: { id: mediaId, accountId },
-        });
+        const media = await getMediaByIdAndAccountId(mediaId, accountId);
         if (!media) {
           return { error: "Media not found" };
         }
@@ -115,18 +116,13 @@ export async function action({ request }: Route.ActionArgs) {
           return { error: "Passwords do not match" };
         }
 
-        const lobby = await prisma.lobby.findFirst({
-          where: { accountId, isDefault: true },
-        });
+        const lobby = await getDefaultLobbyByAccountId(accountId);
 
         if (!lobby) {
           return { error: "No default lobby found" };
         }
 
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { password: newPassword },
-        });
+        await updateLobbyPassword(lobby.id, newPassword);
 
         return { success: "Lobby password updated successfully" };
       }

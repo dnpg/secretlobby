@@ -1,9 +1,6 @@
 import { data } from "react-router";
 import type { Route } from "./+types/api.media";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
-import { prisma, type Media } from "@secretlobby/db";
-import { uploadFile, deleteFile, getPublicUrl, generateHls, deleteHlsFiles, getMediaFolder } from "@secretlobby/storage";
-import sharp from "sharp";
+import type { Media } from "@secretlobby/db";
 
 type MediaType = "IMAGE" | "AUDIO" | "VIDEO" | "EMBED";
 
@@ -27,51 +24,11 @@ export interface MediaItem {
   createdAt: string;
 }
 
-function mediaToItem(media: Media): MediaItem {
-  return {
-    id: media.id,
-    filename: media.filename,
-    key: media.key,
-    mimeType: media.mimeType,
-    size: media.size,
-    type: media.type as MediaType,
-    width: media.width,
-    height: media.height,
-    duration: media.duration,
-    alt: media.alt,
-    hlsReady: media.hlsReady,
-    waveformPeaks: media.waveformPeaks,
-    metadata: media.metadata,
-    provider: media.provider,
-    embedUrl: media.embedUrl,
-    url: media.type === "EMBED" ? (media.embedUrl || "") : getPublicUrl(media.key),
-    createdAt: media.createdAt.toISOString(),
-  };
-}
-
 function getMediaType(mimeType: string): MediaType {
   if (mimeType.startsWith("image/")) return "IMAGE";
   if (mimeType.startsWith("audio/")) return "AUDIO";
   if (mimeType.startsWith("video/")) return "VIDEO";
   return "IMAGE";
-}
-
-function generateHlsForMediaInBackground(mediaId: string, buffer: Buffer, mediaFolder: string) {
-  (async () => {
-    try {
-      const result = await generateHls(buffer, mediaFolder);
-      await prisma.media.update({
-        where: { id: mediaId },
-        data: {
-          hlsReady: true,
-          waveformPeaks: result.waveformPeaks,
-          duration: result.duration > 0 ? result.duration : undefined,
-        },
-      });
-    } catch (e) {
-      console.error("Background HLS generation failed for media:", mediaId, e);
-    }
-  })();
 }
 
 function handleize(filename: string): string {
@@ -111,6 +68,33 @@ function detectEmbedProvider(url: string): { provider: "YOUTUBE" | "VIMEO"; embe
 
 // GET - List/search media
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getPublicUrl } = await import("@secretlobby/storage");
+  const { getMediaByAccountId } = await import("~/models/queries/media.server");
+
+  function mediaToItem(media: Media): MediaItem {
+    return {
+      id: media.id,
+      filename: media.filename,
+      key: media.key,
+      mimeType: media.mimeType,
+      size: media.size,
+      type: media.type as MediaType,
+      width: media.width,
+      height: media.height,
+      duration: media.duration,
+      alt: media.alt,
+      hlsReady: media.hlsReady,
+      waveformPeaks: media.waveformPeaks,
+      metadata: media.metadata,
+      provider: media.provider,
+      embedUrl: media.embedUrl,
+      url: media.type === "EMBED" ? (media.embedUrl || "") : getPublicUrl(media.key),
+      createdAt: media.createdAt.toISOString(),
+    };
+  }
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -122,32 +106,16 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const type = url.searchParams.get("type");
   const search = url.searchParams.get("search");
-  const cursor = url.searchParams.get("cursor");
+  const cursor = url.searchParams.get("cursor") || undefined;
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "20", 10), 50);
 
-  const where: Record<string, unknown> = { accountId };
+  const typeArray = type ? type.split(",").filter(Boolean) : undefined;
 
-  if (type) {
-    const types = type.split(",").filter(Boolean);
-    if (types.length === 1) {
-      where.type = types[0];
-    } else if (types.length > 1) {
-      where.type = { in: types };
-    }
-  }
-
-  if (search) {
-    where.OR = [
-      { filename: { contains: search, mode: "insensitive" } },
-      { alt: { contains: search, mode: "insensitive" } },
-    ];
-  }
-
-  const items = await prisma.media.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  const items = await getMediaByAccountId(accountId, {
+    take: limit,
+    cursor,
+    type: typeArray,
+    search: search || undefined,
   });
 
   const hasMore = items.length > limit;
@@ -162,6 +130,50 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 // POST/PATCH/DELETE - Manage media
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { uploadFile, deleteFile, getPublicUrl, generateHls, deleteHlsFiles, getMediaFolder } = await import("@secretlobby/storage");
+  const sharp = (await import("sharp")).default;
+  const { getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
+  const { createMedia, updateMediaAlt, updateMediaHls, deleteMedia } = await import("~/models/mutations/media.server");
+
+  function mediaToItem(media: Media): MediaItem {
+    return {
+      id: media.id,
+      filename: media.filename,
+      key: media.key,
+      mimeType: media.mimeType,
+      size: media.size,
+      type: media.type as MediaType,
+      width: media.width,
+      height: media.height,
+      duration: media.duration,
+      alt: media.alt,
+      hlsReady: media.hlsReady,
+      waveformPeaks: media.waveformPeaks,
+      metadata: media.metadata,
+      provider: media.provider,
+      embedUrl: media.embedUrl,
+      url: media.type === "EMBED" ? (media.embedUrl || "") : getPublicUrl(media.key),
+      createdAt: media.createdAt.toISOString(),
+    };
+  }
+
+  function generateHlsForMediaInBackground(mediaId: string, buffer: Buffer, mediaFolder: string) {
+    (async () => {
+      try {
+        const result = await generateHls(buffer, mediaFolder);
+        await updateMediaHls(mediaId, {
+          hlsReady: true,
+          waveformPeaks: result.waveformPeaks,
+          duration: result.duration > 0 ? result.duration : undefined,
+        });
+      } catch (e) {
+        console.error("Background HLS generation failed for media:", mediaId, e);
+      }
+    })();
+  }
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -174,18 +186,12 @@ export async function action({ request }: Route.ActionArgs) {
     const body = await request.json();
     const { id, alt } = body as { id: string; alt: string };
 
-    const media = await prisma.media.findFirst({
-      where: { id, accountId },
-    });
+    const media = await getMediaByIdAndAccountId(id, accountId);
     if (!media) {
       throw data({ error: "Media not found" }, { status: 404 });
     }
 
-    const updated = await prisma.media.update({
-      where: { id },
-      data: { alt },
-    });
-
+    const updated = await updateMediaAlt(id, alt);
     return data({ item: mediaToItem(updated) });
   }
 
@@ -193,9 +199,7 @@ export async function action({ request }: Route.ActionArgs) {
     const body = await request.json();
     const { id } = body as { id: string };
 
-    const media = await prisma.media.findFirst({
-      where: { id, accountId },
-    });
+    const media = await getMediaByIdAndAccountId(id, accountId);
     if (!media) {
       throw data({ error: "Media not found" }, { status: 404 });
     }
@@ -212,7 +216,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
     }
 
-    await prisma.media.delete({ where: { id } });
+    await deleteMedia(id);
     return data({ success: true });
   }
 
@@ -233,17 +237,15 @@ export async function action({ request }: Route.ActionArgs) {
       throw data({ error: "Unsupported embed URL. Only YouTube and Vimeo are supported." }, { status: 400 });
     }
 
-    const media = await prisma.media.create({
-      data: {
-        accountId,
-        filename: rawUrl,
-        key: "",
-        mimeType: "video/embed",
-        size: 0,
-        type: "EMBED",
-        provider: detected.provider,
-        embedUrl: detected.embedUrl,
-      },
+    const media = await createMedia({
+      accountId,
+      filename: rawUrl,
+      key: "",
+      mimeType: "video/embed",
+      size: 0,
+      type: "EMBED",
+      provider: detected.provider,
+      embedUrl: detected.embedUrl,
     });
 
     return data({ item: mediaToItem(media) });
@@ -286,17 +288,15 @@ export async function action({ request }: Route.ActionArgs) {
 
   await uploadFile(key, buffer, mimeType);
 
-  const media = await prisma.media.create({
-    data: {
-      accountId,
-      filename: file.name,
-      key,
-      mimeType,
-      size: file.size,
-      type: mediaType,
-      width,
-      height,
-    },
+  const media = await createMedia({
+    accountId,
+    filename: file.name,
+    key,
+    mimeType,
+    size: file.size,
+    type: mediaType,
+    width,
+    height,
   });
 
   // For audio uploads, trigger background HLS generation

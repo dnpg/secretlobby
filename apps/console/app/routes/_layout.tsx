@@ -1,10 +1,12 @@
 import { Outlet, NavLink, redirect, Form, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { ColorModeToggle } from "@secretlobby/ui";
-import { prisma } from "@secretlobby/db";
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getAccountWithBasicInfo } = await import("~/models/queries/account.server");
+
   const { session } = await getSession(request);
 
   // Require user-based authentication
@@ -16,13 +18,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   // Fetch the latest account data from database
-  const account = await prisma.account.findUnique({
-    where: { id: accountId },
-    select: {
-      id: true,
-      slug: true,
-    },
-  });
+  const account = await getAccountWithBasicInfo(accountId);
 
   if (!account) {
     throw redirect("/login");
@@ -60,6 +56,7 @@ const navItems = [
   { to: "social", label: "Social" },
   { to: "technical-info", label: "Tech Info" },
   { to: "settings", label: "Settings" },
+  { to: "billing", label: "Billing" },
 ];
 
 export default function AdminLayout() {
@@ -126,7 +123,7 @@ export default function AdminLayout() {
         </div>
       </nav>
 
-      <main className="container mx-auto px-4 py-8 max-w-4xl">
+      <main className="container mx-auto px-4 py-8">
         <Outlet />
       </main>
     </div>

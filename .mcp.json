@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "node",
+      "args": ["/Users/diegopego/Sites/mcp-memory-server/dist/index.js"]
+    }
+  }
+}

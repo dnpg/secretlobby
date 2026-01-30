@@ -1,8 +1,5 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/login";
-import { getSession, createSessionResponse, authenticateWithPassword, isGoogleConfigured } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
-import { getPublicUrl } from "@secretlobby/storage";
 import { cn } from "@secretlobby/ui";
 import { defaultLoginPageSettings, type LoginPageSettings } from "~/lib/content.server";
 
@@ -22,6 +19,11 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, isGoogleConfigured } = await import("@secretlobby/auth");
+  const { getPublicUrl } = await import("@secretlobby/storage");
+  const { getFirstAccountSettings } = await import("~/models/queries/account.server");
+
   const { session } = await getSession(request);
   const url = new URL(request.url);
   const errorCode = url.searchParams.get("error");
@@ -34,9 +36,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let loginSettings: LoginPageSettings = defaultLoginPageSettings;
   let logoImageUrl: string | null = null;
 
-  const account = await prisma.account.findFirst({
-    select: { settings: true },
-  });
+  const account = await getFirstAccountSettings();
 
   if (account?.settings && typeof account.settings === "object") {
     const settings = account.settings as Record<string, unknown>;
@@ -58,6 +58,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { authenticateWithPassword, createSessionResponse } = await import("@secretlobby/auth");
+
   const formData = await request.formData();
   const email = formData.get("email");
   const password = formData.get("password");

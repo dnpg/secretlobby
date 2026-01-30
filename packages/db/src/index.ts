@@ -12,6 +12,11 @@ export type {
   Domain,
   AuditLog,
   Media,
+  Subscription,
+  PaymentMethod,
+  PaymentHistory,
+  SystemSettings,
+  SubscriptionPlan,
 } from "./generated/client/client.js";
 
 // Re-export enums
@@ -19,6 +24,8 @@ export {
   UserRole,
   DomainStatus,
   SubscriptionTier,
+  SubscriptionStatus,
+  PaymentStatus,
   MediaType,
   EmbedProvider,
 } from "./generated/client/enums.js";

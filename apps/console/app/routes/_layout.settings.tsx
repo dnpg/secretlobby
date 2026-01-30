@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.settings";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
-import { getGoogleAnalyticsSettings, updateGoogleAnalyticsSettings } from "~/lib/content.server";
 import { toast } from "sonner";
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getAccountWithDomains } = await import("~/models/queries/account.server");
+  const { getGoogleAnalyticsSettings } = await import("~/lib/content.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -16,23 +18,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   // Get account details with domains
-  const account = await prisma.account.findUnique({
-    where: { id: accountId },
-    include: {
-      domains: {
-        orderBy: { createdAt: "desc" },
-      },
-      lobbies: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          isDefault: true,
-        },
-      },
-    },
-  });
+  const account = await getAccountWithDomains(accountId);
 
   if (!account) {
     throw redirect("/login");
@@ -64,6 +50,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getAccountBySlug } = await import("~/models/queries/account.server");
+  const { getDomainByDomain } = await import("~/models/queries/domain.server");
+  const { updateAccountSlug } = await import("~/models/mutations/account.server");
+  const { createDomain, deleteDomain } = await import("~/models/mutations/domain.server");
+  const { updateGoogleAnalyticsSettings } = await import("~/lib/content.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -90,22 +84,14 @@ export async function action({ request }: Route.ActionArgs) {
       }
 
       // Check if domain already exists
-      const existingDomain = await prisma.domain.findUnique({
-        where: { domain: domain.toLowerCase() },
-      });
+      const existingDomain = await getDomainByDomain(domain);
 
       if (existingDomain) {
         return { error: "This domain is already registered" };
       }
 
       // Create domain
-      await prisma.domain.create({
-        data: {
-          accountId,
-          domain: domain.toLowerCase(),
-          status: "PENDING",
-        },
-      });
+      await createDomain(accountId, domain);
 
       return { success: "Domain added successfully. Please verify your DNS settings." };
     }
@@ -117,12 +103,7 @@ export async function action({ request }: Route.ActionArgs) {
         return { error: "Invalid domain ID" };
       }
 
-      await prisma.domain.delete({
-        where: {
-          id: domainId,
-          accountId, // Ensure user owns this domain
-        },
-      });
+      await deleteDomain(domainId, accountId);
 
       return { success: "Domain removed successfully" };
     }
@@ -141,19 +122,14 @@ export async function action({ request }: Route.ActionArgs) {
       }
 
       // Check if slug is already taken
-      const existingAccount = await prisma.account.findUnique({
-        where: { slug: newSlug },
-      });
+      const existingAccount = await getAccountBySlug(newSlug);
 
       if (existingAccount && existingAccount.id !== accountId) {
         return { error: "This subdomain is already taken" };
       }
 
       // Update account slug
-      await prisma.account.update({
-        where: { id: accountId },
-        data: { slug: newSlug },
-      });
+      await updateAccountSlug(accountId, newSlug);
 
       return { success: "Subdomain updated successfully" };
     }

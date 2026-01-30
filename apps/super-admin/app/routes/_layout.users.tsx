@@ -1,6 +1,5 @@
-import { useLoaderData, redirect } from "react-router";
-import type { Route } from "./+types/users";
-import { getSession, requireUserAuth, isAdmin } from "@secretlobby/auth";
+import { useLoaderData } from "react-router";
+import type { Route } from "./+types/_layout.users";
 import { prisma } from "@secretlobby/db";
 
 export function meta() {
@@ -8,18 +7,6 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const { session } = await getSession(request);
-
-  try {
-    requireUserAuth(session, "/login");
-  } catch {
-    throw redirect("/login");
-  }
-
-  if (!isAdmin(session)) {
-    throw redirect("/login");
-  }
-
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "desc" },
     include: {

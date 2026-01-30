@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import type { Route } from "./+types/_layout._index";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
-import { getPublicUrl } from "@secretlobby/storage";
 import { cn, RichTextEditor, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
 
@@ -18,6 +15,11 @@ interface MediaRef {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getPublicUrl } = await import("@secretlobby/storage");
+  const { getDefaultLobbyWithMedia } = await import("~/models/queries/lobby.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -26,17 +28,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/login");
   }
 
-  const lobby = await prisma.lobby.findFirst({
-    where: { accountId, isDefault: true },
-    include: {
-      backgroundMedia: true,
-      backgroundMediaDark: true,
-      bannerMedia: true,
-      bannerMediaDark: true,
-      profileMedia: true,
-      profileMediaDark: true,
-    },
-  });
+  const lobby = await getDefaultLobbyWithMedia(accountId);
 
   if (!lobby) {
     return { lobby: null };
@@ -67,6 +59,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
+  const { updateLobbyContent, updateLobbyMedia } = await import("~/models/mutations/lobby.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -79,9 +76,7 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   try {
-    const lobby = await prisma.lobby.findFirst({
-      where: { accountId, isDefault: true },
-    });
+    const lobby = await getDefaultLobbyByAccountId(accountId);
 
     if (!lobby) {
       return { error: "No default lobby found" };
@@ -92,12 +87,9 @@ export async function action({ request }: Route.ActionArgs) {
         const title = formData.get("bandName") as string;
         const description = formData.get("bandDescription") as string;
 
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: {
-            title: title || null,
-            description: description || null,
-          },
+        await updateLobbyContent(lobby.id, {
+          title: title || null,
+          description: description || null,
         });
 
         return { success: "Band info updated successfully" };
@@ -105,55 +97,37 @@ export async function action({ request }: Route.ActionArgs) {
 
       case "update-background": {
         const mediaId = formData.get("mediaId") as string | null;
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { backgroundMediaId: mediaId || null },
-        });
+        await updateLobbyMedia(lobby.id, "backgroundMediaId", mediaId || null);
         return { success: "Background updated" };
       }
 
       case "update-background-dark": {
         const mediaId = formData.get("mediaId") as string | null;
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { backgroundMediaDarkId: mediaId || null },
-        });
+        await updateLobbyMedia(lobby.id, "backgroundMediaDarkId", mediaId || null);
         return { success: "Dark mode background updated" };
       }
 
       case "update-banner": {
         const mediaId = formData.get("mediaId") as string | null;
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { bannerMediaId: mediaId || null },
-        });
+        await updateLobbyMedia(lobby.id, "bannerMediaId", mediaId || null);
         return { success: "Banner updated" };
       }
 
       case "update-banner-dark": {
         const mediaId = formData.get("mediaId") as string | null;
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { bannerMediaDarkId: mediaId || null },
-        });
+        await updateLobbyMedia(lobby.id, "bannerMediaDarkId", mediaId || null);
         return { success: "Dark mode banner updated" };
       }
 
       case "update-profile": {
         const mediaId = formData.get("mediaId") as string | null;
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { profileMediaId: mediaId || null },
-        });
+        await updateLobbyMedia(lobby.id, "profileMediaId", mediaId || null);
         return { success: "Profile picture updated" };
       }
 
       case "update-profile-dark": {
         const mediaId = formData.get("mediaId") as string | null;
-        await prisma.lobby.update({
-          where: { id: lobby.id },
-          data: { profileMediaDarkId: mediaId || null },
-        });
+        await updateLobbyMedia(lobby.id, "profileMediaDarkId", mediaId || null);
         return { success: "Dark mode profile picture updated" };
       }
     }

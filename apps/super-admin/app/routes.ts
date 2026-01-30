@@ -1,15 +1,23 @@
-import { type RouteConfig, index, route } from "@react-router/dev/routes";
+import { type RouteConfig, index, route, layout } from "@react-router/dev/routes";
 
 export default [
   // Login
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
 
-  // Dashboard
-  index("routes/_index.tsx"),
-
-  // Management
-  route("accounts", "routes/accounts.tsx"),
-  route("users", "routes/users.tsx"),
-  route("domains", "routes/domains.tsx"),
+  // Protected routes with layout
+  layout("routes/_layout.tsx", [
+    index("routes/_layout._index.tsx"),
+    route("accounts", "routes/_layout.accounts.tsx"),
+    // Account detail routes with nested layout
+    route("accounts/:accountId", "routes/_layout.accounts.$accountId.tsx", [
+      index("routes/_layout.accounts.$accountId._index.tsx"),
+      route("lobbies", "routes/_layout.accounts.$accountId.lobbies.tsx"),
+      route("users", "routes/_layout.accounts.$accountId.users.tsx"),
+    ]),
+    route("users", "routes/_layout.users.tsx"),
+    route("domains", "routes/_layout.domains.tsx"),
+    route("plans", "routes/_layout.plans.tsx"),
+    route("settings", "routes/_layout.settings.tsx"),
+  ]),
 ] satisfies RouteConfig;

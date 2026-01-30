@@ -1,10 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLoaderData, redirect } from "react-router";
 import type { Route } from "./+types/_layout.media";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
-import { getPublicUrl } from "@secretlobby/storage";
-import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
+import { MediaPicker, type MediaItem } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Media Library - Admin" }];
@@ -31,6 +28,11 @@ interface LoaderMedia {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getPublicUrl } = await import("@secretlobby/storage");
+  const { getMediaByAccountId } = await import("~/models/queries/media.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -39,13 +41,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/login");
   }
 
-  const items = await prisma.media.findMany({
-    where: { accountId },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-  });
+  const items = await getMediaByAccountId(accountId, { take: 20 });
+  // Remove the extra item used for pagination detection
+  const displayItems = items.length > 20 ? items.slice(0, 20) : items;
 
-  const mediaItems: LoaderMedia[] = items.map((m) => ({
+  const mediaItems: LoaderMedia[] = displayItems.map((m) => ({
     id: m.id,
     filename: m.filename,
     key: m.key,
@@ -65,7 +65,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     createdAt: m.createdAt.toISOString(),
   }));
 
-  const nextCursor = items.length === 20 ? items[items.length - 1]?.id ?? null : null;
+  const nextCursor = items.length > 20 ? displayItems[displayItems.length - 1]?.id ?? null : null;
 
   return { items: mediaItems, nextCursor };
 }

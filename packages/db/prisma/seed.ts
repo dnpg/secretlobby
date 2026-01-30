@@ -226,6 +226,219 @@ async function main() {
   console.log(`  ✓ User: ${adminUser.email} (password: admin123) - ADMIN role`);
 
   // ============================================================================
+  // 7. Create Super Admin User (from environment variables)
+  // ============================================================================
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+
+  if (superAdminEmail && superAdminPassword) {
+    console.log("\nCreating super admin user...");
+
+    // Create a dedicated super admin account
+    const superAdminAccount = await prisma.account.upsert({
+      where: { slug: "super-admin" },
+      update: {},
+      create: {
+        name: "Super Admin",
+        slug: "super-admin",
+        subscriptionTier: "ENTERPRISE",
+        settings: {
+          isSuperAdminAccount: true,
+        },
+      },
+    });
+
+    const superAdminUser = await prisma.user.upsert({
+      where: { email: superAdminEmail.toLowerCase() },
+      update: {
+        passwordHash: await hashPassword(superAdminPassword),
+      },
+      create: {
+        email: superAdminEmail.toLowerCase(),
+        passwordHash: await hashPassword(superAdminPassword),
+        name: "Super Admin",
+        emailVerified: true,
+      },
+    });
+
+    await prisma.accountUser.upsert({
+      where: {
+        accountId_userId: {
+          accountId: superAdminAccount.id,
+          userId: superAdminUser.id,
+        },
+      },
+      update: {
+        role: "OWNER",
+      },
+      create: {
+        accountId: superAdminAccount.id,
+        userId: superAdminUser.id,
+        role: "OWNER",
+        acceptedAt: new Date(),
+      },
+    });
+
+    console.log(`  ✓ Super Admin: ${superAdminUser.email} (OWNER of super-admin account)`);
+  } else {
+    console.log("\n⚠️  Skipping super admin user (SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD not set)");
+  }
+
+  // ============================================================================
+  // 8. Create Default Subscription Plans
+  // ============================================================================
+  console.log("\nCreating default subscription plans...");
+
+  const defaultPlans = [
+    {
+      slug: "FREE",
+      name: "Free",
+      description: "Get started with basic features",
+      priceMonthly: 0,
+      priceYearly: 0,
+      maxSongs: 5,
+      maxLobbies: 1,
+      maxStorage: 100,
+      customDomain: false,
+      apiAccess: false,
+      highlighted: false,
+      position: 0,
+      features: [
+        "Up to 5 songs",
+        "1 lobby",
+        "100MB storage",
+        "Basic analytics",
+        "Community support",
+      ],
+    },
+    {
+      slug: "STARTER",
+      name: "Starter",
+      description: "Perfect for emerging artists",
+      priceMonthly: 999, // $9.99
+      priceYearly: 9990, // $99.90
+      maxSongs: 50,
+      maxLobbies: 3,
+      maxStorage: 1000,
+      customDomain: false,
+      apiAccess: false,
+      highlighted: false,
+      position: 1,
+      features: [
+        "Up to 50 songs",
+        "3 lobbies",
+        "1GB storage",
+        "Advanced analytics",
+        "Email support",
+        "Custom branding",
+      ],
+    },
+    {
+      slug: "PRO",
+      name: "Pro",
+      description: "For professional artists and labels",
+      priceMonthly: 2499, // $24.99
+      priceYearly: 24990, // $249.90
+      maxSongs: -1, // unlimited
+      maxLobbies: 10,
+      maxStorage: 10000,
+      customDomain: true,
+      apiAccess: true,
+      highlighted: true,
+      position: 2,
+      features: [
+        "Unlimited songs",
+        "10 lobbies",
+        "10GB storage",
+        "Custom domain",
+        "API access",
+        "Priority support",
+        "Advanced analytics",
+        "Custom branding",
+      ],
+    },
+    {
+      slug: "ENTERPRISE",
+      name: "Enterprise",
+      description: "For labels and large organizations",
+      priceMonthly: 9999, // $99.99
+      priceYearly: 99990, // $999.90
+      maxSongs: -1,
+      maxLobbies: -1,
+      maxStorage: -1,
+      customDomain: true,
+      apiAccess: true,
+      highlighted: false,
+      position: 3,
+      features: [
+        "Unlimited everything",
+        "Multiple accounts",
+        "Dedicated account manager",
+        "Custom integrations",
+        "SLA guarantee",
+        "White-label options",
+      ],
+    },
+  ];
+
+  for (const plan of defaultPlans) {
+    await prisma.subscriptionPlan.upsert({
+      where: { slug: plan.slug },
+      update: {
+        name: plan.name,
+        description: plan.description,
+        priceMonthly: plan.priceMonthly,
+        priceYearly: plan.priceYearly,
+        maxSongs: plan.maxSongs,
+        maxLobbies: plan.maxLobbies,
+        maxStorage: plan.maxStorage,
+        customDomain: plan.customDomain,
+        apiAccess: plan.apiAccess,
+        highlighted: plan.highlighted,
+        position: plan.position,
+        features: plan.features,
+      },
+      create: {
+        slug: plan.slug,
+        name: plan.name,
+        description: plan.description,
+        priceMonthly: plan.priceMonthly,
+        priceYearly: plan.priceYearly,
+        maxSongs: plan.maxSongs,
+        maxLobbies: plan.maxLobbies,
+        maxStorage: plan.maxStorage,
+        customDomain: plan.customDomain,
+        apiAccess: plan.apiAccess,
+        highlighted: plan.highlighted,
+        position: plan.position,
+        features: plan.features,
+      },
+    });
+    console.log(`  ✓ Plan: ${plan.name}`);
+  }
+
+  // ============================================================================
+  // 9. Create Default System Settings
+  // ============================================================================
+  console.log("\nCreating default system settings...");
+
+  await prisma.systemSettings.upsert({
+    where: { id: "default" },
+    update: {},
+    create: {
+      id: "default",
+      enabledGateways: ["stripe"],
+      defaultGateway: "stripe",
+      platformName: "SecretLobby",
+      supportEmail: "support@secretlobby.io",
+      allowSignups: true,
+      maintenanceMode: false,
+    },
+  });
+
+  console.log("  ✓ System settings initialized");
+
+  // ============================================================================
   // Summary
   // ============================================================================
   console.log("\n" + "=".repeat(60));
@@ -238,14 +451,21 @@ async function main() {
   console.log("");
   console.log("  Email:    admin@example.com");
   console.log("  Password: admin123");
+  if (superAdminEmail) {
+    console.log("");
+    console.log("Super Admin (admin.secretlobby.local):");
+    console.log(`  Email:    ${superAdminEmail}`);
+    console.log("  Password: (from SUPER_ADMIN_PASSWORD env var)");
+  }
   console.log("");
   console.log("Lobby Access (demo.secretlobby.local):");
   console.log("  Password: user123");
   console.log("─".repeat(40));
   console.log("\nSubdomain URLs (after nginx setup):");
-  console.log("  Marketing: http://secretlobby.local");
-  console.log("  Console:   http://app.secretlobby.local");
-  console.log("  Lobby:     http://demo.secretlobby.local");
+  console.log("  Marketing:    http://secretlobby.local");
+  console.log("  Console:      http://app.secretlobby.local");
+  console.log("  Super Admin:  http://admin.secretlobby.local");
+  console.log("  Lobby:        http://demo.secretlobby.local");
   console.log("=".repeat(60) + "\n");
 }
 

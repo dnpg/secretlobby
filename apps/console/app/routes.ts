@@ -3,6 +3,7 @@ import { type RouteConfig, index, route, layout } from "@react-router/dev/routes
 export default [
   // API (no layout)
   route("api/media", "routes/api.media.ts"),
+  route("api/webhooks/stripe", "routes/api.webhooks.stripe.ts"),
 
   // Authentication
   route("login", "routes/login.tsx"),
@@ -25,5 +26,11 @@ export default [
     route("social", "routes/_layout.social.tsx"),
     route("technical-info", "routes/_layout.technical-info.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
+    route("billing", "routes/_layout.billing.tsx"),
+    route("billing/plans", "routes/_layout.billing.plans.tsx"),
+    route("billing/history", "routes/_layout.billing.history.tsx"),
+    route("billing/methods", "routes/_layout.billing.methods.tsx"),
+    route("billing/checkout", "routes/_layout.billing.checkout.tsx"),
+    route("billing/success", "routes/_layout.billing.success.tsx"),
   ]),
 ] satisfies RouteConfig;

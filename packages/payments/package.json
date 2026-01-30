@@ -1,0 +1,31 @@
+{
+  "name": "@secretlobby/payments",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./stripe": {
+      "types": "./src/gateways/stripe.ts",
+      "import": "./src/gateways/stripe.ts"
+    },
+    "./webhooks": {
+      "types": "./src/webhooks/handler.ts",
+      "import": "./src/webhooks/handler.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@secretlobby/db": "workspace:*",
+    "stripe": "^17.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

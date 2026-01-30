@@ -4,22 +4,36 @@ import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // Plugin to stub out server-only modules in client builds
+// This is a safety net - prefer using dynamic imports in loaders/actions
 function serverOnlyModules(): Plugin {
-  const serverOnlyPkgs = ["@secretlobby/db", "@secretlobby/auth", "@prisma/client", "@prisma/adapter-pg", "pg"];
+  const serverOnlyPkgs = [
+    "@secretlobby/db",
+    "@secretlobby/auth",
+    "@secretlobby/payments",
+    "@prisma/client",
+    "@prisma/adapter-pg",
+    "pg",
+    "stripe",
+    "bcryptjs",
+  ];
   const clientSafeSubpaths = ["@secretlobby/auth/requirements"];
+  const VIRTUAL_PREFIX = "\0server-only:";
 
   return {
     name: "server-only-modules",
     enforce: "pre",
-    resolveId(id, importer, options) {
+    resolveId(id, _importer, options) {
       // Only stub these out in client (browser) builds, not SSR
       if (options?.ssr === false && serverOnlyPkgs.some(pkg => id === pkg || id.startsWith(pkg + "/")) && !clientSafeSubpaths.includes(id)) {
-        return "\0" + id; // Virtual module ID
+        return VIRTUAL_PREFIX + id; // Virtual module ID with unique prefix
       }
     },
     load(id) {
       // Return empty stub for virtual server-only modules
-      if (id.startsWith("\0@secretlobby/db") || id.startsWith("\0@secretlobby/auth") || id.startsWith("\0@prisma") || id.startsWith("\0pg")) {
+      // These should rarely be hit if code properly uses dynamic imports in loaders/actions
+      if (id.startsWith(VIRTUAL_PREFIX)) {
+        const originalId = id.slice(VIRTUAL_PREFIX.length);
+        console.warn(`[server-only-modules] Stubbing ${originalId} - consider using dynamic import in loader/action`);
         return "export default {};";
       }
     },

@@ -1,7 +1,5 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/signup";
-import { getSession, createSessionResponse, createUser, addUserToAccount, isGoogleConfigured } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
 import { cn } from "@secretlobby/ui";
 
 export function meta() {
@@ -9,6 +7,9 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, isGoogleConfigured } = await import("@secretlobby/auth");
+
   const { session } = await getSession(request);
 
   if (session.userId) {
@@ -20,34 +21,41 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-// Helper function to generate a unique slug from account name
-async function generateUniqueSlug(name: string): Promise<string> {
-  // Convert to slug format: lowercase, replace spaces with hyphens, remove special chars
-  let baseSlug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .trim();
-
-  // Ensure it starts with a letter
-  if (!/^[a-z]/.test(baseSlug)) {
-    baseSlug = `account-${baseSlug}`;
-  }
-
-  // Check if slug exists
-  let slug = baseSlug;
-  let counter = 1;
-
-  while (await prisma.account.findUnique({ where: { slug } })) {
-    slug = `${baseSlug}-${counter}`;
-    counter++;
-  }
-
-  return slug;
-}
-
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { createSessionResponse, createUser, addUserToAccount } = await import("@secretlobby/auth");
+  const { getUserByEmail } = await import("~/models/queries/user.server");
+  const { getAccountBySlug } = await import("~/models/queries/account.server");
+  const { createAccount, updateAccountDefaultLobby } = await import("~/models/mutations/account.server");
+  const { createLobby } = await import("~/models/mutations/lobby.server");
+
+  // Helper function to generate a unique slug from account name
+  async function generateUniqueSlug(name: string): Promise<string> {
+    // Convert to slug format: lowercase, replace spaces with hyphens, remove special chars
+    let baseSlug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .trim();
+
+    // Ensure it starts with a letter
+    if (!/^[a-z]/.test(baseSlug)) {
+      baseSlug = `account-${baseSlug}`;
+    }
+
+    // Check if slug exists
+    let slug = baseSlug;
+    let counter = 1;
+
+    while (await getAccountBySlug(slug)) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    return slug;
+  }
+
   const formData = await request.formData();
   const name = formData.get("name");
   const email = formData.get("email");
@@ -79,9 +87,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Check if email already exists
-  const existingUser = await prisma.user.findUnique({
-    where: { email: email.toLowerCase() },
-  });
+  const existingUser = await getUserByEmail(email);
 
   if (existingUser) {
     return { error: "An account with this email already exists" };
@@ -95,35 +101,28 @@ export async function action({ request }: Route.ActionArgs) {
     const slug = await generateUniqueSlug(accountName);
 
     // Create account
-    const account = await prisma.account.create({
-      data: {
-        name: accountName,
-        slug,
-        subscriptionTier: "FREE",
-      },
+    const account = await createAccount({
+      name: accountName,
+      slug,
+      subscriptionTier: "FREE",
     });
 
     // Link user to account as OWNER
     await addUserToAccount(user.id, account.id, "OWNER");
 
     // Create default lobby for the account
-    const defaultLobby = await prisma.lobby.create({
-      data: {
-        accountId: account.id,
-        name: "Main Lobby",
-        slug: "main",
-        title: accountName,
-        description: `Welcome to ${accountName}`,
-        isDefault: true,
-        isPublished: false,
-      },
+    const defaultLobby = await createLobby({
+      accountId: account.id,
+      name: "Main Lobby",
+      slug: "main",
+      title: accountName,
+      description: `Welcome to ${accountName}`,
+      isDefault: true,
+      isPublished: false,
     });
 
     // Update account with default lobby reference
-    await prisma.account.update({
-      where: { id: account.id },
-      data: { defaultLobbyId: defaultLobby.id },
-    });
+    await updateAccountDefaultLobby(account.id, defaultLobby.id);
 
     // Create session and redirect
     return createSessionResponse(
