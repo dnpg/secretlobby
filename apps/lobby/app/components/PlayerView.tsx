@@ -495,7 +495,7 @@ export function PlayerView({
     };
   }, [estimatedDuration, audioRef, seekTo, onPlayingChange]);
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio || seekLoadingRef.current) return;
 
@@ -519,7 +519,51 @@ export function PlayerView({
         control: 'play',
       });
     }
-  };
+  }, [cancelAutoPlay]);
+
+  // Global keyboard shortcuts for media controls (accessibility)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case " ": // Space to toggle play/pause
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "k": // YouTube-style play/pause
+          e.preventDefault();
+          togglePlay();
+          break;
+        case "j": // YouTube-style rewind 10 seconds
+          e.preventDefault();
+          if (audioRef.current) {
+            const newTime = Math.max(0, audioRef.current.currentTime - 10);
+            seekTo(newTime);
+          }
+          break;
+        case "l": // YouTube-style forward 10 seconds
+          e.preventDefault();
+          if (audioRef.current && estimatedDuration > 0) {
+            const newTime = Math.min(estimatedDuration, audioRef.current.currentTime + 10);
+            seekTo(newTime);
+          }
+          break;
+        case "m": // Mute toggle
+          e.preventDefault();
+          if (audioRef.current) {
+            audioRef.current.muted = !audioRef.current.muted;
+          }
+          break;
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [togglePlay, seekTo, estimatedDuration]);
 
   const playTrack = async (track: Track, autoPlay = true) => {
     const audio = audioRef.current;
@@ -893,11 +937,18 @@ export function PlayerView({
               </div>
             )}
 
-            {/* Progress Bar */}
+            {/* Progress Bar - Accessible Slider */}
             <div className="py-2 sm:py-0">
               <div
                 ref={progressBarRef}
-                className="group relative h-2 rounded-full cursor-pointer touch-none"
+                role="slider"
+                tabIndex={0}
+                aria-label="Audio progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(isDragging ? dragPercent * 100 : progress)}
+                aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration || estimatedDuration)}`}
+                className="group relative h-2 rounded-full cursor-pointer touch-none focus-visible:ring-2 focus-visible:ring-offset-2"
                 style={{ backgroundColor: "color-mix(in srgb, var(--color-accent) 20%, transparent)" }}
                 onClick={seek}
                 onMouseDown={handleMouseDown}
@@ -907,6 +958,43 @@ export function PlayerView({
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
                 onTouchCancel={handleTouchEnd}
+                onKeyDown={(e) => {
+                  const effectiveDuration = duration || estimatedDuration;
+                  if (!effectiveDuration || effectiveDuration <= 0) return;
+
+                  let newPercent: number | null = null;
+                  const currentPercent = progress / 100;
+                  const step = 0.05; // 5% step
+                  const largeStep = 0.1; // 10% for Page Up/Down
+
+                  switch (e.key) {
+                    case "ArrowRight":
+                    case "ArrowUp":
+                      newPercent = Math.min(1, currentPercent + step);
+                      break;
+                    case "ArrowLeft":
+                    case "ArrowDown":
+                      newPercent = Math.max(0, currentPercent - step);
+                      break;
+                    case "PageUp":
+                      newPercent = Math.min(1, currentPercent + largeStep);
+                      break;
+                    case "PageDown":
+                      newPercent = Math.max(0, currentPercent - largeStep);
+                      break;
+                    case "Home":
+                      newPercent = 0;
+                      break;
+                    case "End":
+                      newPercent = 1;
+                      break;
+                  }
+
+                  if (newPercent !== null) {
+                    e.preventDefault();
+                    performSeek(newPercent);
+                  }
+                }}
               >
                 {/* Download progress indicator */}
                 {loadingProgress > 0 && (
@@ -953,20 +1041,29 @@ export function PlayerView({
               </div>
             </div>
 
-            {/* Controls */}
-            <div className="flex justify-center items-center gap-6">
+            {/* Controls - Skip link target */}
+            <div
+              id="player-controls"
+              tabIndex={-1}
+              className="flex justify-center items-center gap-6 focus:outline-none"
+              role="group"
+              aria-label="Playback controls"
+            >
               <button
                 onClick={playPrev}
+                aria-label="Previous track"
                 className="p-3 transition hover:opacity-80 cursor-pointer"
                 style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
               >
-                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
                 </svg>
               </button>
 
               <button
                 onClick={togglePlay}
+                aria-label={isLoading || seekLoading ? "Loading" : isPlaying ? "Pause" : "Play"}
+                aria-busy={isLoading || seekLoading}
                 className="p-4 hover:scale-105 transition cursor-pointer"
                 style={{
                   borderRadius: `${cardStyles?.playButtonBorderRadius ?? 50}%`,
@@ -975,16 +1072,16 @@ export function PlayerView({
                 }}
               >
                 {isLoading || seekLoading ? (
-                  <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
                 ) : isPlaying ? (
-                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
                   </svg>
                 ) : (
-                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M8 5v14l11-7z" />
                   </svg>
                 )}
@@ -992,10 +1089,11 @@ export function PlayerView({
 
               <button
                 onClick={playNext}
+                aria-label="Next track"
                 className="p-3 transition hover:opacity-80 cursor-pointer"
                 style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
               >
-                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
                 </svg>
               </button>
@@ -1003,17 +1101,30 @@ export function PlayerView({
 
             {/* Playlist */}
             <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
-              <h3 className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
-              <div className="flex flex-col">
+              <h3 id="playlist-heading" className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
+              <div className="flex flex-col" role="list" aria-labelledby="playlist-heading">
                 {tracks.map((track, index) => {
                   const isCurrent = currentTrack?.id === track.id;
                   const isHovered = hoveredTrackId === track.id;
                   const isCurrentPlaying = isCurrent && isPlaying;
                   const isCurrentLoading = isCurrent && isLoading;
 
+                  // Build accessible label
+                  const trackStatus = isCurrentLoading
+                    ? "Loading"
+                    : isCurrentPlaying
+                    ? "Now playing"
+                    : isCurrent
+                    ? "Selected"
+                    : "";
+                  const accessibleLabel = `${track.title}${track.artist ? ` by ${track.artist}` : ""}${trackStatus ? `. ${trackStatus}` : ""}`;
+
                   return (
                     <button
                       key={track.id}
+                      role="listitem"
+                      aria-current={isCurrent ? "true" : undefined}
+                      aria-label={accessibleLabel}
                       onClick={() => {
                         if (isCurrentPlaying) {
                           audioRef.current?.pause();
@@ -1064,7 +1175,7 @@ export function PlayerView({
                       }}
                     >
                       {/* Track number / play / pause indicator */}
-                      <div className="w-6 flex items-center justify-center shrink-0">
+                      <div className="w-6 flex items-center justify-center shrink-0" aria-hidden="true">
                         {isCurrentLoading ? (
                           <svg className="w-4 h-4 animate-spin" style={{ color: "var(--color-accent)" }} fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

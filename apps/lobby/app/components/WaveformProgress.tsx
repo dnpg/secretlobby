@@ -130,6 +130,9 @@ export function WaveformProgress({
     };
   }, [audioElement, isPlaying, waveformPeaks]);
 
+  // Calculate progress percentage for accessibility
+  const progressPercent = duration > 0 ? Math.round((currentTime / duration) * 100) : 0;
+
   return (
     <canvas
       ref={canvasRef}
@@ -141,6 +144,8 @@ export function WaveformProgress({
         border: borderShow ? `1px solid ${borderColor || "#374151"}` : "none",
         mixBlendMode: (blendMode || "normal") as React.CSSProperties["mixBlendMode"],
       }}
+      role="img"
+      aria-label={`Audio waveform visualization - ${progressPercent}% complete${isPlaying ? ", playing" : ", paused"}`}
     />
   );
 }

@@ -200,6 +200,8 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
         border: borderShow ? `1px solid ${borderColor || "#374151"}` : "none",
         mixBlendMode: (blendMode || "normal") as React.CSSProperties["mixBlendMode"],
       }}
+      role="img"
+      aria-label={isPlaying ? "Audio frequency visualizer - music is playing" : "Audio frequency visualizer - paused"}
     />
   );
 }

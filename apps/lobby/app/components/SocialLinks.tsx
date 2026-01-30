@@ -114,7 +114,7 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
       )}
 
       {hasLinks && (
-        <div className={`flex flex-wrap items-center ${alignmentClass}`}>
+        <nav aria-label="Social media links" className={`flex flex-wrap items-center ${alignmentClass}`}>
           {links.map((link) => {
             const platform = link.platform as SocialPlatform;
             const IconComponent = icons[platform];
@@ -122,6 +122,10 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
 
             const isEmail = platform === "email";
             const href = isEmail ? `mailto:${link.url}` : link.url;
+            const label = getPlatformLabel(platform);
+            const accessibleLabel = isEmail
+              ? `Send email to ${link.url}`
+              : `Visit our ${label} page (opens in new tab)`;
 
             const iconClass = platform === "instagram" ? "h-5 w-auto" : "h-6 w-auto";
 
@@ -131,23 +135,23 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
                 href={href}
                 target={isEmail ? undefined : "_blank"}
                 rel={isEmail ? undefined : "noopener noreferrer"}
-                className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70"
-                title={getPlatformLabel(platform)}
+                className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70 focus-visible:ring-2 focus-visible:ring-offset-2"
+                aria-label={accessibleLabel}
                 style={monoStyle}
                 onClick={() => {
                   trackEvent('social_link_click', {
                     event_category: 'social',
-                    event_label: getPlatformLabel(platform),
+                    event_label: label,
                     platform: platform,
                     url: link.url,
                   });
                 }}
               >
-                <IconComponent className={iconClass} />
+                <IconComponent className={iconClass} aria-hidden="true" />
               </a>
             );
           })}
-        </div>
+        </nav>
       )}
 
       {contentAfter && (

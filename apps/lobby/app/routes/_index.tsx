@@ -793,14 +793,36 @@ export default function LobbyIndex() {
   const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
   const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
 
+  // Handle skip link click - scroll to and focus the target
+  const handleSkipLink = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    const targetId = requiresPassword ? "password" : "player-controls";
+    const target = document.getElementById(targetId);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      target.focus({ preventScroll: true });
+    }
+  };
+
   // Single return with conditional content - audio element always at the same position
   return (
     <>
+      {/* Skip link for keyboard navigation */}
+      <a
+        href={requiresPassword ? "#password" : "#player-controls"}
+        className="skip-link"
+        onClick={handleSkipLink}
+      >
+        {requiresPassword ? "Skip to password field" : "Skip to player controls"}
+      </a>
+
       {requiresPassword ? (
         // Login page content
-        <div
+        <main
+          id="main-content"
           className="min-h-dvh flex items-center justify-center overflow-hidden"
           style={{ backgroundColor: lp.bgColor }}
+          aria-label="Login"
         >
           <div className="w-full max-w-md p-8">
             <div
@@ -813,7 +835,7 @@ export default function LobbyIndex() {
               <div className="text-center mb-8">
                 {lp.logoType === "image" && loginLogoImageUrl && (
                   <div className="flex justify-center mb-4">
-                    <img src={loginLogoImageUrl} alt="" className="max-w-[180px] max-h-[60px] object-contain" />
+                    <img src={loginLogoImageUrl} alt={loginTitle || "Logo"} className="max-w-[180px] max-h-[60px] object-contain" />
                   </div>
                 )}
                 {loginTitle && (
@@ -829,7 +851,11 @@ export default function LobbyIndex() {
               </div>
 
               {actionData?.error && (
-                <div className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg">
+                <div
+                  className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg"
+                  role="alert"
+                  aria-live="polite"
+                >
                   {actionData.error}
                 </div>
               )}
@@ -949,10 +975,10 @@ export default function LobbyIndex() {
               </span>
             </button>
           </div>
-        </div>
+        </main>
       ) : (
         // Authenticated player content
-        <div style={data.themeVars as React.CSSProperties}>
+        <main id="main-content" style={data.themeVars as React.CSSProperties}>
           <PlayerView
             tracks={tracks}
             imageUrls={imageUrls}
@@ -985,10 +1011,10 @@ export default function LobbyIndex() {
             technicalInfo={technicalInfo}
             initialTrackId={data.autoplayTrackId}
           />
-        </div>
+        </main>
       )}
       {/* Audio element - always rendered in the same position to persist across login */}
-      <audio ref={audioRef} style={{ display: "none" }} />
+      <audio ref={audioRef} style={{ display: "none" }} aria-hidden="true" />
     </>
   );
 }
