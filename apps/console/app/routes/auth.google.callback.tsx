@@ -123,6 +123,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       "/"
     );
   } catch (err) {
+    // Re-throw Response objects (from redirect() calls)
+    if (err instanceof Response) {
+      throw err;
+    }
+
     logger.error({ error: formatError(err) }, "Google OAuth callback error");
     throw redirect("/login?error=oauth_failed");
   }

@@ -164,6 +164,85 @@ export async function authenticateWithGoogle(
         emailVerified: true,
       },
     });
+
+    // Check if user has no accounts (orphaned user from previous OAuth)
+    if (user.accounts.length === 0) {
+      const userName = googleUser.name || user.name || email.split("@")[0];
+
+      // Generate unique slug from email/name
+      const baseSlug = userName
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .trim();
+
+      let slug = /^[a-z]/.test(baseSlug) ? baseSlug : `account-${baseSlug}`;
+      let counter = 1;
+
+      // Ensure unique slug
+      while (await prisma.account.findUnique({ where: { slug } })) {
+        slug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+
+      // Create account and lobby for existing user without accounts
+      await prisma.$transaction(async (tx) => {
+        // Create account
+        const account = await tx.account.create({
+          data: {
+            name: userName,
+            slug,
+            subscriptionTier: "FREE",
+          },
+        });
+
+        // Link user to account as OWNER
+        await tx.accountUser.create({
+          data: {
+            userId: user.id,
+            accountId: account.id,
+            role: "OWNER",
+            acceptedAt: new Date(),
+          },
+        });
+
+        // Create default lobby
+        const lobby = await tx.lobby.create({
+          data: {
+            accountId: account.id,
+            name: "Main Lobby",
+            slug: "main",
+            title: userName,
+            description: `Welcome to ${userName}`,
+            isDefault: true,
+            password: "", // No password initially
+          },
+        });
+
+        // Update account with default lobby reference
+        await tx.account.update({
+          where: { id: account.id },
+          data: { defaultLobbyId: lobby.id },
+        });
+      });
+
+      // Fetch user with newly created account
+      user = await prisma.user.findUnique({
+        where: { id: user.id },
+        include: {
+          accounts: {
+            include: {
+              account: { select: { id: true, name: true, slug: true } },
+            },
+          },
+        },
+      });
+
+      if (!user) {
+        throw new Error("Failed to fetch user after creating account");
+      }
+    }
   }
 
   return {
