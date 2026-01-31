@@ -504,6 +504,10 @@ model SystemSettings {
   allowSignups     Boolean  @default(true)
   maintenanceMode  Boolean  @default(false)
 
+  // Favicon & Web Manifest Configuration (JSON)
+  // Contains: sourceKey, generatedAt, manifestName, manifestShortName, themeColor, bgColor, display
+  faviconConfig    Json     @default("{}")
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

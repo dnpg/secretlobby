@@ -10,6 +10,8 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { prisma } from "@secretlobby/db";
+import { getPublicUrl } from "@secretlobby/storage";
 
 const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
 const GTM_ID_RE = /^GTM-[A-Z0-9]+$/i;
@@ -18,9 +20,25 @@ export async function loader() {
   const gaMeasurementId = process.env.GA_MEASUREMENT_ID ?? "";
   const gtmContainerId = process.env.GTM_CONTAINER_ID ?? "";
 
+  // Get favicon base URL from system settings
+  let faviconBaseUrl: string | null = null;
+  try {
+    const settings = await prisma.systemSettings.findUnique({
+      where: { id: "default" },
+      select: { faviconConfig: true },
+    });
+    const config = settings?.faviconConfig as { generatedAt?: string } | null;
+    if (config?.generatedAt) {
+      faviconBaseUrl = getPublicUrl("system/favicons");
+    }
+  } catch {
+    // Ignore errors - favicon is optional
+  }
+
   return {
     gaMeasurementId: GA_ID_RE.test(gaMeasurementId) ? gaMeasurementId : null,
     gtmContainerId: GTM_ID_RE.test(gtmContainerId) ? gtmContainerId : null,
+    faviconBaseUrl,
   };
 }
 
@@ -41,6 +59,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const data = useLoaderData<typeof loader>();
   const gaMeasurementId = data?.gaMeasurementId ?? null;
   const gtmContainerId = data?.gtmContainerId ?? null;
+  const faviconBaseUrl = data?.faviconBaseUrl ?? null;
 
   return (
     <html lang="en">
@@ -49,6 +68,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        {faviconBaseUrl && (
+          <>
+            <link rel="icon" href={`${faviconBaseUrl}/favicon.ico`} sizes="48x48" />
+            <link rel="icon" type="image/png" sizes="16x16" href={`${faviconBaseUrl}/favicon-16x16.png`} />
+            <link rel="icon" type="image/png" sizes="32x32" href={`${faviconBaseUrl}/favicon-32x32.png`} />
+            <link rel="apple-touch-icon" href={`${faviconBaseUrl}/apple-touch-icon.png`} />
+            <link rel="manifest" href={`${faviconBaseUrl}/site.webmanifest`} />
+          </>
+        )}
         {gtmContainerId && (
           <script
             dangerouslySetInnerHTML={{

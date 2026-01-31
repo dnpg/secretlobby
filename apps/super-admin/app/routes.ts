@@ -1,6 +1,9 @@
 import { type RouteConfig, index, route, layout } from "@react-router/dev/routes";
 
 export default [
+  // API routes
+  route("api/favicon/generate", "routes/api.favicon.generate.ts"),
+
   // Login
   route("login", "routes/login.tsx"),
   route("logout", "routes/logout.tsx"),
