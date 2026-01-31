@@ -9,13 +9,75 @@ export async function getDefaultLobbyByAccountId(accountId: string) {
 export async function getDefaultLobbyWithMedia(accountId: string) {
   return prisma.lobby.findFirst({
     where: { accountId, isDefault: true },
-    include: {
-      backgroundMedia: true,
-      backgroundMediaDark: true,
-      bannerMedia: true,
-      bannerMediaDark: true,
-      profileMedia: true,
-      profileMediaDark: true,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      password: true,
+      isDefault: true,
+      accountId: true,
+      createdAt: true,
+      updatedAt: true,
+      backgroundMedia: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      backgroundMediaDark: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      bannerMedia: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      bannerMediaDark: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      profileMedia: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      profileMediaDark: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 }
@@ -23,10 +85,37 @@ export async function getDefaultLobbyWithMedia(accountId: string) {
 export async function getDefaultLobbyWithTracks(accountId: string) {
   return prisma.lobby.findFirst({
     where: { accountId, isDefault: true },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      password: true,
+      isDefault: true,
+      accountId: true,
+      createdAt: true,
+      updatedAt: true,
       tracks: {
         orderBy: { position: "asc" },
-        include: { media: true },
+        select: {
+          id: true,
+          title: true,
+          artist: true,
+          position: true,
+          lobbyId: true,
+          mediaId: true,
+          createdAt: true,
+          updatedAt: true,
+          media: {
+            select: {
+              id: true,
+              key: true,
+              filename: true,
+              type: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
       },
     },
   });

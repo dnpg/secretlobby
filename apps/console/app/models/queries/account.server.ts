@@ -30,9 +30,22 @@ export async function getAccountWithBillingInfo(accountId: string) {
 export async function getAccountWithDomains(accountId: string) {
   return prisma.account.findUnique({
     where: { id: accountId },
-    include: {
+    select: {
+      id: true,
+      slug: true,
+      subscriptionTier: true,
+      createdAt: true,
+      updatedAt: true,
       domains: {
         orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          domain: true,
+          status: true,
+          accountId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       },
       lobbies: {
         orderBy: { createdAt: "asc" },
@@ -73,11 +86,27 @@ export async function getFirstAccountSettings() {
 export async function getAccountWithOwner(accountId: string) {
   return prisma.account.findUnique({
     where: { id: accountId },
-    include: {
+    select: {
+      id: true,
+      slug: true,
+      subscriptionTier: true,
+      createdAt: true,
+      updatedAt: true,
       users: {
-        include: { user: true },
         where: { role: "OWNER" },
         take: 1,
+        select: {
+          role: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
       },
     },
   });

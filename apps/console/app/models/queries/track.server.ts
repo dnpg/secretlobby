@@ -4,7 +4,26 @@ export async function getTracksByLobbyId(lobbyId: string) {
   return prisma.track.findMany({
     where: { lobbyId },
     orderBy: { position: "asc" },
-    include: { media: true },
+    select: {
+      id: true,
+      title: true,
+      artist: true,
+      position: true,
+      lobbyId: true,
+      mediaId: true,
+      createdAt: true,
+      updatedAt: true,
+      media: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+    },
   });
 }
 

@@ -111,17 +111,36 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
   if (subdomain) {
     const account = await prisma.account.findUnique({
       where: { slug: subdomain },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        subscriptionTier: true,
+        stripeCustomerId: true,
+        settings: true,
+        defaultLobbyId: true,
+        createdAt: true,
+        updatedAt: true,
         lobbies: {
           where: { isDefault: true },
           take: 1,
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            password: true,
+            isDefault: true,
+            accountId: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         },
       },
     });
-    
+
     if (account) {
       return {
-        account,
+        account: account as any, // Type cast needed due to select vs full type
         lobby: account.lobbies[0] || null,
         subdomain,
         isCustomDomain: false,
@@ -138,12 +157,34 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
         domain: hostname,
         status: "VERIFIED",
       },
-      include: {
+      select: {
+        id: true,
+        domain: true,
+        status: true,
         account: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            subscriptionTier: true,
+            stripeCustomerId: true,
+            settings: true,
+            defaultLobbyId: true,
+            createdAt: true,
+            updatedAt: true,
             lobbies: {
               where: { isDefault: true },
               take: 1,
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                password: true,
+                isDefault: true,
+                accountId: true,
+                createdAt: true,
+                updatedAt: true,
+              },
             },
           },
         },
@@ -152,7 +193,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
 
     if (domain?.account) {
       return {
-        account: domain.account,
+        account: domain.account as any, // Type cast needed due to select vs full type
         lobby: domain.account.lobbies[0] || null,
         subdomain: null,
         isCustomDomain: true,

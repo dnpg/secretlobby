@@ -31,3 +31,4 @@ CREATE INDEX "RateLimitViolation_lastViolation_idx" ON "RateLimitViolation"("las
 
 -- CreateIndex
 CREATE INDEX "RateLimitViolation_createdAt_idx" ON "RateLimitViolation"("createdAt");
+ALTER TABLE "RateLimitViolation" ADD CONSTRAINT "RateLimitViolation_resourceId_fkey" FOREIGN KEY ("resourceId") REFERENCES "Lobby"("id") ON DELETE CASCADE ON UPDATE CASCADE;
