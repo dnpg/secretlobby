@@ -571,11 +571,67 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const { checkRateLimit, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
+  const { checkRateLimit, RATE_LIMIT_CONFIGS, resetRateLimit, getClientIp } = await import("@secretlobby/auth/rate-limit");
+  const {
+    checkIPBlock,
+    recordViolation,
+    resetViolations,
+  } = await import("@secretlobby/auth/enhanced-rate-limit");
 
-  // Check rate limit before processing password
+  const ip = getClientIp(request);
+
+  // Get lobby ID for localhost or multi-tenant
+  let lobbyId: string | undefined;
+  if (isLocalhost(request)) {
+    // For localhost, we'll use a generic identifier since we don't have tenant yet
+    lobbyId = "localhost-lobby";
+  } else {
+    const tenant = await resolveTenant(request);
+    lobbyId = tenant.lobby?.id;
+  }
+
+  // Step 1: Check if IP is blocked (database-backed progressive lockout)
+  const block = await checkIPBlock(ip, "lobby-password", lobbyId);
+  if (block) {
+    const isManualBlock = block.metadata?.manualBlock === true;
+    const isPermanentBlock = block.violationCount >= 10 || block.status === "BLOCKED";
+    const adminReason = block.metadata?.reason;
+
+    // Permanent block (either automatic or manual)
+    if (isPermanentBlock) {
+      let message = `Your access has been permanently blocked${isManualBlock ? " by an administrator" : " due to repeated violations"}. Please contact us to recover your account.`;
+
+      // Include admin's reason if available
+      if (isManualBlock && adminReason) {
+        message = `Your access has been permanently blocked by an administrator. Reason: ${adminReason}. Please contact us if you believe this is an error.`;
+      }
+
+      return { error: message };
+    }
+
+    // Temporary block - show time remaining
+    const minutes = Math.ceil((block.lockoutUntil.getTime() - Date.now()) / 60000);
+    const timeMessage = minutes === 1 ? "1 minute" : `${minutes} minutes`;
+
+    let message = `Access temporarily blocked due to multiple failed attempts. Please try again in ${timeMessage}.`;
+
+    // For manual temporary blocks, show admin message
+    if (isManualBlock) {
+      message = `Your access has been temporarily blocked by an administrator. Please try again in ${timeMessage}.`;
+      if (adminReason) {
+        message = `Your access has been temporarily blocked by an administrator. Reason: ${adminReason}. Please try again in ${timeMessage}.`;
+      }
+    }
+
+    return { error: message };
+  }
+
+  // Step 2: Check basic rate limit (in-memory)
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
   if (!rateLimitResult.allowed) {
+    // Record this as a violation in the database for progressive tracking
+    await recordViolation(ip, "lobby-password", lobbyId, request.headers.get("user-agent") || undefined);
+
     const minutes = Math.ceil(rateLimitResult.resetInSeconds / 60);
     const timeMessage = minutes === 1 ? "1 minute" : `${minutes} minutes`;
     return {
@@ -590,8 +646,9 @@ export async function action({ request }: Route.ActionArgs) {
     const sitePassword = await getSitePassword();
 
     if (password === sitePassword) {
-      // Reset rate limit on successful password entry
+      // Reset rate limit and violations on successful password entry
       resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
+      await resetViolations(ip, "lobby-password", lobbyId);
       return createSessionResponse({ isAuthenticated: true }, request, "/");
     }
     return { error: "Invalid password" };
@@ -611,8 +668,9 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Invalid password" };
   }
 
-  // Reset rate limit on successful password entry
+  // Reset rate limit and violations on successful password entry
   resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
+  await resetViolations(ip, "lobby-password", tenant.lobby.id);
 
   // Create authenticated session for this lobby
   return createSessionResponse(

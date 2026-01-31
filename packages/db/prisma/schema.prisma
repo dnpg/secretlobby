@@ -62,6 +62,13 @@ enum EmbedProvider {
   VIMEO
 }
 
+enum ViolationStatus {
+  ACTIVE   // Currently tracking violations
+  RESOLVED // User succeeded after violations
+  BLOCKED  // IP is blocked
+  EXPIRED  // Violations aged out
+}
+
 // ============================================================================
 // ACCOUNT (Tenant)
 // ============================================================================
@@ -223,14 +230,15 @@ model Lobby {
   publishedAt DateTime?
 
   // Relations
-  account             Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account             Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
   tracks              Track[]
-  backgroundMedia     Media?  @relation("LobbyBackground", fields: [backgroundMediaId], references: [id], onDelete: SetNull)
-  backgroundMediaDark Media?  @relation("LobbyBackgroundDark", fields: [backgroundMediaDarkId], references: [id], onDelete: SetNull)
-  bannerMedia         Media?  @relation("LobbyBanner", fields: [bannerMediaId], references: [id], onDelete: SetNull)
-  bannerMediaDark     Media?  @relation("LobbyBannerDark", fields: [bannerMediaDarkId], references: [id], onDelete: SetNull)
-  profileMedia        Media?  @relation("LobbyProfile", fields: [profileMediaId], references: [id], onDelete: SetNull)
-  profileMediaDark    Media?  @relation("LobbyProfileDark", fields: [profileMediaDarkId], references: [id], onDelete: SetNull)
+  rateLimitViolations RateLimitViolation[] @relation("LobbyViolations")
+  backgroundMedia     Media?               @relation("LobbyBackground", fields: [backgroundMediaId], references: [id], onDelete: SetNull)
+  backgroundMediaDark Media?               @relation("LobbyBackgroundDark", fields: [backgroundMediaDarkId], references: [id], onDelete: SetNull)
+  bannerMedia         Media?               @relation("LobbyBanner", fields: [bannerMediaId], references: [id], onDelete: SetNull)
+  bannerMediaDark     Media?               @relation("LobbyBannerDark", fields: [bannerMediaDarkId], references: [id], onDelete: SetNull)
+  profileMedia        Media?               @relation("LobbyProfile", fields: [profileMediaId], references: [id], onDelete: SetNull)
+  profileMediaDark    Media?               @relation("LobbyProfileDark", fields: [profileMediaDarkId], references: [id], onDelete: SetNull)
 
   @@unique([accountId, slug])
   @@index([accountId])
@@ -545,4 +553,40 @@ model SubscriptionPlan {
 
   @@index([slug])
   @@index([isActive, position])
+}
+
+// ============================================================================
+// RATE LIMIT VIOLATION (Security & Brute Force Protection)
+// ============================================================================
+
+model RateLimitViolation {
+  id             String          @id @default(cuid())
+
+  // Identification
+  ipAddress      String
+  endpoint       String          // "login", "lobby-password", "signup", etc.
+  resourceId     String?         // Lobby ID, account ID, etc.
+
+  // Tracking
+  violationCount Int             @default(1)
+  firstViolation DateTime        @default(now())
+  lastViolation  DateTime        @updatedAt
+  lockoutUntil   DateTime?
+  status         ViolationStatus @default(ACTIVE)
+
+  // Additional Context
+  userAgent      String?
+  metadata       Json?           // Any additional context (geo, fingerprint, etc.)
+
+  // Timestamps
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  // Relations
+  lobby          Lobby?          @relation("LobbyViolations", fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([ipAddress, endpoint, resourceId])
+  @@index([status, lockoutUntil])
+  @@index([lastViolation])
+  @@index([createdAt])
 }

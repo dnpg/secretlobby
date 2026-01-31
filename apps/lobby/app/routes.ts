@@ -11,4 +11,7 @@ export default [
   route("api/hls/:trackId/playlist", "routes/api.hls.$trackId.playlist.tsx"),
   route("api/hls/:trackId/segment/:filename", "routes/api.hls.$trackId.segment.$filename.tsx"),
   route("api/stream-mp3/:trackId", "routes/api.stream-mp3.$trackId.tsx"),
+
+  // Admin API for clearing in-memory rate limits
+  route("api/clear-rate-limit/:ipAddress", "routes/api.clear-rate-limit.$ipAddress.ts"),
 ] satisfies RouteConfig;

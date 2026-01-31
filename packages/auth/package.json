@@ -39,6 +39,14 @@
     "./rate-limit": {
       "types": "./src/rate-limit.server.ts",
       "import": "./src/rate-limit.server.ts"
+    },
+    "./enhanced-rate-limit": {
+      "types": "./src/enhanced-rate-limit.server.ts",
+      "import": "./src/enhanced-rate-limit.server.ts"
+    },
+    "./captcha": {
+      "types": "./src/captcha.server.ts",
+      "import": "./src/captcha.server.ts"
     }
   },
   "scripts": {

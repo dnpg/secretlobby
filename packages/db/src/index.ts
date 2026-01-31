@@ -17,6 +17,7 @@ export type {
   PaymentHistory,
   SystemSettings,
   SubscriptionPlan,
+  RateLimitViolation,
 } from "./generated/client/client.js";
 
 // Re-export enums
@@ -28,6 +29,7 @@ export {
   PaymentStatus,
   MediaType,
   EmbedProvider,
+  ViolationStatus,
 } from "./generated/client/enums.js";
 
 // Re-export Prisma types for advanced queries

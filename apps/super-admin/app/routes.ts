@@ -18,6 +18,8 @@ export default [
     route("users", "routes/_layout.users.tsx"),
     route("domains", "routes/_layout.domains.tsx"),
     route("plans", "routes/_layout.plans.tsx"),
+    route("security", "routes/_layout.security.tsx"),
+    route("security/:ipAddress", "routes/_layout.security.$ipAddress.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
   ]),
 ] satisfies RouteConfig;

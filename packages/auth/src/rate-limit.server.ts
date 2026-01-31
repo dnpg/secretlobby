@@ -146,7 +146,7 @@ function getStore(): InMemoryRateLimitStore {
 /**
  * Get client IP address from request
  */
-function getClientIp(request: Request): string {
+export function getClientIp(request: Request): string {
   // Check common headers for the real IP (behind proxies/load balancers)
   const forwardedFor = request.headers.get("x-forwarded-for");
   if (forwardedFor) {
@@ -265,6 +265,37 @@ export function resetRateLimit(
   store.delete(key);
 
   logger.debug({ identifier, key }, "Rate limit reset");
+}
+
+/**
+ * Clear all in-memory rate limits for a specific IP address
+ * (useful when manually unblocking an IP from admin panel)
+ *
+ * @param ipAddress - The IP address to clear limits for
+ */
+export function clearInMemoryRateLimitsForIP(ipAddress: string): void {
+  const store = getStore();
+  let cleared = 0;
+
+  // Clear all rate limit configs for this IP
+  const allConfigs = Object.values(RATE_LIMIT_CONFIGS);
+
+  for (const config of allConfigs) {
+    const key = `${config.keyPrefix || "rl"}:${ipAddress}`;
+    const existed = store.get(key);
+    if (existed) {
+      store.delete(key);
+      cleared++;
+      logger.debug({ key, ipAddress }, "Cleared in-memory rate limit");
+    }
+  }
+
+  if (cleared > 0) {
+    logger.info(
+      { ipAddress, cleared },
+      "Cleared all in-memory rate limits for IP"
+    );
+  }
 }
 
 /**

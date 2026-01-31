@@ -258,6 +258,9 @@ importers:
       '@secretlobby/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@secretlobby/logger':
+        specifier: workspace:*
+        version: link:../../packages/logger
       '@secretlobby/ui':
         specifier: workspace:*
         version: link:../../packages/ui
