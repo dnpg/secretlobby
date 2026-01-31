@@ -1,6 +1,9 @@
 import { data } from "react-router";
 import type { Route } from "./+types/api.media";
 import type { Media } from "@secretlobby/db";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:api:media" });
 
 type MediaType = "IMAGE" | "AUDIO" | "VIDEO" | "EMBED";
 
@@ -169,7 +172,10 @@ export async function action({ request }: Route.ActionArgs) {
           duration: result.duration > 0 ? result.duration : undefined,
         });
       } catch (e) {
-        console.error("Background HLS generation failed for media:", mediaId, e);
+        logger.error(
+          { mediaId, error: formatError(e) },
+          "Background HLS generation failed"
+        );
       }
     })();
   }

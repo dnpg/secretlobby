@@ -2,6 +2,9 @@ import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect 
 import type { Route } from "./+types/_layout.login";
 import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import type { LoginPageSettings } from "~/lib/content.server";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:login-settings" });
 
 export function meta() {
   return [{ title: "Login Page Settings - Admin" }];
@@ -128,7 +131,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
     }
   } catch (error) {
-    console.error("Login page settings error:", error);
+    logger.error({ error: formatError(error) }, "Login page settings error");
     return { error: "Operation failed" };
   }
 

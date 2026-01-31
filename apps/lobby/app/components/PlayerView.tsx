@@ -5,6 +5,9 @@ import { AudioVisualizer } from "~/components/AudioVisualizer";
 import { WaveformProgress } from "~/components/WaveformProgress";
 import { usePcmAnalyser } from "~/hooks/usePcmAnalyser";
 import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "lobby:player" });
 
 /**
  * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
@@ -590,7 +593,7 @@ export function PlayerView({
         await audioRef.current.play();
         onPlayingChange(true);
       } catch (e) {
-        console.error("Playback failed:", e);
+        logger.error({ error: formatError(e) }, "Playback failed");
       }
     }
   };

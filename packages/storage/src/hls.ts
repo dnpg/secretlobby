@@ -3,6 +3,9 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { uploadFile, deleteFile, listFiles } from "./r2";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "storage:hls" });
 
 interface HlsResult {
   segmentCount: number;
@@ -145,7 +148,10 @@ async function extractWaveformPeaks(inputPath: string): Promise<number[]> {
       { maxBuffer: 50 * 1024 * 1024, encoding: "buffer" as BufferEncoding },
       (error, stdout) => {
         if (error) {
-          console.error("[hls] Waveform extraction failed:", error.message);
+          logger.error(
+            { error: formatError(error) },
+            "Waveform extraction failed"
+          );
           resolve([]);
           return;
         }
@@ -181,7 +187,10 @@ async function extractWaveformPeaks(inputPath: string): Promise<number[]> {
 
           resolve(peaks);
         } catch (e) {
-          console.error("[hls] Waveform peak computation failed:", e);
+          logger.error(
+            { error: formatError(e) },
+            "Waveform peak computation failed"
+          );
           resolve([]);
         }
       }
@@ -220,7 +229,10 @@ export function probeDuration(inputPath: string): Promise<number> {
       ],
       (error, stdout) => {
         if (error) {
-          console.error("[hls] Duration probe failed:", error.message);
+          logger.error(
+            { error: formatError(error) },
+            "Duration probe failed"
+          );
           resolve(0);
           return;
         }

@@ -21,6 +21,7 @@
     "@secretlobby/auth": "workspace:*",
     "@secretlobby/db": "workspace:*",
     "@secretlobby/email": "workspace:*",
+    "@secretlobby/logger": "workspace:*",
     "@secretlobby/payments": "workspace:*",
     "@secretlobby/storage": "workspace:*",
     "@secretlobby/ui": "workspace:*",

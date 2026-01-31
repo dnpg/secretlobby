@@ -7,6 +7,10 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
     "db:generate": "turbo run db:generate",
     "db:migrate": "pnpm --filter @secretlobby/db db:migrate",
     "db:migrate:create": "pnpm --filter @secretlobby/db db:migrate:create",
@@ -19,9 +23,14 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@vitest/ui": "^4.0.18",
+    "happy-dom": "^20.4.0",
     "prettier": "^3.5.0",
     "turbo": "^2.5.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -31,5 +40,9 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "dependencies": {
+    "pino": "^10.3.0",
+    "pino-pretty": "^13.1.3"
   }
 }

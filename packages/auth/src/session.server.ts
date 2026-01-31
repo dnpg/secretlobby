@@ -1,4 +1,5 @@
 import { getIronSession, type SessionOptions } from "iron-session";
+import { getSessionSecret } from "./env.server.js";
 
 export interface SessionData {
   // Legacy: lobby access (password-based)
@@ -21,20 +22,26 @@ export interface SessionData {
   googleCodeVerifier?: string;
 }
 
-const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || "fallback-secret-min-32-characters-long",
-  cookieName: "secretlobby-session",
-  cookieOptions: {
-    secure: process.env.NODE_ENV === "production",
-    httpOnly: true,
-    sameSite: "lax" as const,
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-  },
-};
+/**
+ * Gets session options with validated SESSION_SECRET
+ * NOTE: This will throw an error if SESSION_SECRET is not set or invalid
+ */
+function getSessionOptions(): SessionOptions {
+  return {
+    password: getSessionSecret(),
+    cookieName: "secretlobby-session",
+    cookieOptions: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      sameSite: "lax" as const,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    },
+  };
+}
 
 export async function getSession(request: Request) {
   const response = new Response();
-  const session = await getIronSession<SessionData>(request, response, sessionOptions);
+  const session = await getIronSession<SessionData>(request, response, getSessionOptions());
   return { session, response };
 }
 
@@ -48,7 +55,7 @@ export async function createSessionResponse(
     headers: { Location: redirectTo },
   });
 
-  const session = await getIronSession<SessionData>(request, response, sessionOptions);
+  const session = await getIronSession<SessionData>(request, response, getSessionOptions());
   Object.assign(session, sessionData);
   await session.save();
 
@@ -60,7 +67,7 @@ export async function updateSession(
   sessionData: Partial<SessionData>
 ) {
   const response = new Response();
-  const session = await getIronSession<SessionData>(request, response, sessionOptions);
+  const session = await getIronSession<SessionData>(request, response, getSessionOptions());
   Object.assign(session, sessionData);
   await session.save();
   return { session, response };
@@ -75,7 +82,7 @@ export async function destroySession(
     headers: { Location: redirectTo },
   });
 
-  const session = await getIronSession<SessionData>(request, response, sessionOptions);
+  const session = await getIronSession<SessionData>(request, response, getSessionOptions());
   session.destroy();
 
   return response;

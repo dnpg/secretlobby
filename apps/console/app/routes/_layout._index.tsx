@@ -3,6 +3,9 @@ import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect 
 import type { Route } from "./+types/_layout._index";
 import { cn, RichTextEditor, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:content" });
 
 export function meta() {
   return [{ title: "Content Settings - Admin" }];
@@ -132,7 +135,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
     }
   } catch (error) {
-    console.error("Content update error:", error);
+    logger.error({ error: formatError(error) }, "Content update error");
     return { error: "Operation failed" };
   }
 

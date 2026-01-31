@@ -1,5 +1,8 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/_layout.billing.checkout";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:billing:checkout" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
@@ -38,7 +41,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
       throw redirect(portalResult.url);
     } catch (error) {
-      console.error("Failed to create customer portal session:", error);
+      logger.error(
+        { error: formatError(error) },
+        "Failed to create customer portal session"
+      );
       throw redirect("/billing");
     }
   }

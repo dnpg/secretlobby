@@ -1,6 +1,9 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.google.callback";
 import { getGoogleClient, authenticateWithGoogle, getSession, createSessionResponse } from "@secretlobby/auth";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:auth" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
@@ -10,7 +13,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Handle OAuth errors
   if (error) {
-    console.error("Google OAuth error:", error);
+    logger.error({ error }, "Google OAuth error");
     throw redirect(`/login?error=${encodeURIComponent(error)}`);
   }
 
@@ -108,7 +111,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       "/"
     );
   } catch (err) {
-    console.error("Google OAuth callback error:", err);
+    logger.error({ error: formatError(err) }, "Google OAuth callback error");
     throw redirect("/login?error=oauth_failed");
   }
 }

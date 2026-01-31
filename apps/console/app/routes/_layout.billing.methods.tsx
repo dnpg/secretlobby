@@ -1,6 +1,9 @@
 import { Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.billing.methods";
 import { PaymentMethodCard } from "@secretlobby/ui";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:billing:methods" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
@@ -58,7 +61,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       }));
     }
   } catch (error) {
-    console.error("Failed to fetch payment methods:", error);
+    logger.error(
+      { error: formatError(error) },
+      "Failed to fetch payment methods"
+    );
   }
 
   return {

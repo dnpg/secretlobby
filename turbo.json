@@ -20,6 +20,11 @@
       "dependsOn": ["^build", "db:generate"],
       "outputs": []
     },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
     "db:generate": {
       "cache": false,
       "outputs": ["node_modules/.prisma/**", "src/generated/**"]

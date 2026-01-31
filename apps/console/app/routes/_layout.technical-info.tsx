@@ -4,6 +4,9 @@ import type { Route } from "./+types/_layout.technical-info";
 import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { cn, RichTextEditor } from "@secretlobby/ui";
 import { getTechnicalInfoSettings, updateTechnicalInfoSettings } from "~/lib/content.server";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:technical-info" });
 
 export function meta() {
   return [{ title: "Technical Info - Admin" }];
@@ -46,7 +49,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
     }
   } catch (error) {
-    console.error("Technical info update error:", error);
+    logger.error({ error: formatError(error) }, "Technical info update error");
     return { error: "Operation failed" };
   }
 

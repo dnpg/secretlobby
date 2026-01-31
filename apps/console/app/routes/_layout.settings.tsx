@@ -2,6 +2,9 @@ import { useEffect } from "react";
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.settings";
 import { toast } from "sonner";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:settings" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
@@ -153,7 +156,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     return { error: "Invalid action" };
   } catch (error) {
-    console.error("Settings action error:", error);
+    logger.error({ error: formatError(error) }, "Settings action error");
     return { error: "An error occurred. Please try again." };
   }
 }

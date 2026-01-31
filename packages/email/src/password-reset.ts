@@ -1,4 +1,7 @@
 import { getResendClient } from "./client.js";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "email" });
 
 interface SendPasswordResetEmailParams {
   to: string;
@@ -31,7 +34,10 @@ export async function sendPasswordResetEmail({ to, resetUrl, userName }: SendPas
   });
 
   if (error) {
-    console.error("Failed to send password reset email:", error);
+    logger.error(
+      { to, error: formatError(error) },
+      "Failed to send password reset email"
+    );
     throw new Error("Failed to send password reset email");
   }
 }

@@ -7,6 +7,9 @@ import {
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "storage" });
 
 function getEnvOrThrow(name: string): string {
   const value = process.env[name];
@@ -161,7 +164,10 @@ export async function getFileInfo(
       contentType: result.ContentType || "application/octet-stream",
     };
   } catch (err) {
-    console.error("[storage] getFileInfo failed for key:", fullKey, "error:", err instanceof Error ? err.message : err);
+    logger.error(
+      { key: fullKey, error: formatError(err) },
+      "Failed to get file info"
+    );
     return null;
   }
 }

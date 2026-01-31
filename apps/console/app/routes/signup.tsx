@@ -1,6 +1,9 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/signup";
 import { cn } from "@secretlobby/ui";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:signup" });
 
 export function meta() {
   return [{ title: "Sign Up - Console" }];
@@ -140,7 +143,7 @@ export async function action({ request }: Route.ActionArgs) {
       "/"
     );
   } catch (error) {
-    console.error("Signup error:", error);
+    logger.error({ error: formatError(error) }, "Signup error");
     return { error: "Failed to create account. Please try again." };
   }
 }

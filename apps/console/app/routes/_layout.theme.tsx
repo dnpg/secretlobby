@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/_layout.theme";
 import { getSession, isAdmin } from "@secretlobby/auth";
+import { createLogger, formatError } from "@secretlobby/logger";
 import {
   getThemeSettings,
   updateThemeSettings,
@@ -9,6 +10,8 @@ import {
   updateAllowUserColorMode,
   type ThemeSettings,
 } from "~/lib/content.server";
+
+const logger = createLogger({ service: "console:theme" });
 import { cn } from "@secretlobby/ui";
 
 export function meta() {
@@ -192,7 +195,7 @@ export async function action({ request }: Route.ActionArgs) {
       return { success: "Theme updated successfully" };
     }
   } catch (error) {
-    console.error(error);
+    logger.error({ error: formatError(error) }, "Theme update error");
     return { error: "Operation failed" };
   }
 

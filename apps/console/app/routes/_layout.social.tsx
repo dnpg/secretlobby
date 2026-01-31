@@ -5,6 +5,9 @@ import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { cn, RichTextEditor } from "@secretlobby/ui";
 import { getSocialLinksSettings, updateSocialLinksSettings } from "~/lib/content.server";
 import { SOCIAL_PLATFORMS, type SocialLink, type SocialLinksSettings } from "~/lib/social-platforms";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:social" });
 
 export function meta() {
   return [{ title: "Social Links - Admin" }];
@@ -74,7 +77,7 @@ export async function action({ request }: Route.ActionArgs) {
       }
     }
   } catch (error) {
-    console.error("Social links update error:", error);
+    logger.error({ error: formatError(error) }, "Social links update error");
     return { error: "Operation failed" };
   }
 

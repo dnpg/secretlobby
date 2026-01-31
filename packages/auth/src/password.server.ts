@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma, type User } from "@secretlobby/db";
+import { sendVerificationEmail } from "./verification.server.js";
 
 const SALT_ROUNDS = 12;
 
@@ -124,8 +125,32 @@ export async function createUser(
       email: email.toLowerCase(),
       passwordHash,
       name: name || null,
+      emailVerified: false, // Explicitly set to false for password signups
     },
   });
+}
+
+/**
+ * Creates a new user with password and sends email verification
+ * @param email - User's email address
+ * @param password - User's password
+ * @param baseUrl - Base URL for verification link (e.g., https://app.secretlobby.io)
+ * @param name - Optional user name
+ * @returns The created user and verification token
+ */
+export async function createUserWithVerification(
+  email: string,
+  password: string,
+  baseUrl: string,
+  name?: string
+): Promise<{ user: User; verificationToken: string }> {
+  // Create user
+  const user = await createUser(email, password, name);
+
+  // Send verification email
+  const verificationToken = await sendVerificationEmail(user.id, baseUrl);
+
+  return { user, verificationToken };
 }
 
 export async function getUserById(

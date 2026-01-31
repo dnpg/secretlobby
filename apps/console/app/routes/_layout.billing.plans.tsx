@@ -9,6 +9,9 @@ import {
 } from "react-router";
 import type { Route } from "./+types/_layout.billing.plans";
 import { toast } from "sonner";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:billing:plans" });
 
 // Types only - these are safe for client
 import type { SubscriptionTier } from "@secretlobby/payments";
@@ -176,7 +179,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     return { error: "Invalid action" };
   } catch (error) {
-    console.error("Billing action error:", error);
+    logger.error({ error: formatError(error) }, "Billing action error");
     return {
       error:
         error instanceof Error ? error.message : "An error occurred. Please try again.",

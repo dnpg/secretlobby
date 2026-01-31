@@ -27,14 +27,27 @@
     "./requirements": {
       "types": "./src/password-requirements.ts",
       "import": "./src/password-requirements.ts"
+    },
+    "./env": {
+      "types": "./src/env.server.ts",
+      "import": "./src/env.server.ts"
+    },
+    "./verification": {
+      "types": "./src/verification.server.ts",
+      "import": "./src/verification.server.ts"
     }
   },
   "scripts": {
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@secretlobby/db": "workspace:*",
+    "@secretlobby/email": "workspace:*",
     "arctic": "^3.7.0",
     "bcryptjs": "^3.0.3",
     "iron-session": "^8.0.4",

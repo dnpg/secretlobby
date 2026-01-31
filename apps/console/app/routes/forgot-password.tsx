@@ -3,6 +3,9 @@ import type { Route } from "./+types/forgot-password";
 import { forgotPasswordSchema, generatePasswordResetToken } from "@secretlobby/auth";
 import { sendPasswordResetEmail } from "@secretlobby/email";
 import { cn } from "@secretlobby/ui";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:password-reset" });
 
 export function meta() {
   return [{ title: "Forgot Password - Console" }];
@@ -30,7 +33,10 @@ export async function action({ request }: Route.ActionArgs) {
         userName: result.user.name || undefined,
       });
     } catch (e) {
-      console.error("Failed to send password reset email:", e);
+      logger.error(
+        { email: result.user.email, error: formatError(e) },
+        "Failed to send password reset email"
+      );
     }
   }
 

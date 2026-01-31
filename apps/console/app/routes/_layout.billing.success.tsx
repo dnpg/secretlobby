@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, redirect, useLoaderData, useRevalidator } from "react-router";
 import type { Route } from "./+types/_layout.billing.success";
 import { toast } from "sonner";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:billing:success" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
@@ -40,7 +43,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       checkoutTierId = checkoutSession.metadata?.tierId || null;
     }
   } catch (error) {
-    console.error("Failed to verify checkout session:", error);
+    logger.error(
+      { error: formatError(error) },
+      "Failed to verify checkout session"
+    );
     // Continue anyway - we'll check the database
   }
 

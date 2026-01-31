@@ -10,6 +10,9 @@
 
 import { data } from "react-router";
 import type { Route } from "./+types/api.webhooks.stripe";
+import { createLogger, formatError } from "@secretlobby/logger";
+
+const logger = createLogger({ service: "console:webhooks:stripe" });
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
@@ -30,7 +33,7 @@ export async function action({ request }: Route.ActionArgs) {
     const signature = request.headers.get("stripe-signature");
 
     if (!signature) {
-      console.error("Webhook error: Missing stripe-signature header");
+      logger.error("Webhook error: Missing stripe-signature header");
       return data({ error: "Missing signature" }, { status: 400 });
     }
 
@@ -40,17 +43,23 @@ export async function action({ request }: Route.ActionArgs) {
       event = await paymentManager.handleWebhook("stripe", payload, signature);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      console.error(`Webhook signature verification failed: ${message}`);
+      logger.error(
+        { error: formatError(err) },
+        "Webhook signature verification failed"
+      );
       return data({ error: `Webhook Error: ${message}` }, { status: 400 });
     }
 
-    console.log(`Received Stripe webhook: ${event.type} (${event.gatewayEventId})`);
+    logger.info(
+      { eventType: event.type, gatewayEventId: event.gatewayEventId },
+      "Received Stripe webhook"
+    );
 
     // Process the event
     const result = await processWebhookEvent(event);
 
     if (!result.success) {
-      console.error(`Webhook processing failed: ${result.message}`);
+      logger.error({ message: result.message }, "Webhook processing failed");
       // Return 500 to allow Stripe to retry the webhook
       return data(
         { error: result.message, received: true },
@@ -58,11 +67,11 @@ export async function action({ request }: Route.ActionArgs) {
       );
     }
 
-    console.log(`Webhook processed: ${result.message}`);
+    logger.info({ message: result.message }, "Webhook processed");
 
     return data({ received: true, message: result.message }, { status: 200 });
   } catch (error) {
-    console.error("Webhook handler error:", error);
+    logger.error({ error: formatError(error) }, "Webhook handler error");
     return data(
       { error: error instanceof Error ? error.message : "Internal error" },
       { status: 500 }
