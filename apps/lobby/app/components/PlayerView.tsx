@@ -5,7 +5,7 @@ import { AudioVisualizer } from "~/components/AudioVisualizer";
 import { WaveformProgress } from "~/components/WaveformProgress";
 import { usePcmAnalyser } from "~/hooks/usePcmAnalyser";
 import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
-import { createLogger, formatError } from "@secretlobby/logger";
+import { createLogger, formatError } from "@secretlobby/logger/client";
 
 const logger = createLogger({ service: "lobby:player" });
 

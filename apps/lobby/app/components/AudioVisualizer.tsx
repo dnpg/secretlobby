@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PcmAnalyser } from "~/hooks/usePcmAnalyser";
-import { createLogger } from "@secretlobby/logger";
+import { createLogger } from "@secretlobby/logger/client";
 
 const logger = createLogger({ service: "lobby:visualizer" });
 
@@ -87,7 +87,7 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
           sourceRef.current.connect(analyserRef.current);
           analyserRef.current.connect(audioContextRef.current.destination);
         } catch (error) {
-          logger.error("Audio context not working");
+          logger.error({ error }, "Audio context not working");
         }
       }
 

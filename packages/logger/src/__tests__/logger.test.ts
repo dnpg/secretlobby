@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createLogger, formatError, createChildLogger, type LogLevel } from "../logger";
+import { createLogger, formatError, createChildLogger, type LogLevel } from "../server";
 import type pino from "pino";
 
 describe("Logger", () => {
