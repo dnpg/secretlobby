@@ -92,6 +92,7 @@ export async function getDefaultLobbyWithTracks(accountId: string) {
       password: true,
       isDefault: true,
       accountId: true,
+      settings: true,
       createdAt: true,
       updatedAt: true,
       tracks: {
