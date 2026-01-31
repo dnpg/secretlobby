@@ -9,7 +9,7 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
-  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getSession, requireUserAuth, getCsrfToken } = await import("@secretlobby/auth");
   const { getPublicUrl } = await import("@secretlobby/storage");
   const { getLoginPageSettings } = await import("~/lib/content.server");
   const { getDefaultLobbyPassword } = await import("~/models/queries/lobby.server");
@@ -27,16 +27,20 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Get lobby password
   const lobby = await getDefaultLobbyPassword(accountId);
 
+  const csrfToken = await getCsrfToken(request);
+
   return {
     loginSettings,
     logoImageUrl: loginSettings.logoImage ? getPublicUrl(loginSettings.logoImage) : null,
     lobbyPassword: lobby?.password || null,
+    csrfToken,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { updateLoginPageSettings } = await import("~/lib/content.server");
   const { getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
   const { getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
@@ -47,6 +51,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const { session } = await getSession(request);
   requireUserAuth(session);
+
+  // Verify CSRF token (uses HMAC validation)
+  await csrfProtect(request);
 
   const accountId = session.currentAccountId;
   if (!accountId) {
@@ -179,7 +186,7 @@ function ColorInput({ label, name, value, description }: ColorInputProps) {
 }
 
 export default function AdminLogin() {
-  const { loginSettings, logoImageUrl, lobbyPassword } = useLoaderData<typeof loader>();
+  const { loginSettings, logoImageUrl, lobbyPassword, csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -231,6 +238,7 @@ export default function AdminLogin() {
                 </MediaPicker>
                 <Form method="post">
                   <input type="hidden" name="intent" value="remove-login-logo" />
+                  <input type="hidden" name="_csrf" value={csrfToken} />
                   <button
                     type="submit"
                     disabled={isSubmitting}
@@ -263,6 +271,7 @@ export default function AdminLogin() {
 
         <Form method="post" className="space-y-6">
           <input type="hidden" name="intent" value="update-login-appearance" />
+          <input type="hidden" name="_csrf" value={csrfToken} />
 
           {/* Title & Description */}
           <div className="grid grid-cols-1 gap-4">
@@ -351,6 +360,7 @@ export default function AdminLogin() {
         </p>
         <Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="update-password" />
+          <input type="hidden" name="_csrf" value={csrfToken} />
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2">New Password</label>

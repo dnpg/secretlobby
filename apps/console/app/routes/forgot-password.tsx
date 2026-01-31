@@ -1,4 +1,4 @@
-import { Form, useActionData, useNavigation } from "react-router";
+import { Form, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/forgot-password";
 import { forgotPasswordSchema, generatePasswordResetToken } from "@secretlobby/auth";
 import { sendPasswordResetEmail } from "@secretlobby/email";
@@ -8,11 +8,22 @@ export function meta() {
   return [{ title: "Forgot Password - Console" }];
 }
 
+export async function loader({ request }: Route.LoaderArgs) {
+  const { getCsrfToken } = await import("@secretlobby/auth");
+  const csrfToken = await getCsrfToken(request);
+  return { csrfToken };
+}
+
 export async function action({ request }: Route.ActionArgs) {
+  const { getSession } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS } = await import("@secretlobby/auth/rate-limit");
   const { createLogger, formatError } = await import("@secretlobby/logger/server");
 
   const logger = createLogger({ service: "console:password-reset" });
+
+  // Verify CSRF token (uses HMAC validation - no session needed)
+  await csrfProtect(request);
 
   // Check rate limit before processing
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.PASSWORD_RESET);
@@ -53,6 +64,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function ForgotPassword() {
+  const { csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -92,6 +104,7 @@ export default function ForgotPassword() {
               )}
 
               <Form method="post" className="space-y-4">
+                <input type="hidden" name="_csrf" value={csrfToken} />
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
                     Email

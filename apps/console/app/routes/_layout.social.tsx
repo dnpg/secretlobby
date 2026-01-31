@@ -10,7 +10,7 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
-  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getSession, requireUserAuth, getCsrfToken } = await import("@secretlobby/auth");
   const { getSocialLinksSettings } = await import("~/lib/content.server");
 
   const { session } = await getSession(request);
@@ -23,12 +23,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const socialLinks = await getSocialLinksSettings(accountId);
 
-  return { socialLinks };
+  const csrfToken = await getCsrfToken(request);
+
+  return { socialLinks, csrfToken };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { updateSocialLinksSettings } = await import("~/lib/content.server");
   const { createLogger, formatError } = await import("@secretlobby/logger/server");
 
@@ -36,6 +39,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const { session } = await getSession(request);
   requireUserAuth(session);
+
+  // Verify CSRF token (uses HMAC validation)
+  await csrfProtect(request);
 
   const accountId = session.currentAccountId;
   if (!accountId) {
@@ -91,7 +97,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function SocialLinksPage() {
-  const { socialLinks } = useLoaderData<typeof loader>();
+  const { socialLinks, csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -138,6 +144,7 @@ export default function SocialLinksPage() {
 
       <Form method="post">
         <input type="hidden" name="intent" value="update-social-links" />
+        <input type="hidden" name="_csrf" value={csrfToken} />
         <input type="hidden" name="links" value={JSON.stringify(links)} />
         <input type="hidden" name="iconStyle" value={iconStyle} />
         <input type="hidden" name="iconColor" value={iconColor} />

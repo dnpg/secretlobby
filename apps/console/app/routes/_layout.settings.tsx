@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
-  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getSession, requireUserAuth, getCsrfToken } = await import("@secretlobby/auth");
   const { getAccountWithDomains } = await import("~/models/queries/account.server");
   const { getGoogleAnalyticsSettings } = await import("~/lib/content.server");
 
@@ -33,6 +33,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     (d) => d.status === "VERIFIED"
   );
 
+  const csrfToken = await getCsrfToken(request);
+
   return {
     account: {
       id: account.id,
@@ -46,12 +48,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     baseDomain,
     gaSettings,
     hasVerifiedCustomDomain,
+    csrfToken,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { getAccountBySlug } = await import("~/models/queries/account.server");
   const { getDomainByDomain } = await import("~/models/queries/domain.server");
   const { updateAccountSlug } = await import("~/models/mutations/account.server");
@@ -63,6 +67,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const { session } = await getSession(request);
   requireUserAuth(session);
+
+  // Verify CSRF token (uses HMAC validation)
+  await csrfProtect(request);
 
   const accountId = session.currentAccountId;
   if (!accountId) {
@@ -162,7 +169,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Settings() {
-  const { account, domains, lobbies, baseDomain, gaSettings, hasVerifiedCustomDomain } = useLoaderData<typeof loader>();
+  const { account, domains, lobbies, baseDomain, gaSettings, hasVerifiedCustomDomain, csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   const defaultLobby = lobbies.find((l) => l.isDefault) || lobbies[0];
@@ -191,6 +198,7 @@ export default function Settings() {
 
         <Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="update_slug" />
+          <input type="hidden" name="_csrf" value={csrfToken} />
 
           <div>
             <label htmlFor="slug" className="block text-sm font-medium text-theme-secondary mb-2">
@@ -234,6 +242,7 @@ export default function Settings() {
         {/* Add Domain Form */}
         <Form method="post" className="mb-6">
           <input type="hidden" name="intent" value="add_domain" />
+          <input type="hidden" name="_csrf" value={csrfToken} />
           <div className="flex gap-2">
             <input
               type="text"
@@ -284,6 +293,7 @@ export default function Settings() {
                 <Form method="post">
                   <input type="hidden" name="intent" value="delete_domain" />
                   <input type="hidden" name="domainId" value={domain.id} />
+                  <input type="hidden" name="_csrf" value={csrfToken} />
                   <button
                     type="submit"
                     className="px-3 py-1 text-sm text-red-400 hover:text-red-300 transition"
@@ -340,6 +350,7 @@ export default function Settings() {
 
         <Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="update-ga" />
+          <input type="hidden" name="_csrf" value={csrfToken} />
 
           <div>
             <label htmlFor="trackingId" className="block text-sm font-medium text-theme-secondary mb-2">

@@ -128,7 +128,7 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { getSession, requireAdminRole } = await import("@secretlobby/auth");
+  const { getSession, requireAdminRole, getCsrfToken } = await import("@secretlobby/auth");
   const {
     getIPViolationHistory,
     getAllAccounts,
@@ -144,14 +144,18 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     getAllAccounts(),
   ]);
 
+  const csrfToken = await getCsrfToken(request);
+
   return {
     ipHistory,
     accounts,
+    csrfToken,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const { getSession, requireAdminRole } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const {
     manuallyBlockIP,
     unblockIP,
@@ -160,6 +164,9 @@ export async function action({ request }: Route.ActionArgs) {
 
   const { session } = await getSession(request);
   requireAdminRole(session);
+
+  // Verify CSRF token (uses HMAC validation)
+  await csrfProtect(request);
 
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
@@ -197,7 +204,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function IPAddressDetailPage() {
-  const data = useLoaderData<typeof loader>();
+  const { ipHistory, accounts, csrfToken } = useLoaderData<typeof loader>();
   const [showBlockForm, setShowBlockForm] = useState(false);
   const [scope, setScope] = useState<"all" | "account">("all");
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
@@ -219,7 +226,7 @@ export default function IPAddressDetailPage() {
             <h2 className="text-3xl font-bold">IP Address Details</h2>
             <p className="text-gray-400 text-lg mt-1">
               Full violation history for{" "}
-              <span className="font-mono text-blue-400">{data.ipHistory.ipAddress}</span>
+              <span className="font-mono text-blue-400">{ipHistory.ipAddress}</span>
             </p>
           </div>
         </div>
@@ -228,28 +235,28 @@ export default function IPAddressDetailPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
             <div className="text-gray-400 text-sm font-medium">Total Violations</div>
-            <div className="text-3xl font-bold mt-2">{data.ipHistory.summary.totalViolations}</div>
+            <div className="text-3xl font-bold mt-2">{ipHistory.summary.totalViolations}</div>
           </div>
           <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6">
             <div className="text-gray-400 text-sm font-medium">Active</div>
-            <div className="text-3xl font-bold mt-2">{data.ipHistory.summary.activeViolations}</div>
+            <div className="text-3xl font-bold mt-2">{ipHistory.summary.activeViolations}</div>
           </div>
           <div className="bg-red-900/20 border border-red-700 rounded-lg p-6">
             <div className="text-gray-400 text-sm font-medium">Blocked</div>
-            <div className="text-3xl font-bold mt-2">{data.ipHistory.summary.blockedViolations}</div>
+            <div className="text-3xl font-bold mt-2">{ipHistory.summary.blockedViolations}</div>
           </div>
           <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
             <div className="text-gray-400 text-sm font-medium">Endpoints</div>
-            <div className="text-3xl font-bold mt-2">{data.ipHistory.summary.endpoints.length}</div>
+            <div className="text-3xl font-bold mt-2">{ipHistory.summary.endpoints.length}</div>
           </div>
         </div>
 
         {/* Affected Accounts */}
-        {data.ipHistory.summary.affectedAccounts.length > 0 && (
+        {ipHistory.summary.affectedAccounts.length > 0 && (
           <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
             <h3 className="text-xl font-semibold mb-3">Affected Accounts</h3>
             <div className="flex flex-wrap gap-2">
-              {data.ipHistory.summary.affectedAccounts.map((account: any) => (
+              {ipHistory.summary.affectedAccounts.map((account: any) => (
                 <span
                   key={account.id}
                   className="px-4 py-2 bg-gray-700 rounded-lg text-sm"

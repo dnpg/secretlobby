@@ -8,7 +8,7 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
-  const { getSession, isGoogleConfigured } = await import("@secretlobby/auth");
+  const { getSession, getCsrfToken, isGoogleConfigured } = await import("@secretlobby/auth");
 
   const { session } = await getSession(request);
 
@@ -16,14 +16,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/");
   }
 
+  const csrfToken = await getCsrfToken(request);
+
   return {
     googleEnabled: isGoogleConfigured(),
+    csrfToken,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
-  const { createSessionResponse, createUser, addUserToAccount } = await import("@secretlobby/auth");
+  const { createSessionResponse, createUser, addUserToAccount, getSession } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
   const { getUserByEmail } = await import("~/models/queries/user.server");
   const { getAccountBySlug } = await import("~/models/queries/account.server");
@@ -32,6 +36,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { createLogger, formatError } = await import("@secretlobby/logger/server");
 
   const logger = createLogger({ service: "console:signup" });
+
+  // Verify CSRF token (uses HMAC validation - no session needed)
+  await csrfProtect(request);
 
   // Check rate limit before processing
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
@@ -159,7 +166,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Signup() {
-  const { googleEnabled } = useLoaderData<typeof loader>();
+  const { googleEnabled, csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -205,6 +212,7 @@ export default function Signup() {
           )}
 
           <Form method="post" className="space-y-4">
+            <input type="hidden" name="_csrf" value={csrfToken} />
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">
                 Your Name

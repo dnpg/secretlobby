@@ -47,6 +47,10 @@
     "./captcha": {
       "types": "./src/captcha.server.ts",
       "import": "./src/captcha.server.ts"
+    },
+    "./csrf": {
+      "types": "./src/csrf.server.ts",
+      "import": "./src/csrf.server.ts"
     }
   },
   "scripts": {

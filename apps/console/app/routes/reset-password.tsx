@@ -10,6 +10,8 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  const { getCsrfToken } = await import("@secretlobby/auth");
+
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
 
@@ -22,10 +24,17 @@ export async function loader({ request }: Route.LoaderArgs) {
     return { valid: false, error: result.error };
   }
 
-  return { valid: true, token };
+  const csrfToken = await getCsrfToken(request);
+
+  return { valid: true, token, csrfToken };
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
+
+  // Verify CSRF token (uses HMAC validation - no session needed)
+  await csrfProtect(request);
+
   const formData = await request.formData();
   const token = formData.get("token");
   const password = formData.get("password");
@@ -158,6 +167,7 @@ export default function ResetPassword() {
 
           <Form method="post" className="space-y-4">
             <input type="hidden" name="token" value={loaderData.token} />
+            <input type="hidden" name="_csrf" value={loaderData.csrfToken} />
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">

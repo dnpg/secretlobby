@@ -8,17 +8,26 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { session } = await getSession(request);
+  const { getCsrfToken } = await import("@secretlobby/auth");
 
   if (session.userId && isAdmin(session)) {
     throw redirect("/");
   }
 
+  const csrfToken = await getCsrfToken(request);
+
   return {
     googleEnabled: isGoogleConfigured(),
+    csrfToken,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
+
+  // Verify CSRF token (uses HMAC validation - no session needed)
+  await csrfProtect(request);
+
   const formData = await request.formData();
   const email = formData.get("email");
   const password = formData.get("password");
@@ -67,7 +76,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function SuperAdminLogin() {
-  const { googleEnabled } = useLoaderData<typeof loader>();
+  const { googleEnabled, csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -93,6 +102,7 @@ export default function SuperAdminLogin() {
           )}
 
           <Form method="post" className="space-y-4">
+            <input type="hidden" name="_csrf" value={csrfToken} />
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
                 Email

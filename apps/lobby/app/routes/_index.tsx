@@ -283,6 +283,8 @@ export function meta({ data }: Route.MetaArgs) {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { session } = await getSession(request);
+  const { getCsrfToken } = await import("@secretlobby/auth");
+  const csrfToken = await getCsrfToken(request);
 
   // Handle localhost development mode
   if (isLocalhost(request)) {
@@ -319,6 +321,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       technicalInfo: null as { title: string; content: string } | null,
       gaTrackingId: null as string | null,
       gtmContainerId: null as string | null,
+      csrfToken,
     };
   }
 
@@ -357,6 +360,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       technicalInfo: null as { title: string; content: string } | null,
       gaTrackingId: null as string | null,
       gtmContainerId: null as string | null,
+      csrfToken,
     };
   }
 
@@ -567,6 +571,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     technicalInfo,
     gaTrackingId,
     gtmContainerId,
+    csrfToken,
   };
 }
 
@@ -577,6 +582,10 @@ export async function action({ request }: Route.ActionArgs) {
     recordViolation,
     resetViolations,
   } = await import("@secretlobby/auth/enhanced-rate-limit");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
+
+  // Verify CSRF token (uses HMAC validation - no session token needed)
+  await csrfProtect(request);
 
   const ip = getClientIp(request);
 
@@ -936,6 +945,7 @@ export default function LobbyIndex() {
               )}
 
               <Form method="post" className="space-y-4">
+                <input type="hidden" name="_csrf" value={data.csrfToken} />
                 <div>
                   <label
                     htmlFor="password"
@@ -1085,6 +1095,7 @@ export default function LobbyIndex() {
             socialLinksSettings={socialLinksSettings}
             technicalInfo={technicalInfo}
             initialTrackId={data.autoplayTrackId}
+            csrfToken={data.csrfToken}
           />
         </main>
       )}

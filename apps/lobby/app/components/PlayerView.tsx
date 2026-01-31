@@ -237,6 +237,7 @@ interface PlayerViewProps {
   socialLinksSettings?: SocialLinksSettings | null;
   technicalInfo?: TechnicalInfo | null;
   initialTrackId?: string | null;
+  csrfToken: string;
 }
 
 export function PlayerView({
@@ -252,6 +253,7 @@ export function PlayerView({
   socialLinksSettings,
   technicalInfo,
   initialTrackId,
+  csrfToken,
 }: PlayerViewProps) {
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, cancelAutoPlay, estimatedDuration } = audio;
 
@@ -821,6 +823,7 @@ export function PlayerView({
       {/* Header */}
       <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
         <Form method="post" action="/logout">
+          <input type="hidden" name="_csrf" value={csrfToken} />
           <button
             type="submit"
             className="px-4 py-2 text-sm transition"

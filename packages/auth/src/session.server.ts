@@ -1,5 +1,6 @@
 import { getIronSession, type SessionOptions } from "iron-session";
 import { getSessionSecret } from "./env.server.js";
+import { generateCsrfToken } from "./csrf.server.js";
 
 export interface SessionData {
   // Legacy: lobby access (password-based)
@@ -20,6 +21,9 @@ export interface SessionData {
   // OAuth state
   googleState?: string;
   googleCodeVerifier?: string;
+
+  // CSRF protection
+  csrfToken?: string;
 }
 
 /**
@@ -142,4 +146,24 @@ export function requireAdminRole(session: SessionData, redirectTo = "/login") {
       headers: { Location: redirectTo },
     });
   }
+}
+
+// =============================================================================
+// CSRF Token Helpers
+// =============================================================================
+
+/**
+ * Get CSRF token from session or generate a new one
+ * This ensures each session has a unique CSRF token
+ */
+export async function getCsrfToken(request: Request): Promise<string> {
+  const { session, response } = await getSession(request);
+
+  // Generate token if not already in session
+  if (!session.csrfToken) {
+    session.csrfToken = generateCsrfToken();
+    await session.save();
+  }
+
+  return session.csrfToken;
 }
