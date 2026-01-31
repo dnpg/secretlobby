@@ -571,12 +571,16 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
+  const { checkRateLimit, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
 
   // Check rate limit before processing password
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
   if (!rateLimitResult.allowed) {
-    return createRateLimitResponse(rateLimitResult);
+    const minutes = Math.ceil(rateLimitResult.resetInSeconds / 60);
+    const timeMessage = minutes === 1 ? "1 minute" : `${minutes} minutes`;
+    return {
+      error: `Too many incorrect password attempts. Please try again in ${timeMessage}.`
+    };
   }
 
   // Handle localhost development mode
