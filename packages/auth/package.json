@@ -35,6 +35,10 @@
     "./verification": {
       "types": "./src/verification.server.ts",
       "import": "./src/verification.server.ts"
+    },
+    "./rate-limit": {
+      "types": "./src/rate-limit.server.ts",
+      "import": "./src/rate-limit.server.ts"
     }
   },
   "scripts": {
@@ -48,6 +52,7 @@
   "dependencies": {
     "@secretlobby/db": "workspace:*",
     "@secretlobby/email": "workspace:*",
+    "@secretlobby/logger": "workspace:*",
     "arctic": "^3.7.0",
     "bcryptjs": "^3.0.3",
     "iron-session": "^8.0.4",

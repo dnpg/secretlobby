@@ -27,10 +27,17 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
   const { createSessionResponse, createUser, addUserToAccount } = await import("@secretlobby/auth");
+  const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
   const { getUserByEmail } = await import("~/models/queries/user.server");
   const { getAccountBySlug } = await import("~/models/queries/account.server");
   const { createAccount, updateAccountDefaultLobby } = await import("~/models/mutations/account.server");
   const { createLobby } = await import("~/models/mutations/lobby.server");
+
+  // Check rate limit before processing
+  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
+  if (!rateLimitResult.allowed) {
+    return createRateLimitResponse(rateLimitResult);
+  }
 
   // Helper function to generate a unique slug from account name
   async function generateUniqueSlug(name: string): Promise<string> {
@@ -126,6 +133,9 @@ export async function action({ request }: Route.ActionArgs) {
 
     // Update account with default lobby reference
     await updateAccountDefaultLobby(account.id, defaultLobby.id);
+
+    // Reset rate limit on successful signup
+    resetRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
 
     // Create session and redirect
     return createSessionResponse(

@@ -12,6 +12,14 @@ export function meta() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS } = await import("@secretlobby/auth/rate-limit");
+
+  // Check rate limit before processing
+  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.PASSWORD_RESET);
+  if (!rateLimitResult.allowed) {
+    return createRateLimitResponse(rateLimitResult);
+  }
+
   const formData = await request.formData();
   const rawEmail = formData.get("email");
 

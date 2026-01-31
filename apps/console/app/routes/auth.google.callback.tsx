@@ -6,6 +6,15 @@ import { createLogger, formatError } from "@secretlobby/logger";
 const logger = createLogger({ service: "console:auth" });
 
 export async function loader({ request }: Route.LoaderArgs) {
+  const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
+
+  // Check rate limit for OAuth attempts
+  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
+  if (!rateLimitResult.allowed) {
+    // For loaders, we need to throw the response
+    throw createRateLimitResponse(rateLimitResult);
+  }
+
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -91,6 +100,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     // Check if user has admin role (OWNER or ADMIN)
     const hasAdminRole = primaryAccount.role === "OWNER" || primaryAccount.role === "ADMIN";
+
+    // Reset rate limit on successful OAuth authentication
+    resetRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
 
     // Clear OAuth state and set user session
     return createSessionResponse(
