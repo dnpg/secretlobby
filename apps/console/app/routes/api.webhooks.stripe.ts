@@ -10,13 +10,13 @@
 
 import { data } from "react-router";
 import type { Route } from "./+types/api.webhooks.stripe";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:webhooks:stripe" });
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
   const { paymentManager, processWebhookEvent, registerConfiguredGateways } = await import("@secretlobby/payments");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:webhooks:stripe" });
 
   // Register gateways
   registerConfiguredGateways();

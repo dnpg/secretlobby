@@ -2,9 +2,6 @@ import { useEffect, useState } from "react";
 import { Link, redirect, useLoaderData, useRevalidator } from "react-router";
 import type { Route } from "./+types/_layout.billing.success";
 import { toast } from "sonner";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:billing:success" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
@@ -12,6 +9,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { SUBSCRIPTION_TIERS, getStripeClient, registerConfiguredGateways } = await import("@secretlobby/payments");
   const { getAccountById } = await import("~/models/queries/account.server");
   const { getActiveSubscription } = await import("~/models/queries/subscription.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:billing:success" });
 
   registerConfiguredGateways();
 

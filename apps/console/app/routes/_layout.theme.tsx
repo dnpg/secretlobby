@@ -1,17 +1,7 @@
 import { useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/_layout.theme";
-import { getSession, isAdmin } from "@secretlobby/auth";
-import { createLogger, formatError } from "@secretlobby/logger";
-import {
-  getThemeSettings,
-  updateThemeSettings,
-  getAllowUserColorMode,
-  updateAllowUserColorMode,
-  type ThemeSettings,
-} from "~/lib/content.server";
-
-const logger = createLogger({ service: "console:theme" });
+import type { ThemeSettings } from "~/lib/content.server";
 import { cn } from "@secretlobby/ui";
 
 export function meta() {
@@ -19,6 +9,10 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, isAdmin } = await import("@secretlobby/auth");
+  const { getThemeSettings, getAllowUserColorMode } = await import("~/lib/content.server");
+
   const { session } = await getSession(request);
   if (!isAdmin(session) || !session.currentAccountId) {
     return { theme: null, allowUserColorMode: true };
@@ -29,6 +23,13 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, isAdmin } = await import("@secretlobby/auth");
+  const { updateThemeSettings, updateAllowUserColorMode } = await import("~/lib/content.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:theme" });
+
   const { session } = await getSession(request);
   if (!isAdmin(session) || !session.currentAccountId) {
     return { error: "Unauthorized" };

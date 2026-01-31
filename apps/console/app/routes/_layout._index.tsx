@@ -3,9 +3,6 @@ import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect 
 import type { Route } from "./+types/_layout._index";
 import { cn, RichTextEditor, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:content" });
 
 export function meta() {
   return [{ title: "Content Settings - Admin" }];
@@ -66,6 +63,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
   const { getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
   const { updateLobbyContent, updateLobbyMedia } = await import("~/models/mutations/lobby.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:content" });
 
   const { session } = await getSession(request);
   requireUserAuth(session);

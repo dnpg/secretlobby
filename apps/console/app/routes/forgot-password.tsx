@@ -3,9 +3,6 @@ import type { Route } from "./+types/forgot-password";
 import { forgotPasswordSchema, generatePasswordResetToken } from "@secretlobby/auth";
 import { sendPasswordResetEmail } from "@secretlobby/email";
 import { cn } from "@secretlobby/ui";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:password-reset" });
 
 export function meta() {
   return [{ title: "Forgot Password - Console" }];
@@ -13,6 +10,9 @@ export function meta() {
 
 export async function action({ request }: Route.ActionArgs) {
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS } = await import("@secretlobby/auth/rate-limit");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:password-reset" });
 
   // Check rate limit before processing
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.PASSWORD_RESET);

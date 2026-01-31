@@ -1,15 +1,15 @@
 import { Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.billing.methods";
 import { PaymentMethodCard } from "@secretlobby/ui";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:billing:methods" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
   const { paymentManager, registerConfiguredGateways } = await import("@secretlobby/payments");
   const { getAccountStripeCustomerId } = await import("~/models/queries/account.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:billing:methods" });
 
   registerConfiguredGateways();
 

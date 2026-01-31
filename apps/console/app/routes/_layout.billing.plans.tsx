@@ -9,9 +9,6 @@ import {
 } from "react-router";
 import type { Route } from "./+types/_layout.billing.plans";
 import { toast } from "sonner";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:billing:plans" });
 
 // Types only - these are safe for client
 import type { SubscriptionTier } from "@secretlobby/payments";
@@ -72,6 +69,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { getAccountWithOwner } = await import("~/models/queries/account.server");
   const { getActiveOrPastDueSubscription, getCancellableSubscription } = await import("~/models/queries/subscription.server");
   const { updateSubscription } = await import("~/models/mutations/subscription.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:billing:plans" });
 
   // Register gateways
   registerConfiguredGateways();

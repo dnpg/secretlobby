@@ -1,18 +1,17 @@
 import { useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import type { Route } from "./+types/_layout.technical-info";
-import { getSession, requireUserAuth } from "@secretlobby/auth";
 import { cn, RichTextEditor } from "@secretlobby/ui";
-import { getTechnicalInfoSettings, updateTechnicalInfoSettings } from "~/lib/content.server";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:technical-info" });
 
 export function meta() {
   return [{ title: "Technical Info - Admin" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { getTechnicalInfoSettings } = await import("~/lib/content.server");
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 
@@ -27,6 +26,13 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // Server-only imports
+  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
+  const { updateTechnicalInfoSettings } = await import("~/lib/content.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:technical-info" });
+
   const { session } = await getSession(request);
   requireUserAuth(session);
 

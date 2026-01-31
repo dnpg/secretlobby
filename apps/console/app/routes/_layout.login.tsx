@@ -2,9 +2,6 @@ import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect 
 import type { Route } from "./+types/_layout.login";
 import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import type { LoginPageSettings } from "~/lib/content.server";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:login-settings" });
 
 export function meta() {
   return [{ title: "Login Page Settings - Admin" }];
@@ -44,6 +41,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
   const { getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
   const { updateLobbyPassword } = await import("~/models/mutations/lobby.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:login-settings" });
 
   const { session } = await getSession(request);
   requireUserAuth(session);

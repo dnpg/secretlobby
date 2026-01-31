@@ -1,9 +1,6 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/signup";
 import { cn } from "@secretlobby/ui";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:signup" });
 
 export function meta() {
   return [{ title: "Sign Up - Console" }];
@@ -32,6 +29,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { getAccountBySlug } = await import("~/models/queries/account.server");
   const { createAccount, updateAccountDefaultLobby } = await import("~/models/mutations/account.server");
   const { createLobby } = await import("~/models/mutations/lobby.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:signup" });
 
   // Check rate limit before processing
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);

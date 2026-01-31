@@ -1,9 +1,6 @@
 import { data } from "react-router";
 import type { Route } from "./+types/api.media";
 import type { Media } from "@secretlobby/db";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:api:media" });
 
 type MediaType = "IMAGE" | "AUDIO" | "VIDEO" | "EMBED";
 
@@ -139,6 +136,9 @@ export async function action({ request }: Route.ActionArgs) {
   const sharp = (await import("sharp")).default;
   const { getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
   const { createMedia, updateMediaAlt, updateMediaHls, deleteMedia } = await import("~/models/mutations/media.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:api:media" });
 
   function mediaToItem(media: Media): MediaItem {
     return {

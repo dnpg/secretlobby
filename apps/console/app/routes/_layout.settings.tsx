@@ -2,9 +2,6 @@ import { useEffect } from "react";
 import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.settings";
 import { toast } from "sonner";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:settings" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
@@ -60,6 +57,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { updateAccountSlug } = await import("~/models/mutations/account.server");
   const { createDomain, deleteDomain } = await import("~/models/mutations/domain.server");
   const { updateGoogleAnalyticsSettings } = await import("~/lib/content.server");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:settings" });
 
   const { session } = await getSession(request);
   requireUserAuth(session);

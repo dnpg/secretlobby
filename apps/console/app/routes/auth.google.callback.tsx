@@ -1,12 +1,12 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.google.callback";
 import { getGoogleClient, authenticateWithGoogle, getSession, createSessionResponse } from "@secretlobby/auth";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "console:auth" });
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
+  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+
+  const logger = createLogger({ service: "console:auth" });
 
   // Check rate limit for OAuth attempts
   const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
