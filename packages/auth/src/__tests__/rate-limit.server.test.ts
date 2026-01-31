@@ -255,6 +255,14 @@ describe("Rate Limiting", () => {
         keyPrefix: "rl:email-verify",
       });
     });
+
+    it("should have correct LOBBY_PASSWORD config", () => {
+      expect(RATE_LIMIT_CONFIGS.LOBBY_PASSWORD).toEqual({
+        maxAttempts: 5,
+        windowMs: 15 * 60 * 1000,
+        keyPrefix: "rl:lobby-password",
+      });
+    });
   });
 
   describe("getRateLimitHeaders", () => {

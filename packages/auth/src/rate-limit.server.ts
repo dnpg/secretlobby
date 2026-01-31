@@ -52,6 +52,13 @@ export const RATE_LIMIT_CONFIGS = {
     windowMs: 60 * 60 * 1000, // 1 hour
     keyPrefix: "rl:email-verify",
   } as RateLimitConfig,
+
+  /** Lobby password: 5 attempts per 15 minutes */
+  LOBBY_PASSWORD: {
+    maxAttempts: 5,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    keyPrefix: "rl:lobby-password",
+  } as RateLimitConfig,
 } as const;
 
 interface RateLimitRecord {

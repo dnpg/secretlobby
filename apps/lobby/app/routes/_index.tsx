@@ -571,6 +571,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
+
+  // Check rate limit before processing password
+  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
+  if (!rateLimitResult.allowed) {
+    return createRateLimitResponse(rateLimitResult);
+  }
+
   // Handle localhost development mode
   if (isLocalhost(request)) {
     const formData = await request.formData();
@@ -578,6 +586,8 @@ export async function action({ request }: Route.ActionArgs) {
     const sitePassword = await getSitePassword();
 
     if (password === sitePassword) {
+      // Reset rate limit on successful password entry
+      resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
       return createSessionResponse({ isAuthenticated: true }, request, "/");
     }
     return { error: "Invalid password" };
@@ -596,6 +606,9 @@ export async function action({ request }: Route.ActionArgs) {
   if (password !== tenant.lobby.password) {
     return { error: "Invalid password" };
   }
+
+  // Reset rate limit on successful password entry
+  resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
 
   // Create authenticated session for this lobby
   return createSessionResponse(
