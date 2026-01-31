@@ -64,15 +64,83 @@ export async function authenticateWithGoogle(
   });
 
   if (!user) {
-    // Create new user (they'll need to be added to an account separately)
-    user = await prisma.user.create({
-      data: {
-        email,
-        name: googleUser.name || null,
-        avatarUrl: googleUser.picture || null,
-        passwordHash: "", // No password for Google-only users
-        emailVerified: true, // Google already verified the email
-      },
+    // Create new user with account and default lobby
+    const userName = googleUser.name || email.split("@")[0];
+
+    // Generate unique slug from email/name
+    const baseSlug = userName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .trim();
+
+    let slug = /^[a-z]/.test(baseSlug) ? baseSlug : `account-${baseSlug}`;
+    let counter = 1;
+
+    // Ensure unique slug
+    while (await prisma.account.findUnique({ where: { slug } })) {
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
+    // Create user, account, and lobby in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create user
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          name: googleUser.name || null,
+          avatarUrl: googleUser.picture || null,
+          passwordHash: "", // No password for Google-only users
+          emailVerified: true, // Google already verified the email
+        },
+      });
+
+      // Create account
+      const account = await tx.account.create({
+        data: {
+          name: userName,
+          slug,
+          subscriptionTier: "FREE",
+        },
+      });
+
+      // Link user to account as OWNER
+      await tx.accountUser.create({
+        data: {
+          userId: newUser.id,
+          accountId: account.id,
+          role: "OWNER",
+          acceptedAt: new Date(),
+        },
+      });
+
+      // Create default lobby
+      const lobby = await tx.lobby.create({
+        data: {
+          accountId: account.id,
+          name: "Main Lobby",
+          slug: "main",
+          title: userName,
+          description: `Welcome to ${userName}`,
+          isDefault: true,
+          password: "", // No password initially
+        },
+      });
+
+      // Update account with default lobby reference
+      await tx.account.update({
+        where: { id: account.id },
+        data: { defaultLobbyId: lobby.id },
+      });
+
+      return newUser;
+    });
+
+    // Fetch user with accounts to return
+    user = await prisma.user.findUnique({
+      where: { id: result.id },
       include: {
         accounts: {
           include: {
@@ -81,6 +149,10 @@ export async function authenticateWithGoogle(
         },
       },
     });
+
+    if (!user) {
+      throw new Error("Failed to create user");
+    }
   } else {
     // Update user info from Google
     await prisma.user.update({
