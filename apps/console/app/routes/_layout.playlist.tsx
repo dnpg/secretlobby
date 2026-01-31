@@ -1,5 +1,5 @@
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Route } from "./+types/_layout.playlist";
 import { MediaPicker, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
@@ -498,6 +498,12 @@ export default function AdminPlaylist() {
   const [editTitle, setEditTitle] = useState("");
   const [editArtist, setEditArtist] = useState("");
   const [pendingTrackNames, setPendingTrackNames] = useState<string[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Track client-side mounting to avoid DndContext hydration mismatch
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Sync local state when loader data changes (after navigation completes)
   useEffect(() => {
@@ -516,12 +522,28 @@ export default function AdminPlaylist() {
     }
   }, [navigation.state]);
 
+  // Track the last displayed action result to prevent duplicate toasts
+  const lastActionRef = useRef<{ success?: string; error?: string } | null>(null);
+
   useEffect(() => {
-    if (actionData?.success) {
-      toast.success(actionData.success);
+    // Only show toast if actionData changed and is different from last displayed
+    if (!actionData) {
+      lastActionRef.current = null;
+      return;
     }
-    if (actionData?.error) {
-      toast.error(actionData.error);
+
+    const isNewResult =
+      actionData.success !== lastActionRef.current?.success ||
+      actionData.error !== lastActionRef.current?.error;
+
+    if (isNewResult) {
+      if (actionData.success) {
+        toast.success(actionData.success);
+      }
+      if (actionData.error) {
+        toast.error(actionData.error);
+      }
+      lastActionRef.current = { success: actionData.success, error: actionData.error };
     }
   }, [actionData]);
 
@@ -536,57 +558,55 @@ export default function AdminPlaylist() {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      setLocalPlaylist((prev) => {
-        const oldIndex = prev.findIndex((t) => t.id === active.id);
-        const newIndex = prev.findIndex((t) => t.id === over.id);
-        if (oldIndex === -1 || newIndex === -1) return prev;
-        const reordered = arrayMove(prev, oldIndex, newIndex);
+      const oldIndex = localPlaylist.findIndex((t) => t.id === active.id);
+      const newIndex = localPlaylist.findIndex((t) => t.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
 
-        // Persist new order
-        submit(
-          { intent: "reorder-tracks", order: JSON.stringify(reordered.map((t) => t.id)) },
-          { method: "post" },
-        );
+      const reordered = arrayMove(localPlaylist, oldIndex, newIndex);
+      setLocalPlaylist(reordered);
 
-        return reordered;
-      });
+      // Persist new order (must be outside setState to avoid updating RouterProvider during render)
+      submit(
+        { intent: "reorder-tracks", order: JSON.stringify(reordered.map((t) => t.id)) },
+        { method: "post" },
+      );
     },
-    [submit],
+    [submit, localPlaylist],
   );
 
   const handleMoveUp = useCallback(
     (id: string) => {
-      setLocalPlaylist((prev) => {
-        const idx = prev.findIndex((t) => t.id === id);
-        if (idx <= 0) return prev;
-        const reordered = arrayMove(prev, idx, idx - 1);
-        submit(
-          { intent: "move-track-up", id },
-          { method: "post" },
-        );
-        return reordered;
-      });
+      const idx = localPlaylist.findIndex((t) => t.id === id);
+      if (idx <= 0) return;
+
+      const reordered = arrayMove(localPlaylist, idx, idx - 1);
+      setLocalPlaylist(reordered);
+
+      submit(
+        { intent: "move-track-up", id },
+        { method: "post" },
+      );
     },
-    [submit],
+    [submit, localPlaylist],
   );
 
   const handleMoveDown = useCallback(
     (id: string) => {
-      setLocalPlaylist((prev) => {
-        const idx = prev.findIndex((t) => t.id === id);
-        if (idx < 0 || idx >= prev.length - 1) return prev;
-        const reordered = arrayMove(prev, idx, idx + 1);
-        submit(
-          { intent: "move-track-down", id },
-          { method: "post" },
-        );
-        return reordered;
-      });
+      const idx = localPlaylist.findIndex((t) => t.id === id);
+      if (idx < 0 || idx >= localPlaylist.length - 1) return;
+
+      const reordered = arrayMove(localPlaylist, idx, idx + 1);
+      setLocalPlaylist(reordered);
+
+      submit(
+        { intent: "move-track-down", id },
+        { method: "post" },
+      );
     },
-    [submit],
+    [submit, localPlaylist],
   );
 
-  const handleAddTracks = (mediaItems: MediaItem[]) => {
+  const handleAddTracks = useCallback((mediaItems: MediaItem[]) => {
     const ids = mediaItems.map((m) => m.id);
     if (ids.length === 0) return;
     setPendingTrackNames(mediaItems.map((m) => m.filename.replace(/\.[^/.]+$/, "")));
@@ -594,14 +614,14 @@ export default function AdminPlaylist() {
       { intent: "add-tracks", mediaIds: ids.join(",") },
       { method: "post" },
     );
-  };
+  }, [submit]);
 
-  const handleChangeFile = (trackId: string, media: MediaItem) => {
+  const handleChangeFile = useCallback((trackId: string, media: MediaItem) => {
     submit(
       { intent: "change-track-file", id: trackId, mediaId: media.id },
       { method: "post" },
     );
-  };
+  }, [submit]);
 
   const handleSetAutoplay = useCallback(
     (trackId: string | null) => {
@@ -613,19 +633,19 @@ export default function AdminPlaylist() {
     [submit],
   );
 
-  const startEditing = (track: PlaylistTrack) => {
+  const startEditing = useCallback((track: PlaylistTrack) => {
     setEditingTrackId(track.id);
     setEditTitle(track.title);
     setEditArtist(track.artist || "");
-  };
+  }, []);
 
-  const cancelEditing = () => {
+  const cancelEditing = useCallback(() => {
     setEditingTrackId(null);
     setEditTitle("");
     setEditArtist("");
-  };
+  }, []);
 
-  const trackIds = localPlaylist.map((t) => t.id);
+  const trackIds = useMemo(() => localPlaylist.map((t) => t.id), [localPlaylist]);
 
   return (
     <div className="space-y-8">
@@ -659,7 +679,7 @@ export default function AdminPlaylist() {
             <p className="text-theme-secondary text-center py-4">
               No tracks in playlist. Add some!
             </p>
-          ) : (
+          ) : isMounted ? (
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -692,6 +712,38 @@ export default function AdminPlaylist() {
                 ))}
               </SortableContext>
             </DndContext>
+          ) : (
+            // Static list during SSR to avoid hydration mismatch with DndContext
+            // Layout matches SortableTrackRow to prevent visual jumping
+            localPlaylist.map((track, index) => (
+              <div key={track.id} className="p-3 bg-theme-tertiary rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {/* Placeholder drag handle (matches SortableTrackRow layout) */}
+                    <div className="p-1 text-theme-muted">
+                      <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+                      </svg>
+                    </div>
+                    <span className="w-8 h-8 rounded-full btn-primary flex items-center justify-center text-sm">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <p className="font-medium text-theme-primary">{track.title}</p>
+                      <div className="flex items-center gap-2">
+                        {track.artist && (
+                          <span className="text-sm text-theme-secondary">{track.artist}</span>
+                        )}
+                        {track.hlsReady && track.duration
+                          ? <span className="text-xs text-theme-muted">{formatDuration(track.duration)}</span>
+                          : <span className="text-xs text-amber-400">Processing...</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
           )}
           {isAddingTracks && pendingTrackNames.map((name, i) => (
             <div

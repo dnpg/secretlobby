@@ -111,6 +111,8 @@ export async function getDefaultLobbyWithTracks(accountId: string) {
               key: true,
               filename: true,
               type: true,
+              hlsReady: true,
+              duration: true,
               createdAt: true,
               updatedAt: true,
             },
