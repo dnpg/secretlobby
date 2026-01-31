@@ -67,6 +67,7 @@
     "@secretlobby/logger": "workspace:*",
     "arctic": "^3.7.0",
     "bcryptjs": "^3.0.3",
+    "ioredis": "^5.9.2",
     "iron-session": "^8.0.4",
     "zod": "^3.23.0"
   },

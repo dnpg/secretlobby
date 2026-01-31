@@ -41,7 +41,7 @@ export async function action({ request }: Route.ActionArgs) {
   await csrfProtect(request);
 
   // Check rate limit before processing
-  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
+  const rateLimitResult = await checkRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
   if (!rateLimitResult.allowed) {
     return createRateLimitResponse(rateLimitResult);
   }
@@ -142,7 +142,7 @@ export async function action({ request }: Route.ActionArgs) {
     await updateAccountDefaultLobby(account.id, defaultLobby.id);
 
     // Reset rate limit on successful signup
-    resetRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
+    await resetRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
 
     // Create session and redirect
     return createSessionResponse(

@@ -9,7 +9,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const logger = createLogger({ service: "console:auth" });
 
   // Check rate limit for OAuth attempts
-  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
+  const rateLimitResult = await checkRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
   if (!rateLimitResult.allowed) {
     // For loaders, we need to throw the response
     throw createRateLimitResponse(rateLimitResult);
@@ -102,7 +102,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     const hasAdminRole = primaryAccount.role === "OWNER" || primaryAccount.role === "ADMIN";
 
     // Reset rate limit on successful OAuth authentication
-    resetRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
+    await resetRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
 
     // Clear OAuth state and set user session
     return createSessionResponse(

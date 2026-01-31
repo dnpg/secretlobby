@@ -635,8 +635,8 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: message };
   }
 
-  // Step 2: Check basic rate limit (in-memory)
-  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
+  // Step 2: Check Redis rate limit
+  const rateLimitResult = await checkRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
   if (!rateLimitResult.allowed) {
     // Record this as a violation in the database for progressive tracking
     await recordViolation(ip, "lobby-password", lobbyId, request.headers.get("user-agent") || undefined);
@@ -656,7 +656,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     if (password === sitePassword) {
       // Reset rate limit and violations on successful password entry
-      resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
+      await resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
       await resetViolations(ip, "lobby-password", lobbyId);
       return createSessionResponse({ isAuthenticated: true }, request, "/");
     }
@@ -678,7 +678,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   // Reset rate limit and violations on successful password entry
-  resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
+  await resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
   await resetViolations(ip, "lobby-password", tenant.lobby.id);
 
   // Create authenticated session for this lobby

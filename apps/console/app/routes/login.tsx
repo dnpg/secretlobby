@@ -62,7 +62,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export async function action({ request }: Route.ActionArgs) {
   // Server-only imports
-  const { authenticateWithPassword, createSessionResponse, getSession } = await import("@secretlobby/auth");
+  const { authenticateWithPassword, createSessionResponse } = await import("@secretlobby/auth");
   const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
 
@@ -70,7 +70,7 @@ export async function action({ request }: Route.ActionArgs) {
   await csrfProtect(request);
 
   // Check rate limit before processing
-  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.LOGIN);
+  const rateLimitResult = await checkRateLimit(request, RATE_LIMIT_CONFIGS.LOGIN);
   if (!rateLimitResult.allowed) {
     return createRateLimitResponse(rateLimitResult);
   }
@@ -115,7 +115,7 @@ export async function action({ request }: Route.ActionArgs) {
   const hasAdminRole = primaryAccount.role === "OWNER" || primaryAccount.role === "ADMIN";
 
   // Reset rate limit on successful login
-  resetRateLimit(request, RATE_LIMIT_CONFIGS.LOGIN);
+  await resetRateLimit(request, RATE_LIMIT_CONFIGS.LOGIN);
 
   return createSessionResponse(
     {

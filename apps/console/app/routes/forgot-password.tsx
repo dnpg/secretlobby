@@ -26,7 +26,7 @@ export async function action({ request }: Route.ActionArgs) {
   await csrfProtect(request);
 
   // Check rate limit before processing
-  const rateLimitResult = checkRateLimit(request, RATE_LIMIT_CONFIGS.PASSWORD_RESET);
+  const rateLimitResult = await checkRateLimit(request, RATE_LIMIT_CONFIGS.PASSWORD_RESET);
   if (!rateLimitResult.allowed) {
     return createRateLimitResponse(rateLimitResult);
   }
