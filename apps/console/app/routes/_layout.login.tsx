@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import type { Route } from "./+types/_layout.login";
 import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import type { LoginPageSettings } from "~/lib/content.server";
+import { toast } from "sonner";
 
 export function meta() {
   return [{ title: "Login Page Settings - Admin" }];
@@ -199,20 +201,17 @@ export default function AdminLogin() {
     );
   };
 
+  useEffect(() => {
+    if (actionData?.success) {
+      toast.success(actionData.success);
+    }
+    if (actionData?.error) {
+      toast.error(actionData.error);
+    }
+  }, [actionData]);
+
   return (
     <div className="space-y-8">
-      {/* Status Messages */}
-      {actionData?.success && (
-        <div className="p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400">
-          {actionData.success}
-        </div>
-      )}
-      {actionData?.error && (
-        <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400">
-          {actionData.error}
-        </div>
-      )}
-
       {/* Logo Section */}
       <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
         <h2 className="text-lg font-semibold mb-4">Login Page Logo</h2>

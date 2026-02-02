@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import type { Route } from "./+types/_layout.social";
 import { cn, RichTextEditor } from "@secretlobby/ui";
 import { SOCIAL_PLATFORMS, type SocialLink, type SocialLinksSettings } from "~/lib/social-platforms";
+import { toast } from "sonner";
 
 export function meta() {
   return [{ title: "Social Links - Admin" }];
@@ -128,20 +129,17 @@ export default function SocialLinksPage() {
     (p) => !links.some((l) => l.platform === p.id)
   );
 
+  useEffect(() => {
+    if (actionData?.success) {
+      toast.success(actionData.success);
+    }
+    if (actionData?.error) {
+      toast.error(actionData.error);
+    }
+  }, [actionData]);
+
   return (
     <div className="space-y-8">
-      {/* Status Messages */}
-      {actionData?.success && (
-        <div className="p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400">
-          {actionData.success}
-        </div>
-      )}
-      {actionData?.error && (
-        <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400">
-          {actionData.error}
-        </div>
-      )}
-
       <Form method="post">
         <input type="hidden" name="intent" value="update-social-links" />
         <input type="hidden" name="_csrf" value={csrfToken} />

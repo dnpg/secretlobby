@@ -16,6 +16,8 @@ export async function getDefaultLobbyWithMedia(accountId: string) {
       password: true,
       isDefault: true,
       accountId: true,
+      title: true,
+      description: true,
       createdAt: true,
       updatedAt: true,
       backgroundMedia: {
@@ -93,6 +95,8 @@ export async function getDefaultLobbyWithTracks(accountId: string) {
       isDefault: true,
       accountId: true,
       settings: true,
+      title: true,
+      description: true,
       createdAt: true,
       updatedAt: true,
       tracks: {

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/_layout.theme";
 import type { ThemeSettings } from "~/lib/content.server";
 import { cn } from "@secretlobby/ui";
+import { toast } from "sonner";
 
 export function meta() {
   return [{ title: "Theme Settings - Admin" }];
@@ -265,22 +266,19 @@ export default function AdminTheme() {
   const [visualizerBorderRadius, setVisualizerBorderRadius] = useState(theme?.visualizerBorderRadius ?? 8);
   const [visualizerType, setVisualizerType] = useState<"equalizer" | "waveform">(theme?.visualizerType || "equalizer");
 
+  useEffect(() => {
+    if (actionData?.success) {
+      toast.success(actionData.success);
+    }
+    if (actionData?.error) {
+      toast.error(actionData.error);
+    }
+  }, [actionData]);
+
   if (!theme) return null;
 
   return (
     <div className="space-y-8">
-      {/* Status Messages */}
-      {actionData?.success && (
-        <div className="p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400">
-          {actionData.success}
-        </div>
-      )}
-      {actionData?.error && (
-        <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400">
-          {actionData.error}
-        </div>
-      )}
-
       {/* Allow User Color Mode Toggle */}
       <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
         <h2 className="text-lg font-semibold mb-4">User Color Mode Toggle</h2>
