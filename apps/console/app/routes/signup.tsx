@@ -1,14 +1,22 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/signup";
 import { cn } from "@secretlobby/ui";
+import { useState, useEffect } from "react";
 
 export function meta() {
   return [{ title: "Sign Up - Console" }];
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  invite_required: "An invitation code is required to sign up during our private beta.",
+  invalid_invite: "Your invitation code is invalid or expired. Please check and try again.",
+  email_mismatch: "The Google account email doesn't match the invitation. Please use the correct Google account.",
+};
+
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
   const { getSession, getCsrfToken, isGoogleConfigured } = await import("@secretlobby/auth");
+  const { getValidInvitationByCode, getSystemSettings } = await import("~/models/queries/invitation.server");
 
   const { session } = await getSession(request);
 
@@ -16,11 +24,101 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/");
   }
 
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const errorCode = url.searchParams.get("error");
+
+  // Check system settings
+  const settings = await getSystemSettings();
+  const prelaunchMode = settings?.prelaunchMode ?? false;
+
+  // Get error message from URL if present
+  const urlErrorMessage = errorCode ? ERROR_MESSAGES[errorCode] || null : null;
+
+  // In prelaunch mode, require valid invite code
+  if (prelaunchMode) {
+    const marketingUrl = process.env.MARKETING_URL || "https://secretlobby.io";
+
+    if (!code) {
+      // No code provided - show code entry form
+      const csrfToken = await getCsrfToken(request);
+      return {
+        googleEnabled: isGoogleConfigured(),
+        csrfToken,
+        inviteCode: null,
+        inviteEmail: null,
+        inviteName: null,
+        prelaunchMode: true,
+        needsCodeValidation: true,
+        marketingUrl,
+        urlError: urlErrorMessage,
+      };
+    }
+
+    const invitation = await getValidInvitationByCode(code);
+    if (!invitation) {
+      // Invalid or expired code - show code entry form with error
+      const csrfToken = await getCsrfToken(request);
+      return {
+        googleEnabled: isGoogleConfigured(),
+        csrfToken,
+        inviteCode: null,
+        inviteEmail: null,
+        inviteName: null,
+        prelaunchMode: true,
+        needsCodeValidation: true,
+        codeError: "Invalid or expired invitation code. Please check your code and try again.",
+        marketingUrl,
+        urlError: urlErrorMessage,
+      };
+    }
+
+    const csrfToken = await getCsrfToken(request);
+    return {
+      googleEnabled: isGoogleConfigured(),
+      csrfToken,
+      inviteCode: code,
+      inviteEmail: invitation.email,
+      inviteName: invitation.interestedPerson?.name || null,
+      prelaunchMode: true,
+      needsCodeValidation: false,
+      marketingUrl,
+      urlError: urlErrorMessage,
+    };
+  }
+
+  // Not in prelaunch mode - allow normal signup
   const csrfToken = await getCsrfToken(request);
+  const marketingUrl = process.env.MARKETING_URL || "https://secretlobby.io";
+
+  // If code provided, validate it optionally
+  if (code) {
+    const invitation = await getValidInvitationByCode(code);
+    if (invitation) {
+      return {
+        googleEnabled: isGoogleConfigured(),
+        csrfToken,
+        inviteCode: code,
+        inviteEmail: invitation.email,
+        inviteName: invitation.interestedPerson?.name || null,
+        prelaunchMode: false,
+        needsCodeValidation: false,
+        marketingUrl,
+        urlError: urlErrorMessage,
+      };
+    }
+  }
 
   return {
     googleEnabled: isGoogleConfigured(),
     csrfToken,
+    inviteCode: null,
+    inviteEmail: null,
+    inviteName: null,
+    prelaunchMode: false,
+    needsCodeValidation: false,
+    marketingUrl,
+    urlError: urlErrorMessage,
   };
 }
 
@@ -31,16 +129,50 @@ export async function action({ request }: Route.ActionArgs) {
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
   const { getUserByEmail } = await import("~/models/queries/user.server");
   const { getAccountBySlug } = await import("~/models/queries/account.server");
+  const { getValidInvitationByCode, getSystemSettings } = await import("~/models/queries/invitation.server");
   const { createAccount, updateAccountDefaultLobby } = await import("~/models/mutations/account.server");
   const { createLobby } = await import("~/models/mutations/lobby.server");
   const { createLogger, formatError } = await import("@secretlobby/logger/server");
+  const { prisma, InvitationStatus } = await import("@secretlobby/db");
 
   const logger = createLogger({ service: "console:signup" });
 
   // Verify CSRF token (uses HMAC validation - no session needed)
   await csrfProtect(request);
 
-  // Check rate limit before processing
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  // Handle code validation intent
+  if (intent === "validate-code") {
+    const email = formData.get("email");
+    const code = formData.get("inviteCode");
+
+    if (typeof email !== "string" || typeof code !== "string" || !email.trim() || !code.trim()) {
+      return { intent: "validate-code", error: "Email and invitation code are required" };
+    }
+
+    const invitation = await getValidInvitationByCode(code.trim());
+
+    if (!invitation) {
+      return { intent: "validate-code", error: "Invalid or expired invitation code" };
+    }
+
+    if (invitation.email.toLowerCase() !== email.toLowerCase().trim()) {
+      return { intent: "validate-code", error: "This invitation code is not associated with this email" };
+    }
+
+    // Return validated data for client-side state
+    return {
+      intent: "validate-code",
+      validated: true,
+      validatedEmail: invitation.email,
+      validatedCode: code.trim(),
+      validatedName: invitation.interestedPerson?.name || null,
+    };
+  }
+
+  // Check rate limit before processing signup
   const rateLimitResult = await checkRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
   if (!rateLimitResult.allowed) {
     return createRateLimitResponse(rateLimitResult);
@@ -73,12 +205,12 @@ export async function action({ request }: Route.ActionArgs) {
     return slug;
   }
 
-  const formData = await request.formData();
   const name = formData.get("name");
   const email = formData.get("email");
   const password = formData.get("password");
   const confirmPassword = formData.get("confirmPassword");
   const accountName = formData.get("accountName");
+  const inviteCode = formData.get("inviteCode");
 
   // Validation
   if (
@@ -101,6 +233,27 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (password !== confirmPassword) {
     return { error: "Passwords do not match" };
+  }
+
+  // Check system settings for prelaunch mode
+  const settings = await getSystemSettings();
+  const prelaunchMode = settings?.prelaunchMode ?? false;
+
+  // Validate invite code if in prelaunch mode or if code provided
+  let invitation = null;
+  if (inviteCode && typeof inviteCode === "string") {
+    invitation = await getValidInvitationByCode(inviteCode);
+
+    if (!invitation) {
+      return { error: "Invalid or expired invitation code" };
+    }
+
+    // Ensure email matches the invitation
+    if (invitation.email.toLowerCase() !== email.toLowerCase()) {
+      return { error: "Email does not match the invitation" };
+    }
+  } else if (prelaunchMode) {
+    return { error: "An invitation code is required during prelaunch" };
   }
 
   // Check if email already exists
@@ -141,6 +294,27 @@ export async function action({ request }: Route.ActionArgs) {
     // Update account with default lobby reference
     await updateAccountDefaultLobby(account.id, defaultLobby.id);
 
+    // Mark invitation as used if present
+    if (invitation) {
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: InvitationStatus.USED,
+          usedAt: new Date(),
+        },
+      });
+
+      // Update interested person if linked
+      if (invitation.interestedPersonId) {
+        await prisma.interestedPerson.update({
+          where: { id: invitation.interestedPersonId },
+          data: { convertedAt: new Date() },
+        });
+      }
+
+      logger.info({ email, invitationId: invitation.id }, "Invitation used for signup");
+    }
+
     // Reset rate limit on successful signup
     await resetRateLimit(request, RATE_LIMIT_CONFIGS.SIGNUP);
 
@@ -166,11 +340,137 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Signup() {
-  const { googleEnabled, csrfToken } = useLoaderData<typeof loader>();
+  const { googleEnabled, csrfToken, inviteCode, inviteEmail, inviteName, prelaunchMode, needsCodeValidation, codeError, marketingUrl, urlError } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
+  // Track validated state from code validation action
+  const [validatedData, setValidatedData] = useState<{
+    email: string;
+    code: string;
+    name: string | null;
+  } | null>(null);
+
+  // Check if code was validated via action
+  const wasCodeValidated = actionData?.intent === "validate-code" && actionData?.validated;
+
+  // Update validatedData when action returns validated data
+  useEffect(() => {
+    if (wasCodeValidated && actionData?.validatedEmail && actionData?.validatedCode) {
+      setValidatedData({
+        email: actionData.validatedEmail,
+        code: actionData.validatedCode,
+        name: actionData.validatedName ?? null,
+      });
+    }
+  }, [wasCodeValidated, actionData?.validatedEmail, actionData?.validatedCode, actionData?.validatedName]);
+
+  // Determine the effective invite data
+  const effectiveInviteEmail = inviteEmail || validatedData?.email || null;
+  const effectiveInviteCode = inviteCode || validatedData?.code || null;
+  const effectiveInviteName = inviteName || validatedData?.name || null;
+
+  // Should show code entry form?
+  const showCodeEntryForm = prelaunchMode && needsCodeValidation && !validatedData;
+
+  // Has validated invite (either from URL or from validation step)?
+  const hasInvite = !!effectiveInviteCode && !!effectiveInviteEmail;
+
+  // Get error message for the current context
+  const validationError = actionData?.intent === "validate-code" && !actionData?.validated ? actionData?.error : null;
+  const signupError = actionData?.intent !== "validate-code" ? actionData?.error : null;
+
+  // Code entry form for prelaunch mode
+  if (showCodeEntryForm) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="w-full max-w-md p-8">
+          <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-white">Welcome to SecretLobby</h1>
+              <p className="text-gray-400 mt-2">Enter your invitation details to get started</p>
+            </div>
+
+            <div className="mb-6 bg-blue-900/30 border border-blue-700 text-blue-400 py-3 px-4 rounded-lg text-center">
+              <p className="text-sm">We're currently in private beta.</p>
+              <p className="text-xs text-blue-300 mt-1">You need an invitation code to create an account.</p>
+            </div>
+
+            {(codeError || validationError || urlError) && (
+              <div className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg">
+                {codeError || validationError || urlError}
+              </div>
+            )}
+
+            <Form method="post" className="space-y-4">
+              <input type="hidden" name="_csrf" value={csrfToken} />
+              <input type="hidden" name="intent" value="validate-code" />
+
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  placeholder="you@example.com"
+                  required
+                  autoComplete="email"
+                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Enter the email address your invitation was sent to
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="inviteCode" className="block text-sm font-medium text-gray-300 mb-1">
+                  Invitation Code
+                </label>
+                <input
+                  type="text"
+                  id="inviteCode"
+                  name="inviteCode"
+                  placeholder="Paste your invitation code"
+                  required
+                  className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  The 64-character code from your invitation email
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className={cn("w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 transition", {"cursor-pointer": !isSubmitting, "cursor-not-allowed": isSubmitting})}
+              >
+                {isSubmitting ? "Validating..." : "Continue"}
+              </button>
+            </Form>
+
+            <div className="mt-6 text-center text-sm text-gray-400">
+              Already have an account?{" "}
+              <a href="/login" className="text-blue-400 hover:text-blue-300 font-medium">
+                Sign in
+              </a>
+            </div>
+
+            <div className="mt-4 text-center text-sm text-gray-500">
+              Don't have an invitation?{" "}
+              <a href={marketingUrl} className="text-blue-400 hover:text-blue-300 font-medium">
+                Register your interest
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Full signup form (either no prelaunch, or code already validated)
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900">
       <div className="w-full max-w-md p-8">
@@ -180,16 +480,23 @@ export default function Signup() {
             <p className="text-gray-400 mt-2">Start building your lobby page</p>
           </div>
 
-          {actionData?.error && (
+          {hasInvite && (
+            <div className="mb-6 bg-blue-900/30 border border-blue-700 text-blue-400 py-3 px-4 rounded-lg text-center">
+              <p className="text-sm">You've been invited to join SecretLobby!</p>
+              <p className="text-xs text-blue-300 mt-1">Your account will be created with: {effectiveInviteEmail}</p>
+            </div>
+          )}
+
+          {(signupError || urlError) && (
             <div className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg">
-              {actionData.error}
+              {signupError || urlError}
             </div>
           )}
 
           {googleEnabled && (
             <>
               <a
-                href="/auth/google"
+                href={effectiveInviteCode ? `/auth/google?inviteCode=${effectiveInviteCode}` : "/auth/google"}
                 className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white text-gray-700 font-medium rounded-lg border border-gray-300 hover:bg-gray-50 transition"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -200,6 +507,11 @@ export default function Signup() {
                 </svg>
                 Sign up with Google
               </a>
+              {hasInvite && (
+                <p className="text-xs text-gray-400 mt-2 text-center">
+                  Use the same email address as your invitation: {effectiveInviteEmail}
+                </p>
+              )}
               <div className="relative my-6">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-gray-600"></div>
@@ -213,6 +525,8 @@ export default function Signup() {
 
           <Form method="post" className="space-y-4">
             <input type="hidden" name="_csrf" value={csrfToken} />
+            {effectiveInviteCode && <input type="hidden" name="inviteCode" value={effectiveInviteCode} />}
+
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">
                 Your Name
@@ -224,6 +538,7 @@ export default function Signup() {
                 placeholder="John Doe"
                 required
                 autoComplete="name"
+                defaultValue={effectiveInviteName || ""}
                 className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -239,8 +554,20 @@ export default function Signup() {
                 placeholder="you@example.com"
                 required
                 autoComplete="email"
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                defaultValue={effectiveInviteEmail || ""}
+                readOnly={hasInvite}
+                className={cn(
+                  "w-full px-4 py-3 rounded-lg border text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                  hasInvite
+                    ? "bg-gray-600 border-gray-500 cursor-not-allowed"
+                    : "bg-gray-700 border-gray-600"
+                )}
               />
+              {hasInvite && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Email is locked to your invitation
+                </p>
+              )}
             </div>
 
             <div>

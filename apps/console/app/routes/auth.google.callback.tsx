@@ -1,10 +1,12 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.google.callback";
 import { getGoogleClient, authenticateWithGoogle, getSession, createSessionResponse } from "@secretlobby/auth";
+import { prisma, InvitationStatus } from "@secretlobby/db";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const { checkRateLimit, createRateLimitResponse, RATE_LIMIT_CONFIGS, resetRateLimit } = await import("@secretlobby/auth/rate-limit");
   const { createLogger, formatError } = await import("@secretlobby/logger/server");
+  const { getValidInvitationByCode, getSystemSettings } = await import("~/models/queries/invitation.server");
 
   const logger = createLogger({ service: "console:auth" });
 
@@ -34,6 +36,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { session } = await getSession(request);
   const storedState = session.googleState;
   const codeVerifier = session.googleCodeVerifier;
+  const inviteCode = session.googleInviteCode;
 
   if (!storedState || !codeVerifier) {
     throw redirect("/login?error=session_expired");
@@ -83,11 +86,60 @@ export async function loader({ request }: Route.LoaderArgs) {
       picture: googleUserInfo.picture,
     };
 
+    // Check system settings for prelaunch mode
+    const settings = await getSystemSettings();
+    const prelaunchMode = settings?.prelaunchMode ?? false;
+
+    // Check if user already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email: googleUser.email.toLowerCase() },
+    });
+
+    // In prelaunch mode, validate invitation for new users
+    let invitation = null;
+    if (prelaunchMode && !existingUser) {
+      // New user signup during prelaunch - require valid invitation
+      if (!inviteCode) {
+        throw redirect("/signup?error=invite_required");
+      }
+
+      invitation = await getValidInvitationByCode(inviteCode);
+      if (!invitation) {
+        throw redirect("/signup?error=invalid_invite");
+      }
+
+      // Verify email matches invitation
+      if (invitation.email.toLowerCase() !== googleUser.email.toLowerCase()) {
+        throw redirect("/signup?error=email_mismatch");
+      }
+    }
+
     // Authenticate or create user
     const user = await authenticateWithGoogle(googleUser);
 
     if (!user) {
       throw redirect("/login?error=unauthorized_domain");
+    }
+
+    // Mark invitation as used if this was a new signup with invitation
+    if (invitation && !existingUser) {
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: InvitationStatus.USED,
+          usedAt: new Date(),
+        },
+      });
+
+      // Update interested person if linked
+      if (invitation.interestedPersonId) {
+        await prisma.interestedPerson.update({
+          where: { id: invitation.interestedPersonId },
+          data: { convertedAt: new Date() },
+        });
+      }
+
+      logger.info({ email: googleUser.email, invitationId: invitation.id }, "Invitation used for Google signup");
     }
 
     // Check if user has any account access
@@ -118,6 +170,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         // Clear OAuth state
         googleState: undefined,
         googleCodeVerifier: undefined,
+        googleInviteCode: undefined,
       },
       request,
       "/"

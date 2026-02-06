@@ -28,6 +28,8 @@ const navItems = [
   { to: "/accounts", label: "Accounts" },
   { to: "/users", label: "Users" },
   { to: "/domains", label: "Domains" },
+  { to: "/interested", label: "Interested" },
+  { to: "/invitations", label: "Invitations" },
   { to: "/plans", label: "Plans" },
   { to: "/security", label: "Security" },
   { to: "/settings", label: "Settings" },

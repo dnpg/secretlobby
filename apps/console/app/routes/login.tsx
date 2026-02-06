@@ -23,6 +23,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { getSession, getCsrfToken, isGoogleConfigured } = await import("@secretlobby/auth");
   const { getPublicUrl } = await import("@secretlobby/storage");
   const { getFirstAccountSettings } = await import("~/models/queries/account.server");
+  const { getSystemSettings } = await import("~/models/queries/invitation.server");
 
   const { session } = await getSession(request);
   const url = new URL(request.url);
@@ -31,6 +32,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (session.userId) {
     throw redirect("/");
   }
+
+  // Check system settings for prelaunch mode
+  const systemSettings = await getSystemSettings();
+  const prelaunchMode = systemSettings?.prelaunchMode ?? false;
+  const marketingUrl = process.env.MARKETING_URL || "https://secretlobby.io";
 
   // Load login page customization from the first account
   let loginSettings: LoginPageSettings = defaultLoginPageSettings;
@@ -57,6 +63,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     loginSettings,
     logoImageUrl,
     csrfToken,
+    prelaunchMode,
+    marketingUrl,
   };
 }
 
@@ -134,7 +142,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Login() {
-  const { googleEnabled, errorMessage, loginSettings, logoImageUrl, csrfToken } = useLoaderData<typeof loader>();
+  const { googleEnabled, errorMessage, loginSettings, logoImageUrl, csrfToken, prelaunchMode, marketingUrl } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -266,12 +274,33 @@ export default function Login() {
             </button>
           </Form>
 
-          <div className="mt-6 text-center text-sm" style={{ color: textColor, opacity: 0.7 }}>
-            Don't have an account?{" "}
-            <a href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
-              Sign up
-            </a>
-          </div>
+          {prelaunchMode ? (
+            <div className="mt-6 text-center text-sm" style={{ color: textColor, opacity: 0.7 }}>
+              <p className="mb-2">We're currently in private beta.</p>
+              <div className="space-y-1">
+                <a
+                  href={marketingUrl}
+                  className="block text-blue-400 hover:text-blue-300 font-medium"
+                >
+                  Register your interest
+                </a>
+                <span className="text-gray-500">or</span>
+                <a
+                  href="/signup"
+                  className="block text-blue-400 hover:text-blue-300 font-medium"
+                >
+                  Have an invite code? Sign up here
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 text-center text-sm" style={{ color: textColor, opacity: 0.7 }}>
+              Don't have an account?{" "}
+              <a href="/signup" className="text-blue-400 hover:text-blue-300 font-medium">
+                Sign up
+              </a>
+            </div>
+          )}
         </div>
       </div>
     </main>

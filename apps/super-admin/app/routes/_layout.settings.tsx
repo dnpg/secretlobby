@@ -2,7 +2,8 @@ import { useLoaderData, useFetcher } from "react-router";
 import type { Route } from "./+types/_layout.settings";
 import { prisma } from "@secretlobby/db";
 import { getPublicUrl } from "@secretlobby/storage";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { toast } from "sonner";
 
 interface FaviconConfig {
   sourceKey?: string;
@@ -94,6 +95,7 @@ export async function loader({}: Route.LoaderArgs) {
       supportEmail: settings.supportEmail,
       allowSignups: settings.allowSignups,
       maintenanceMode: settings.maintenanceMode,
+      prelaunchMode: settings.prelaunchMode,
     },
     favicon: {
       sourceKey: faviconConfig.sourceKey || null,
@@ -136,6 +138,7 @@ export async function action({ request }: Route.ActionArgs) {
     const supportEmail = formData.get("supportEmail") as string;
     const allowSignups = formData.get("allowSignups") === "true";
     const maintenanceMode = formData.get("maintenanceMode") === "true";
+    const prelaunchMode = formData.get("prelaunchMode") === "true";
 
     await prisma.systemSettings.update({
       where: { id: "default" },
@@ -144,6 +147,7 @@ export async function action({ request }: Route.ActionArgs) {
         supportEmail,
         allowSignups,
         maintenanceMode,
+        prelaunchMode,
       },
     });
 
@@ -506,6 +510,16 @@ export default function SettingsPage() {
 
   const isSubmitting = fetcher.state === "submitting";
 
+  // Show toast notifications on form submission results
+  useEffect(() => {
+    if (fetcher.data?.success && fetcher.data?.message) {
+      toast.success(fetcher.data.message);
+    }
+    if (fetcher.data && !fetcher.data.success && fetcher.data.message) {
+      toast.error(fetcher.data.message);
+    }
+  }, [fetcher.data]);
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h2 className="text-2xl font-bold mb-8">Platform Settings</h2>
@@ -685,7 +699,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-6">
+              <div className="space-y-3">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -707,6 +721,25 @@ export default function SettingsPage() {
                   />
                   <span className="text-sm">Maintenance mode</span>
                 </label>
+
+                <div className="pt-2 border-t border-gray-700">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      name="prelaunchMode"
+                      value="true"
+                      defaultChecked={settings.prelaunchMode}
+                      className="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    />
+                    <div>
+                      <span className="text-sm font-medium">Prelaunch Mode (Invite Only)</span>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        When enabled, users can only sign up with a valid invitation link.
+                        Users without an invite code will be redirected to the marketing site.
+                      </p>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
 

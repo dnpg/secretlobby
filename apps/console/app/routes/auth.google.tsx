@@ -12,19 +12,24 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/login?error=google_not_configured");
   }
 
+  // Check for invitation code in query params (for prelaunch signup)
+  const url = new URL(request.url);
+  const inviteCode = url.searchParams.get("inviteCode");
+
   const state = generateState();
   const codeVerifier = generateCodeVerifier();
 
-  const url = google.createAuthorizationURL(state, codeVerifier, [
+  const authUrl = google.createAuthorizationURL(state, codeVerifier, [
     "openid",
     "email",
     "profile",
   ]);
 
-  // Store state and code verifier in session for validation
+  // Store state, code verifier, and invitation code in session for validation
   const { response } = await updateSession(request, {
     googleState: state,
     googleCodeVerifier: codeVerifier,
+    googleInviteCode: inviteCode || undefined,
   });
 
   // Set the session cookie and redirect to Google
@@ -33,7 +38,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   return new Response(null, {
     status: 302,
     headers: {
-      Location: url.toString(),
+      Location: authUrl.toString(),
       ...(cookieHeader ? { "Set-Cookie": cookieHeader } : {}),
     },
   });

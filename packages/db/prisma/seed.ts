@@ -1,5 +1,5 @@
 /**
- * Database Seed Script for SecretLobby.io
+ * Database Seed Script for secretlobby.io
  *
  * Creates test data for local development:
  * - Demo user with password login

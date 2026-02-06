@@ -13,6 +13,7 @@
   "dependencies": {
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
+    "@secretlobby/auth": "workspace:*",
     "@secretlobby/db": "workspace:*",
     "@secretlobby/storage": "workspace:*",
     "@secretlobby/ui": "workspace:*",

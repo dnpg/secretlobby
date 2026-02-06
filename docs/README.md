@@ -1,6 +1,6 @@
 # Band-Blast Security Documentation
 
-This folder contains comprehensive documentation for the security features implemented in Band-Blast (SecretLobby.io).
+This folder contains comprehensive documentation for the security features implemented in Band-Blast (secretlobby.io).
 
 ## Documents
 

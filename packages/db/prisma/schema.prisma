@@ -1,4 +1,4 @@
-// Multi-tenant schema for SecretLobby.io
+// Multi-tenant schema for secretlobby.io
 // Band/Artist lobby landing pages platform
 
 generator client {
@@ -67,6 +67,13 @@ enum ViolationStatus {
   RESOLVED // User succeeded after violations
   BLOCKED  // IP is blocked
   EXPIRED  // Violations aged out
+}
+
+enum InvitationStatus {
+  PENDING   // Not yet used
+  USED      // Account created
+  EXPIRED   // Time expired
+  REVOKED   // Admin revoked
 }
 
 // ============================================================================
@@ -503,6 +510,7 @@ model SystemSettings {
   // Feature Flags
   allowSignups     Boolean  @default(true)
   maintenanceMode  Boolean  @default(false)
+  prelaunchMode    Boolean  @default(false)
 
   // Favicon & Web Manifest Configuration (JSON)
   // Contains: sourceKey, generatedAt, manifestName, manifestShortName, themeColor, bgColor, display
@@ -593,4 +601,50 @@ model RateLimitViolation {
   @@index([status, lockoutUntil])
   @@index([lastViolation])
   @@index([createdAt])
+}
+
+// ============================================================================
+// INTERESTED PERSON (Marketing email collection)
+// ============================================================================
+
+model InterestedPerson {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  name         String?
+  source       String?     // e.g., "marketing-hero", "marketing-cta"
+  ipAddress    String?
+  userAgent    String?
+  inviteSentAt DateTime?   // When invite was sent
+  convertedAt  DateTime?   // When they signed up
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  invitation   Invitation?
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// INVITATION (Invite links for prelaunch)
+// ============================================================================
+
+model Invitation {
+  id                 String           @id @default(cuid())
+  email              String           @unique
+  code               String           @unique  // 64-char secure token
+  status             InvitationStatus @default(PENDING)
+  sentAt             DateTime?
+  usedAt             DateTime?
+  expiresAt          DateTime         // Default 7 days from creation
+  sentBy             String?          // Admin user ID
+  note               String?
+  interestedPersonId String?          @unique
+  interestedPerson   InterestedPerson? @relation(fields: [interestedPersonId], references: [id], onDelete: SetNull)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([email])
+  @@index([code])
+  @@index([status])
+  @@index([expiresAt])
 }

@@ -18,6 +18,8 @@ export type {
   SystemSettings,
   SubscriptionPlan,
   RateLimitViolation,
+  InterestedPerson,
+  Invitation,
 } from "./generated/client/client.js";
 
 // Re-export enums
@@ -30,6 +32,7 @@ export {
   MediaType,
   EmbedProvider,
   ViolationStatus,
+  InvitationStatus,
 } from "./generated/client/enums.js";
 
 // Re-export Prisma types for advanced queries

@@ -68,6 +68,13 @@ export const RATE_LIMIT_CONFIGS = {
     keyPrefix: "rl:email-verify",
   } as RateLimitConfig,
 
+  /** Interested signup (marketing email collection): 5 per hour per IP */
+  INTERESTED_SIGNUP: {
+    maxAttempts: 5,
+    windowMs: 60 * 60 * 1000, // 1 hour
+    keyPrefix: "rl:interested-signup",
+  } as RateLimitConfig,
+
   /**
    * Lobby password: 10 attempts per 15 minutes
    * - Higher than user login since there's no user account to lock

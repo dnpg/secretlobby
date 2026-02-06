@@ -12,6 +12,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { prisma } from "@secretlobby/db";
 import { getPublicUrl } from "@secretlobby/storage";
+import { Toaster } from "sonner";
 
 const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
 
@@ -92,7 +93,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <Toaster theme="dark" position="bottom-right" richColors closeButton />
+    </>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

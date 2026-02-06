@@ -1,4 +1,4 @@
-// Prisma configuration for SecretLobby.io
+// Prisma configuration for secretlobby.co
 import { config } from "dotenv";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";

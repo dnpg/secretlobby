@@ -21,6 +21,7 @@ export interface SessionData {
   // OAuth state
   googleState?: string;
   googleCodeVerifier?: string;
+  googleInviteCode?: string;
 
   // CSRF protection
   csrfToken?: string;
