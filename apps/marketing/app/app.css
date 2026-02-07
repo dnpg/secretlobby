@@ -1,42 +1,57 @@
 @import "tailwindcss";
 
-/* Satoshi Variable Font - Self-hosted */
+/* Roundo - Self-hosted */
 @font-face {
-  font-family: 'Satoshi';
-  src: url('/fonts/satoshi/Satoshi-Variable.woff2') format('woff2-variations');
-  font-weight: 300 900;
+  font-family: 'Roundo';
+  src: url('/fonts/roundo/Roundo-ExtraLight.woff') format('woff');
+  font-weight: 200;
   font-display: swap;
   font-style: normal;
 }
 
-/* Fallback static fonts for older browsers */
 @font-face {
-  font-family: 'Satoshi-Fallback';
-  src: url('/fonts/satoshi/Satoshi-Regular.woff2') format('woff2');
+  font-family: 'Roundo';
+  src: url('/fonts/roundo/Roundo-Light.woff') format('woff');
+  font-weight: 300;
+  font-display: swap;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roundo';
+  src: url('/fonts/roundo/Roundo-Regular.woff') format('woff');
   font-weight: 400;
   font-display: swap;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Satoshi-Fallback';
-  src: url('/fonts/satoshi/Satoshi-Bold.woff2') format('woff2');
-  font-weight: 700;
+  font-family: 'Roundo';
+  src: url('/fonts/roundo/Roundo-Medium.woff') format('woff');
+  font-weight: 500;
   font-display: swap;
   font-style: normal;
 }
 
 @font-face {
-  font-family: 'Satoshi-Fallback';
-  src: url('/fonts/satoshi/Satoshi-Black.woff2') format('woff2');
-  font-weight: 900;
+  font-family: 'Roundo';
+  src: url('/fonts/roundo/Roundo-SemiBold.woff') format('woff');
+  font-weight: 600;
   font-display: swap;
   font-style: normal;
 }
 
-/* Set Satoshi as primary font with Inter as fallback */
+@font-face {
+  font-family: 'Roundo';
+  src: url('/fonts/roundo/Roundo-Bold.woff') format('woff');
+  font-weight: 700;
+  font-display: swap;
+  font-style: normal;
+}
+
+/* Set Roundo as primary font with Inter as fallback */
 :root {
-  --font-sans: 'Satoshi', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Roundo', 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
@@ -47,13 +62,13 @@ body {
 
 /* Logo text with animated font weight */
 .logo-text {
-  font-weight: 700;
+  font-weight: 600;
   transition: font-weight 0.2s ease;
 }
 
 .logo-text:hover,
 .group:hover .logo-text {
-  font-weight: 900;
+  font-weight: 700;
 }
 
 /* Ensure all buttons and interactive elements have pointer cursor */
@@ -63,6 +78,17 @@ a[href],
 input[type="submit"],
 input[type="button"] {
   cursor: pointer;
+}
+
+/* Ensure form elements in animated-border are interactive */
+/* Exclude absolutely positioned elements (like close buttons) */
+.animated-border-content input,
+.animated-border-content button:not([class*="absolute"]),
+.animated-border-content a:not([class*="absolute"]),
+.animated-border-content textarea,
+.animated-border-content select {
+  position: relative;
+  z-index: 2;
 }
 
 /* Animated border card - Pure CSS version */
@@ -89,6 +115,10 @@ input[type="button"] {
   background: transparent;
 }
 
+.animated-border {
+  --animation-delay: 0s;
+}
+
 .animated-border::before,
 .animated-border::after {
   content: "";
@@ -105,6 +135,9 @@ input[type="button"] {
     transparent 100%
   );
   animation: rotate-gradient 12s linear infinite;
+  animation-delay: var(--animation-delay);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .animated-border::before {
@@ -120,16 +153,15 @@ input[type="button"] {
 
 .animated-border:hover::before {
   opacity: 1;
-  animation-duration: 2.4s;
 }
 
 .animated-border:hover::after {
   opacity: 0.6;
-  animation-duration: 2.4s;
 }
 
 .animated-border-content {
   position: relative;
+  z-index: 1;
   background: #1a1a1a;
   border-radius: calc(1rem - 1px);
   height: 100%;

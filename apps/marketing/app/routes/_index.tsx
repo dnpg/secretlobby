@@ -1,7 +1,6 @@
 import { Form, useActionData, useNavigation, useLoaderData, redirect } from "react-router";
 import type { Route } from "./+types/_index";
 import { useState, useRef, useEffect } from "react";
-import type { ReactNode } from "react";
 import { getLocaleFromRequest, type Locale, locales, isValidLocale, defaultLocale } from "~/i18n";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -218,59 +217,6 @@ function GlobeIcon({ className }: { className?: string }) {
 const featureIcons = [LockIcon, KeyIcon, MusicIcon, BuildingIcon, ShieldIcon, ZapIcon];
 const stepIcons = [UploadIcon, LockIcon, ShareIcon, HeadphonesIcon];
 
-// Animated border card component with rotating light effect
-function AnimatedBorderCard({ children, className = "" }: { children: ReactNode; className?: string }) {
-  // Random starting angle for each card (set once on mount)
-  const [initialAngle] = useState(() => Math.random() * 360);
-  const [angle, setAngle] = useState(initialAngle);
-  const [isHovered, setIsHovered] = useState(false);
-  const frameRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(0);
-
-  useEffect(() => {
-    const animate = (time: number) => {
-      if (lastTimeRef.current === 0) lastTimeRef.current = time;
-      const delta = time - lastTimeRef.current;
-      lastTimeRef.current = time;
-
-      // Speed: normal = 30deg/sec (slow), hovered = 150deg/sec (5x faster)
-      const speed = isHovered ? 150 : 30;
-      setAngle((prev) => (prev + (delta * speed) / 1000) % 360);
-
-      frameRef.current = requestAnimationFrame(animate);
-    };
-
-    frameRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frameRef.current);
-  }, [isHovered]);
-
-  const gradientStyle = {
-    background: `conic-gradient(from ${angle}deg, transparent 40%, transparent 60%, #ed1b2f 75%, #ffffff 85%, #ed1b2f 95%, transparent 100%)`,
-  };
-
-  return (
-    <div
-      className={`group relative rounded-xl p-[1px] overflow-hidden cursor-pointer ${className}`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      {/* Animated gradient border */}
-      <div
-        className={`absolute inset-0 rounded-xl transition-opacity duration-300 ${isHovered ? "opacity-100" : "opacity-40"}`}
-        style={gradientStyle}
-      />
-      {/* Glow effect on hover */}
-      <div
-        className={`absolute inset-0 rounded-xl blur-md transition-opacity duration-300 ${isHovered ? "opacity-60" : "opacity-0"}`}
-        style={gradientStyle}
-      />
-      {/* Card content */}
-      <div className="relative bg-[#1a1a1a] rounded-xl p-6 h-full">
-        {children}
-      </div>
-    </div>
-  );
-}
 
 // WebGL Shader Background for music-inspired waves
 function MusicWaveBackground() {
@@ -487,8 +433,30 @@ function LogoDistortionBackground() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const gl = canvas.getContext("webgl", { alpha: false, antialias: false, powerPreference: "high-performance" });
+    // Try WebGL2 first (indicates modern GPU), fallback to WebGL1
+    const gl2 = canvas.getContext("webgl2", { alpha: false, antialias: false, powerPreference: "high-performance" });
+    const gl = gl2 || canvas.getContext("webgl", { alpha: false, antialias: false, powerPreference: "high-performance" });
     if (!gl) return;
+
+    // Detect GPU capability
+    const isHighEndGPU = (() => {
+      // WebGL2 support indicates modern GPU
+      if (gl2) return true;
+
+      // Check for high-end GPU via debug info
+      const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+      if (debugInfo) {
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL).toLowerCase();
+        // Check for known high-performance GPUs
+        const highEnd = ["nvidia", "radeon", "geforce", "rtx", "gtx", "rx ", "apple m", "intel iris"];
+        if (highEnd.some(gpu => renderer.includes(gpu))) return true;
+      }
+
+      // Check device pixel ratio (high DPI usually means capable device)
+      if (window.devicePixelRatio >= 2) return true;
+
+      return false;
+    })();
 
     // Get instancing extension for better performance
     const instExt = gl.getExtension("ANGLE_instanced_arrays");
@@ -633,6 +601,7 @@ function LogoDistortionBackground() {
       }
     `;
 
+    // Select shader complexity based on GPU capability
     const waterFS = `
       precision highp float;
       uniform sampler2D u_scene;
@@ -644,22 +613,49 @@ function LogoDistortionBackground() {
       uniform int u_trailCount;
       varying vec2 v_uv;
 
-      // Fast hash-based noise - much cheaper than simplex
+      // Fast hash-based noise
       float hash(vec2 p) {
         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
       }
 
-      // Value noise with smooth interpolation
       float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
-        f = f * f * (3.0 - 2.0 * f); // Smoothstep
+        f = f * f * (3.0 - 2.0 * f);
         return mix(
           mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
           f.y
         );
       }
+
+      ${isHighEndGPU ? `
+      // Simplex noise for high-end GPUs - richer water effect
+      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+      vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+      float snoise(vec2 v) {
+        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+        vec2 i = floor(v + dot(v, C.yy));
+        vec2 x0 = v - i + dot(i, C.xx);
+        vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+        vec4 x12 = x0.xyxy + C.xxzz;
+        x12.xy -= i1;
+        i = mod289(i);
+        vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+        m = m*m; m = m*m;
+        vec3 x = 2.0 * fract(p * C.www) - 1.0;
+        vec3 h = abs(x) - 0.5;
+        vec3 ox = floor(x + 0.5);
+        vec3 a0 = x - ox;
+        m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+        vec3 g;
+        g.x = a0.x * x0.x + h.x * x0.y;
+        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+        return 130.0 * dot(m, g);
+      }
+      ` : ''}
 
       void main() {
         vec2 uv = v_uv;
@@ -670,6 +666,24 @@ function LogoDistortionBackground() {
 
         vec2 totalRefract = vec2(0.0);
         float totalWave = 0.0;
+
+        ${isHighEndGPU ? `
+        // Rich ambient water with simplex noise (high-end GPU)
+        float sn1 = snoise(uv * 3.0 + u_time * 0.1) * 0.5 + 0.5;
+        float sn2 = snoise(uv * 3.0 + vec2(100.0, 0.0) + u_time * 0.08) * 0.5 + 0.5;
+        vec2 ambientRefract = (vec2(sn1, sn2) - 0.5) * 0.004;
+        float ambientWave = snoise(uv * 5.0 + u_time * 0.12) * 0.025;
+        ambientWave += snoise(uv * 8.0 - u_time * 0.1) * 0.015;
+        ` : `
+        // Fast ambient water with hash noise (low-end GPU)
+        float n1 = noise(uv * 4.0 + vec2(u_time * 0.15, 0.0));
+        float n2 = noise(uv * 4.0 + vec2(0.0, u_time * 0.12));
+        vec2 ambientRefract = (vec2(n1, n2) - 0.5) * 0.003;
+        float ambientWave = (noise(uv * 6.0 + u_time * 0.1) - 0.5) * 0.03;
+        `}
+
+        totalRefract += ambientRefract;
+        totalWave += ambientWave;
 
         // Trail ripples - simplified for performance
         for (int i = 0; i < ${MAX_TRAIL_POINTS}; i++) {
@@ -1260,7 +1274,7 @@ export default function MarketingHome() {
           </h1>
 
           {/* Subtitle */}
-          <p className="text-gray-400 text-lg md:text-xl mb-10 max-w-2xl mx-auto">
+          <p className="text-gray-400 text-lg md:text-xl mb-10 max-w-2xl mx-auto" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
             {t.hero.subtitle}
           </p>
 
@@ -1275,32 +1289,12 @@ export default function MarketingHome() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
+{/* Demo button - commented out for beta launch
             <button className="border border-gray-600 hover:border-gray-500 text-white px-8 py-3 rounded-lg font-semibold transition flex items-center justify-center gap-2">
               <PlayIcon className="w-4 h-4" />
               {t.hero.demo}
             </button>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto pointer-events-auto">
-            <div className="animated-border">
-              <div className="animated-border-content p-6">
-                <div className="text-3xl font-bold text-white mb-1">{t.hero.stat1Value}</div>
-                <div className="text-gray-400 text-sm">{t.hero.stat1Label}</div>
-              </div>
-            </div>
-            <div className="animated-border">
-              <div className="animated-border-content p-6">
-                <div className="text-3xl font-bold text-white mb-1">{t.hero.stat2Value}</div>
-                <div className="text-gray-400 text-sm">{t.hero.stat2Label}</div>
-              </div>
-            </div>
-            <div className="animated-border">
-              <div className="animated-border-content p-6">
-                <div className="text-3xl font-bold text-white mb-1">{t.hero.stat3Value}</div>
-                <div className="text-gray-400 text-sm">{t.hero.stat3Label}</div>
-              </div>
-            </div>
+*/}
           </div>
         </div>
       </section>
@@ -1316,7 +1310,7 @@ export default function MarketingHome() {
               <br />
               <span className="text-[#ed1b2f]">{t.features.titleHighlight}</span>
             </h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">
+            <p className="text-gray-400 max-w-2xl mx-auto" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
               {t.features.subtitle}
             </p>
           </div>
@@ -1324,14 +1318,22 @@ export default function MarketingHome() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {t.features.items.map((feature, index) => {
               const Icon = featureIcons[index];
+              // Stagger animation delay by 2s per card for out-of-sync effect
+              const delay = `${index * -2}s`;
               return (
-                <AnimatedBorderCard key={index}>
-                  <div className="w-10 h-10 bg-[#ed1b2f]/10 rounded-lg flex items-center justify-center mb-4">
-                    <Icon className="w-5 h-5 text-[#ed1b2f]" />
+                <div
+                  key={index}
+                  className="animated-border"
+                  style={{ "--animation-delay": delay } as React.CSSProperties}
+                >
+                  <div className="animated-border-content p-6">
+                    <div className="w-10 h-10 bg-[#ed1b2f]/10 rounded-lg flex items-center justify-center mb-4">
+                      <Icon className="w-5 h-5 text-[#ed1b2f]" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                    <p className="text-gray-400 text-sm" style={{ textWrapStyle: "balance" } as React.CSSProperties}>{feature.description}</p>
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
-                  <p className="text-gray-400 text-sm">{feature.description}</p>
-                </AnimatedBorderCard>
+                </div>
               );
             })}
           </div>
@@ -1345,7 +1347,7 @@ export default function MarketingHome() {
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
               {t.howItWorks.title} <span className="text-[#ed1b2f]">{t.howItWorks.titleHighlight}</span> {t.howItWorks.titleEnd}
             </h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">
+            <p className="text-gray-400 max-w-2xl mx-auto" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
               {t.howItWorks.subtitle}
             </p>
           </div>
@@ -1366,7 +1368,7 @@ export default function MarketingHome() {
 
                   {/* Content */}
                   <h3 className="text-lg font-semibold mb-2">{step.title}</h3>
-                  <p className="text-gray-400 text-sm">{step.description}</p>
+                  <p className="text-gray-400 text-sm" style={{ textWrapStyle: "balance" } as React.CSSProperties}>{step.description}</p>
                 </div>
               );
             })}
@@ -1377,7 +1379,8 @@ export default function MarketingHome() {
       {/* CTA Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto max-w-4xl">
-          <div className="bg-gradient-to-b from-[#1a1a1a] to-[#0f0f0f] border border-gray-800 rounded-2xl p-12 text-center">
+          <div className="animated-border rounded-2xl" style={{ "--animation-delay": "-5s" } as React.CSSProperties}>
+            <div className="animated-border-content p-12 text-center rounded-2xl">
             {/* Logo */}
             <div className="mb-8 flex justify-center">
               <img src="/secret-lobby-logo.svg" alt="Secret Lobby" className="w-20 h-20" />
@@ -1389,7 +1392,7 @@ export default function MarketingHome() {
               <span className="text-[#ed1b2f]">{t.cta.titleHighlight}</span>
             </h2>
 
-            <p className="text-gray-400 mb-8 max-w-xl mx-auto">
+            <p className="text-gray-400 mb-8 max-w-xl mx-auto" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
               {t.cta.subtitle}
             </p>
 
@@ -1410,7 +1413,7 @@ export default function MarketingHome() {
             </div>
 
             {/* Benefits */}
-            <p className="text-gray-500 text-sm mb-4">
+            <p className="text-gray-500 text-sm mb-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
               {t.cta.freeNote}
             </p>
             <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-400">
@@ -1427,21 +1430,24 @@ export default function MarketingHome() {
                 {t.cta.benefit3}
               </div>
             </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-4 border-t border-gray-800 bg-[#0a0a0a]">
+      <footer className="px-4 py-12 bg-[#0a0a0a]">
         <div className="container mx-auto max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          <div className="animated-border rounded-2xl" style={{ "--animation-delay": "-7s" } as React.CSSProperties}>
+            <div className="animated-border-content p-8 md:p-12 rounded-2xl">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             {/* Brand */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <img src="/secret-lobby-logo.svg" alt="Secret Lobby" className="w-8 h-8" />
                 <span className="text-lg font-semibold">Secret Lobby</span>
               </div>
-              <p className="text-gray-400 text-sm mb-4">
+              <p className="text-gray-400 text-sm mb-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
                 {t.footer.tagline}
               </p>
               {/* Social Icons */}
@@ -1495,7 +1501,7 @@ export default function MarketingHome() {
             {/* Newsletter */}
             <div>
               <h4 className="font-semibold mb-4">{t.footer.newsletter}</h4>
-              <p className="text-gray-400 text-sm mb-4">
+              <p className="text-gray-400 text-sm mb-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
                 {t.footer.newsletterText}
               </p>
               <Form method="post" className="flex gap-2">
@@ -1517,15 +1523,17 @@ export default function MarketingHome() {
             </div>
           </div>
 
-          {/* Bottom */}
-          <div className="pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-gray-500 text-sm">
-              {t.footer.copyright}
-            </p>
-            <div className="flex gap-6 text-sm text-gray-400">
-              <a href="#" className="hover:text-white transition">{t.footer.privacy}</a>
-              <a href="#" className="hover:text-white transition">{t.footer.terms}</a>
-              <a href="#" className="hover:text-white transition">{t.footer.cookies}</a>
+              {/* Bottom */}
+              <div className="pt-8 border-t border-gray-700 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p className="text-gray-500 text-sm" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
+                  {t.footer.copyright}
+                </p>
+                <div className="flex gap-6 text-sm text-gray-400">
+                  <a href="/privacy" className="hover:text-white transition">{t.footer.privacy}</a>
+                  <a href="/terms" className="hover:text-white transition">{t.footer.terms}</a>
+                  <a href="#" className="hover:text-white transition">{t.footer.cookies}</a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1541,13 +1549,13 @@ export default function MarketingHome() {
           />
 
           {/* Modal Content */}
-          <div className="relative animated-border max-w-md w-full rounded-2xl">
-            <div className="animated-border-content p-8 rounded-2xl">
+          <div className="relative animated-border max-w-md w-full rounded-2xl" style={{ "--animation-delay": "-3s" } as React.CSSProperties}>
+            <div className="animated-border-content p-8 pt-12 rounded-2xl relative">
               <button
                 onClick={() => setShowModal(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-white transition z-10"
+                className="absolute top-2 right-2 w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -1555,7 +1563,7 @@ export default function MarketingHome() {
               <div className="text-center mb-6">
                 <img src="/secret-lobby-logo.svg" alt="Secret Lobby" className="w-16 h-16 mx-auto mb-4" />
                 <h3 className="text-2xl font-bold mb-2">{t.modal.title}</h3>
-                <p className="text-gray-400 text-sm">
+                <p className="text-gray-400 text-sm" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
                   {t.modal.subtitle}
                 </p>
               </div>
@@ -1575,7 +1583,7 @@ export default function MarketingHome() {
                     className="w-full px-4 py-3 bg-[#0a0a0a] border border-gray-700 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-[#ed1b2f] mb-4"
                   />
                   {actionData?.error && (
-                    <p className="text-[#ed1b2f] text-sm mb-4">{actionData.error}</p>
+                    <p className="text-[#ed1b2f] text-sm mb-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>{actionData.error}</p>
                   )}
                   <button
                     type="submit"
@@ -1587,7 +1595,7 @@ export default function MarketingHome() {
                 </Form>
               )}
 
-              <p className="text-gray-500 text-xs text-center mt-4">
+              <p className="text-gray-500 text-xs text-center mt-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
                 {t.modal.privacy}
               </p>
             </div>
