@@ -511,7 +511,7 @@ function LogoDistortionBackground() {
       logoData[idx + 2] = size;          // size
       logoData[idx + 3] = Math.random() * Math.PI * 2; // rotation
       logoData[idx + 4] = depth;         // depth
-      logoData[idx + 5] = 0.15 + depth * 0.35; // alpha
+      logoData[idx + 5] = 1.0;           // alpha (no opacity variation)
       logoMass[i] = size * 10;
     }
 
@@ -1077,14 +1077,14 @@ export default function MarketingHome() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0a]/95 backdrop-blur-sm border-b border-gray-800/50">
-        <div className="container mx-auto px-4 py-4">
+      <header className="fixed top-4 left-4 right-4 z-50">
+        <div className="max-w-6xl mx-auto bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl px-6 py-3 shadow-lg shadow-black/20">
           <nav className="flex justify-between items-center">
             {/* Logo */}
-            <div className="flex items-center gap-2">
+            <a href="/" className="flex items-center gap-2 group">
               <img src="/secret-lobby-logo.svg" alt="Secret Lobby" className="w-8 h-8" />
-              <span className="text-lg font-semibold">Secret Lobby</span>
-            </div>
+              <span className="text-lg lowercase logo-text">secret lobby</span>
+            </a>
 
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center gap-8">
@@ -1114,7 +1114,7 @@ export default function MarketingHome() {
                   <span>{languageNames[locale as Locale]}</span>
                 </button>
                 {langMenuOpen && (
-                  <div className="absolute top-full right-0 mt-2 bg-[#1a1a1a] border border-gray-800 rounded-lg py-1 min-w-[120px]">
+                  <div className="absolute top-full right-0 mt-2 bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl py-1 min-w-[120px]">
                     {locales.map((loc) => (
                       <button
                         key={loc}
@@ -1161,7 +1161,7 @@ export default function MarketingHome() {
 
           {/* Mobile Menu */}
           {mobileMenuOpen && (
-            <div className="md:hidden pt-4 pb-2 border-t border-gray-800 mt-4">
+            <div className="md:hidden pt-4 pb-2 border-t border-white/10 mt-4">
               <div className="flex flex-col gap-4">
                 <a href="#features" className="text-sm text-gray-300 hover:text-white transition">
                   {t.nav.features}
@@ -1177,7 +1177,7 @@ export default function MarketingHome() {
                 </a>
 
                 {/* Mobile Language Switcher */}
-                <div className="flex gap-2 pt-2 border-t border-gray-800">
+                <div className="flex gap-2 pt-2 border-t border-white/10">
                   {locales.map((loc) => (
                     <button
                       key={loc}
@@ -1211,7 +1211,7 @@ export default function MarketingHome() {
       </header>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4 relative overflow-hidden">
+      <section className="pt-28 pb-20 px-4 relative overflow-hidden">
         {/* Logo Distortion Shader Background */}
         <LogoDistortionBackground />
         <div className="container mx-auto text-center max-w-4xl relative z-10 pointer-events-none">
@@ -1252,18 +1252,24 @@ export default function MarketingHome() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto">
-            <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-              <div className="text-3xl font-bold text-white mb-1">{t.hero.stat1Value}</div>
-              <div className="text-gray-400 text-sm">{t.hero.stat1Label}</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl mx-auto pointer-events-auto">
+            <div className="animated-border">
+              <div className="animated-border-content p-6">
+                <div className="text-3xl font-bold text-white mb-1">{t.hero.stat1Value}</div>
+                <div className="text-gray-400 text-sm">{t.hero.stat1Label}</div>
+              </div>
             </div>
-            <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-              <div className="text-3xl font-bold text-white mb-1">{t.hero.stat2Value}</div>
-              <div className="text-gray-400 text-sm">{t.hero.stat2Label}</div>
+            <div className="animated-border">
+              <div className="animated-border-content p-6">
+                <div className="text-3xl font-bold text-white mb-1">{t.hero.stat2Value}</div>
+                <div className="text-gray-400 text-sm">{t.hero.stat2Label}</div>
+              </div>
             </div>
-            <div className="bg-[#1a1a1a] border border-gray-800 rounded-xl p-6">
-              <div className="text-3xl font-bold text-white mb-1">{t.hero.stat3Value}</div>
-              <div className="text-gray-400 text-sm">{t.hero.stat3Label}</div>
+            <div className="animated-border">
+              <div className="animated-border-content p-6">
+                <div className="text-3xl font-bold text-white mb-1">{t.hero.stat3Value}</div>
+                <div className="text-gray-400 text-sm">{t.hero.stat3Label}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1505,54 +1511,56 @@ export default function MarketingHome() {
           />
 
           {/* Modal Content */}
-          <div className="relative bg-[#1a1a1a] border border-gray-800 rounded-2xl p-8 max-w-md w-full">
-            <button
-              onClick={() => setShowModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white transition"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div className="relative animated-border max-w-md w-full rounded-2xl">
+            <div className="animated-border-content p-8 rounded-2xl">
+              <button
+                onClick={() => setShowModal(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white transition z-10"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
 
-            <div className="text-center mb-6">
-              <img src="/secret-lobby-logo.svg" alt="Secret Lobby" className="w-16 h-16 mx-auto mb-4" />
-              <h3 className="text-2xl font-bold mb-2">{t.modal.title}</h3>
-              <p className="text-gray-400 text-sm">
-                {t.modal.subtitle}
+              <div className="text-center mb-6">
+                <img src="/secret-lobby-logo.svg" alt="Secret Lobby" className="w-16 h-16 mx-auto mb-4" />
+                <h3 className="text-2xl font-bold mb-2">{t.modal.title}</h3>
+                <p className="text-gray-400 text-sm">
+                  {t.modal.subtitle}
+                </p>
+              </div>
+
+              {actionData?.success ? (
+                <div className="bg-green-900/30 border border-green-700 text-green-400 px-6 py-4 rounded-lg text-center">
+                  {actionData.message}
+                </div>
+              ) : (
+                <Form method="post">
+                  <input type="hidden" name="source" value="modal-cta" />
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder={t.modal.placeholder}
+                    required
+                    className="w-full px-4 py-3 bg-[#0a0a0a] border border-gray-700 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-[#ed1b2f] mb-4"
+                  />
+                  {actionData?.error && (
+                    <p className="text-[#ed1b2f] text-sm mb-4">{actionData.error}</p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full bg-[#ed1b2f] hover:bg-[#d4192a] text-white px-6 py-3 rounded-lg font-semibold transition disabled:opacity-50"
+                  >
+                    {isSubmitting ? t.modal.submitting : t.modal.button}
+                  </button>
+                </Form>
+              )}
+
+              <p className="text-gray-500 text-xs text-center mt-4">
+                {t.modal.privacy}
               </p>
             </div>
-
-            {actionData?.success ? (
-              <div className="bg-green-900/30 border border-green-700 text-green-400 px-6 py-4 rounded-lg text-center">
-                {actionData.message}
-              </div>
-            ) : (
-              <Form method="post">
-                <input type="hidden" name="source" value="modal-cta" />
-                <input
-                  type="email"
-                  name="email"
-                  placeholder={t.modal.placeholder}
-                  required
-                  className="w-full px-4 py-3 bg-[#0a0a0a] border border-gray-700 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:border-[#ed1b2f] mb-4"
-                />
-                {actionData?.error && (
-                  <p className="text-[#ed1b2f] text-sm mb-4">{actionData.error}</p>
-                )}
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-[#ed1b2f] hover:bg-[#d4192a] text-white px-6 py-3 rounded-lg font-semibold transition disabled:opacity-50"
-                >
-                  {isSubmitting ? t.modal.submitting : t.modal.button}
-                </button>
-              </Form>
-            )}
-
-            <p className="text-gray-500 text-xs text-center mt-4">
-              {t.modal.privacy}
-            </p>
           </div>
         </div>
       )}
