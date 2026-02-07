@@ -12,9 +12,35 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import { prisma } from "@secretlobby/db";
 import { getPublicUrl } from "@secretlobby/storage";
+import { CookieConsent } from "./components/CookieConsent";
 
 const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
 const GTM_ID_RE = /^GTM-[A-Z0-9]+$/i;
+
+// Google Consent Mode v2 - Default consent state (must be set before loading any Google tags)
+// This sets all consent types to "denied" by default, then updates when user consents
+const CONSENT_MODE_DEFAULT_SCRIPT = `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+
+// Set default consent to denied for all regions (GDPR/CCPA compliant)
+gtag('consent', 'default', {
+  'analytics_storage': 'denied',
+  'ad_storage': 'denied',
+  'ad_user_data': 'denied',
+  'ad_personalization': 'denied',
+  'functionality_storage': 'granted',
+  'personalization_storage': 'denied',
+  'security_storage': 'granted',
+  'wait_for_update': 500
+});
+
+// Enable URL passthrough for better measurement when cookies are denied
+gtag('set', 'url_passthrough', true);
+
+// Enable ads data redaction when ad_storage is denied
+gtag('set', 'ads_data_redaction', true);
+`;
 
 export async function loader() {
   const gaMeasurementId = process.env.GA_MEASUREMENT_ID ?? "";
@@ -62,7 +88,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const faviconBaseUrl = data?.faviconBaseUrl ?? null;
 
   return (
-    <html lang="en">
+    <html lang="en" className="bg-black">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -77,6 +103,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <link rel="manifest" href={`${faviconBaseUrl}/site.webmanifest`} />
           </>
         )}
+        {/* Google Consent Mode v2 - MUST be set before loading any Google tags */}
+        {(gaMeasurementId || gtmContainerId) && (
+          <script dangerouslySetInnerHTML={{ __html: CONSENT_MODE_DEFAULT_SCRIPT }} />
+        )}
+        {/* Google Tag Manager */}
         {gtmContainerId && (
           <script
             dangerouslySetInnerHTML={{
@@ -84,12 +115,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             }}
           />
         )}
+        {/* Google Analytics 4 */}
         {gaMeasurementId && (
           <>
             <script async src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaMeasurementId)}`} />
             <script
               dangerouslySetInnerHTML={{
-                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config',${JSON.stringify(gaMeasurementId)});`,
+                __html: `gtag('js', new Date()); gtag('config', ${JSON.stringify(gaMeasurementId)});`,
               }}
             />
           </>
@@ -107,6 +139,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </noscript>
         )}
         {children}
+        <CookieConsent />
         <ScrollRestoration />
         <Scripts />
       </body>

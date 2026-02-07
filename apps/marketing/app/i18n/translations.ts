@@ -20,12 +20,6 @@ export interface TranslationKeys {
     subtitle: string;
     cta: string;
     demo: string;
-    stat1Value: string;
-    stat1Label: string;
-    stat2Value: string;
-    stat2Label: string;
-    stat3Value: string;
-    stat3Label: string;
   };
   features: {
     title: string;
@@ -133,8 +127,8 @@ export const translations: Record<Locale, TranslationKeys> = {
           description: "Upload and share your tracks securely. Your work is protected at all times.",
         },
         {
-          title: "For Record Labels",
-          description: "Designed to connect artists with record labels professionally and securely.",
+          title: "Your Analytics",
+          description: "Connect your own GA4 to track plays, visits, and engagement on your terms.",
         },
         {
           title: "Maximum Security",
@@ -179,10 +173,10 @@ export const translations: Record<Locale, TranslationKeys> = {
       freeNote: "Limited spots available for early adopters",
       benefit1: "Exclusive early access",
       benefit2: "Shape the product",
-      benefit3: "Free during beta",
+      benefit3: "Be part of the journey",
     },
     footer: {
-      tagline: "The leading platform for sharing private music securely with record labels.",
+      tagline: "Your Music. Your Lobby. Your Control.",
       product: "Product",
       features: "Features",
       pricing: "Pricing",
@@ -236,12 +230,6 @@ export const translations: Record<Locale, TranslationKeys> = {
       subtitle: "Crea lobbys privados y seguros para compartir tu música con record labels. Acceso controlado por clave para proteger tu trabajo.",
       cta: "Solicitar Acceso",
       demo: "Ver Demo",
-      stat1Value: "100%",
-      stat1Label: "Privado y Seguro",
-      stat2Value: "24/7",
-      stat2Label: "Acceso Disponible",
-      stat3Value: "∞",
-      stat3Label: "Lobbys Ilimitados",
     },
     features: {
       title: "Todo lo que necesitas para",
@@ -261,8 +249,8 @@ export const translations: Record<Locale, TranslationKeys> = {
           description: "Sube y comparte tus tracks de forma segura. Tu trabajo está protegido en todo momento.",
         },
         {
-          title: "Para Record Labels",
-          description: "Diseñado para conectar artistas con record labels de manera profesional y segura.",
+          title: "Tus Analíticas",
+          description: "Conecta tu propio GA4 para rastrear reproducciones, visitas y engagement en tus términos.",
         },
         {
           title: "Máxima Seguridad",
@@ -307,10 +295,10 @@ export const translations: Record<Locale, TranslationKeys> = {
       freeNote: "Plazas limitadas para early adopters",
       benefit1: "Acceso exclusivo anticipado",
       benefit2: "Ayuda a dar forma al producto",
-      benefit3: "Gratis durante la beta",
+      benefit3: "Sé parte del viaje",
     },
     footer: {
-      tagline: "La plataforma líder para compartir música privada de manera segura con record labels.",
+      tagline: "Tu Música. Tu Lobby. Tu Control.",
       product: "Producto",
       features: "Características",
       pricing: "Precios",
