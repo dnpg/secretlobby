@@ -533,7 +533,8 @@ function LogoDistortionBackground() {
     logoVelocity.set(sortedVel);
     logoMass.set(sortedMass);
 
-    // Mouse tracking
+    // Mouse tracking - balanced for performance and smoothness
+    let lastTrailTime = 0;
     const handleMouseMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
       const newX = (e.clientX - rect.left) / rect.width;
@@ -541,25 +542,30 @@ function LogoDistortionBackground() {
       const dx = newX - mouseRef.current.x;
       const dy = newY - mouseRef.current.y;
       const speed = Math.sqrt(dx * dx + dy * dy);
+      const now = performance.now();
 
-      if (speed > 0.002) {
+      // Add trail points at reasonable intervals
+      if (speed > 0.003 && now - lastTrailTime > 32) {
+        const strength = Math.min(1.0, speed * 10);
         rippleTrailRef.current.push({
           x: newX, y: newY,
-          time: performance.now(),
-          strength: Math.min(1.0, speed * 15)
+          time: now,
+          strength
         });
-        if (rippleTrailRef.current.length > 20) rippleTrailRef.current.shift();
+        if (rippleTrailRef.current.length > 16) rippleTrailRef.current.shift();
+        lastTrailTime = now;
       }
 
       mouseRef.current.speed = speed;
       mouseRef.current.x = newX;
       mouseRef.current.y = newY;
       mouseRef.current.isMoving = true;
-      mouseRef.current.lastMoveTime = performance.now();
+      mouseRef.current.lastMoveTime = now;
     };
     canvas.addEventListener("mousemove", handleMouseMove);
 
-    const MAX_TRAIL_POINTS = 12;
+    // Balanced trail points for performance
+    const MAX_TRAIL_POINTS = 16;
 
     // ============ LOGO SHADER (GPU instanced rendering) ============
     const logoVS = `
@@ -638,39 +644,62 @@ function LogoDistortionBackground() {
       uniform int u_trailCount;
       varying vec2 v_uv;
 
-      vec3 calcRipple(vec2 uv, vec2 ripplePos, float strength, float age, float aspect, float time) {
-        vec2 diff = uv - ripplePos;
-        diff.x *= aspect;
-        float dist = length(diff);
-        vec2 dir = normalize(diff + 0.0001);
-        float expandRadius = age * 0.4;
-        float ringWidth = 0.06;
-        float ring = smoothstep(ringWidth, 0.0, abs(dist - expandRadius));
-        float centerRipple = smoothstep(0.15, 0.0, dist) * max(0.0, 1.0 - age * 2.0);
-        float intensity = (ring + centerRipple) * strength * max(0.0, 1.0 - age * 0.5);
-        float waveFreq = 40.0;
-        float phase = dist * waveFreq - time * 4.0 - age * 10.0;
-        float wave = sin(phase) * exp(-dist * 4.0) * intensity;
-        float slope = cos(phase) * waveFreq * exp(-dist * 4.0) * intensity;
-        return vec3(dir * slope * 0.004, wave);
+      // Fast hash-based noise - much cheaper than simplex
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+
+      // Value noise with smooth interpolation
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f); // Smoothstep
+        return mix(
+          mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+          mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+          f.y
+        );
       }
 
       void main() {
         vec2 uv = v_uv;
         float aspect = u_resolution.x / u_resolution.y;
+
+        // Sample original scene first to check if there's content
+        vec4 originalColor = texture2D(u_scene, uv);
+
         vec2 totalRefract = vec2(0.0);
         float totalWave = 0.0;
-        float totalIntensity = 0.0;
 
-        // Trail ripples
+        // Trail ripples - simplified for performance
         for (int i = 0; i < ${MAX_TRAIL_POINTS}; i++) {
           if (i >= u_trailCount) break;
           vec4 t = u_trail[i];
           if (t.z > 0.01) {
-            vec3 r = calcRipple(uv, t.xy, t.z, t.w, aspect, u_time);
-            totalRefract += r.xy;
-            totalWave += r.z;
-            totalIntensity += t.z * max(0.0, 1.0 - t.w);
+            vec2 diff = uv - t.xy;
+            diff.x *= aspect;
+            float dist = length(diff);
+            vec2 dir = normalize(diff + 0.0001);
+
+            // Simple expanding ring
+            float age = t.w;
+            float expandRadius = age * 0.3;
+            float ringDist = abs(dist - expandRadius);
+            float ring = exp(-ringDist * ringDist * 50.0);
+
+            // Center ripple
+            float center = exp(-dist * dist * 80.0) * exp(-age * 2.0);
+
+            float intensity = (ring + center) * t.z;
+
+            // Wave
+            float phase = dist * 40.0 - u_time * 3.5;
+            float wave = sin(phase) * exp(-dist * 5.0) * intensity;
+            totalWave += wave;
+
+            // Refraction - very localized
+            float slope = cos(phase) * exp(-dist * 5.0) * intensity;
+            totalRefract += dir * slope * 0.002;
           }
         }
 
@@ -680,33 +709,35 @@ function LogoDistortionBackground() {
           diff.x *= aspect;
           float dist = length(diff);
           vec2 dir = normalize(diff + 0.0001);
-          float inZone = smoothstep(0.18, 0.0, dist);
-          inZone *= inZone;
-          float waveFreq = 50.0;
-          float phase = dist * waveFreq - u_time * 4.0;
-          float wave = sin(phase) * exp(-dist * 5.0);
-          float wave2 = sin(phase * 1.6 + 0.8) * 0.5 * exp(-dist * 7.0);
-          totalWave += (wave + wave2) * inZone * u_rippleStrength;
-          float slope = cos(phase) * waveFreq * exp(-dist * 5.0);
-          slope += cos(phase * 1.6 + 0.8) * waveFreq * 0.8 * exp(-dist * 7.0);
-          totalRefract += dir * slope * 0.005 * inZone * u_rippleStrength;
-          totalIntensity += u_rippleStrength * inZone;
+
+          float inZone = exp(-dist * dist * 40.0);
+          float phase = dist * 45.0 - u_time * 4.0;
+          float wave = sin(phase) * exp(-dist * 5.0) * inZone * u_rippleStrength;
+          totalWave += wave;
+
+          float slope = cos(phase) * exp(-dist * 5.0) * inZone * u_rippleStrength;
+          totalRefract += dir * slope * 0.003;
         }
 
-        // Sample scene with refraction
-        vec4 sceneColor = texture2D(u_scene, uv + totalRefract);
+        // Very tight clamp on refraction to prevent pulling distant logos
+        totalRefract = clamp(totalRefract, -0.015, 0.015);
 
-        // Chromatic aberration
-        float aberr = abs(totalWave) * 0.004;
-        sceneColor.r = mix(sceneColor.r, texture2D(u_scene, uv + totalRefract + vec2(aberr, 0.0)).r, min(1.0, totalIntensity) * 0.4);
-        sceneColor.b = mix(sceneColor.b, texture2D(u_scene, uv + totalRefract - vec2(aberr, 0.0)).b, min(1.0, totalIntensity) * 0.4);
+        // Sample with refraction
+        vec2 refractedUV = uv + totalRefract;
+        vec4 sceneColor = texture2D(u_scene, refractedUV);
+
+        // Only apply refraction effect where there's actual content nearby
+        // This prevents "ghost" logos appearing in empty areas
+        float hasContent = step(0.01, originalColor.a + sceneColor.a);
+        sceneColor = mix(originalColor, sceneColor, hasContent);
 
         // Dark water background
-        vec3 water = vec3(0.006, 0.006, 0.01);
-        vec3 color = mix(water, sceneColor.rgb, sceneColor.a + 0.05);
+        vec3 water = vec3(0.008, 0.008, 0.012);
+        vec3 color = mix(water, sceneColor.rgb, sceneColor.a);
 
-        // Highlights
-        color += vec3(0.95, 0.97, 1.0) * max(0.0, totalWave) * 0.25;
+        // Subtle wave highlights - only where there's content or strong wave
+        float highlight = max(0.0, totalWave) * 0.15 * hasContent;
+        color += vec3(0.9, 0.92, 1.0) * highlight;
 
         // Vignette
         float vig = 1.0 - length(uv - 0.5) * 0.5;
@@ -914,23 +945,22 @@ function LogoDistortionBackground() {
       updatePhysics(aspect);
       setupFBO(gl, w, h);
 
-      // Ripple intensity
+      // Smooth ripple intensity
       const timeSinceMove = now - mouseRef.current.lastMoveTime;
-      rippleIntensity = timeSinceMove < 50
-        ? Math.min(1.0, rippleIntensity + 0.15)
-        : rippleIntensity * 0.95;
+      const target = timeSinceMove < 80 ? 1.0 : 0.0;
+      rippleIntensity += (target - rippleIntensity) * (target > rippleIntensity ? 0.15 : 0.05);
 
       // Prepare trail data
-      const maxAge = 2.5;
+      const maxAge = 2.0;
       rippleTrailRef.current = rippleTrailRef.current.filter(p => (now - p.time) / 1000 < maxAge);
       const trailData = new Float32Array(MAX_TRAIL_POINTS * 4);
-      const recentTrail = rippleTrailRef.current.slice(-MAX_TRAIL_POINTS).reverse();
+      const recentTrail = rippleTrailRef.current.slice(-MAX_TRAIL_POINTS);
       for (let i = 0; i < recentTrail.length; i++) {
         const p = recentTrail[i];
         const age = (now - p.time) / 1000;
         trailData[i * 4] = p.x;
         trailData[i * 4 + 1] = 1.0 - p.y;
-        trailData[i * 4 + 2] = p.strength * (1.0 - age / maxAge);
+        trailData[i * 4 + 2] = p.strength * Math.exp(-age * 1.2);
         trailData[i * 4 + 3] = age;
       }
 
