@@ -5,13 +5,13 @@ slug: /apps/marketing
 
 # Marketing App
 
-The marketing application serves as the public-facing website for SecretLobby at `secretlobby.io`.
+The marketing application serves as the public-facing website for SecretLobby at `secretlobby.co`.
 
 ## Overview
 
 - **Package**: `@secretlobby/marketing`
 - **Port**: 3000
-- **Production URL**: https://secretlobby.io
+- **Production URL**: https://secretlobby.co
 
 ## Features
 

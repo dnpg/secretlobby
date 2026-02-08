@@ -5,13 +5,13 @@ slug: /apps/console
 
 # Console App
 
-The console application is the main user dashboard for managing accounts, media, playlists, and billing at `app.secretlobby.io`.
+The console application is the main user dashboard for managing accounts, media, playlists, and billing at `app.secretlobby.co`.
 
 ## Overview
 
 - **Package**: `@secretlobby/console`
 - **Port**: 3001
-- **Production URL**: https://app.secretlobby.io
+- **Production URL**: https://app.secretlobby.co
 
 ## Features
 

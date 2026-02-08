@@ -40,8 +40,8 @@ import { createCheckoutSession } from '@secretlobby/payments';
 const session = await createCheckoutSession({
   customerId: customer.id,
   priceId: 'price_xxx',
-  successUrl: 'https://app.secretlobby.io/billing/success',
-  cancelUrl: 'https://app.secretlobby.io/billing/cancel',
+  successUrl: 'https://app.secretlobby.co/billing/success',
+  cancelUrl: 'https://app.secretlobby.co/billing/cancel',
 });
 
 // Redirect user to session.url

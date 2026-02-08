@@ -36,7 +36,7 @@ await sendEmail({
   subject: 'Verify your email',
   html: templates.verifyEmail({
     name: 'John',
-    verificationUrl: 'https://app.secretlobby.io/verify?token=xxx',
+    verificationUrl: 'https://app.secretlobby.co/verify?token=xxx',
   }),
 });
 ```
@@ -67,7 +67,7 @@ Configure Resend via environment variables:
 
 ```bash
 RESEND_API_KEY=re_...
-EMAIL_FROM=noreply@secretlobby.io
+EMAIL_FROM=noreply@secretlobby.co
 ```
 
 ## Testing

@@ -5,13 +5,13 @@ slug: /apps/super-admin
 
 # Super Admin App
 
-The super admin application provides platform-wide administrative control at `admin.secretlobby.io`.
+The super admin application provides platform-wide administrative control at `admin.secretlobby.co`.
 
 ## Overview
 
 - **Package**: `@secretlobby/super-admin`
 - **Port**: 3003
-- **Production URL**: https://admin.secretlobby.io
+- **Production URL**: https://admin.secretlobby.co
 
 ## Features
 

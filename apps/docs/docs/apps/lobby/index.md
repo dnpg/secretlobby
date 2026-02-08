@@ -5,13 +5,13 @@ slug: /apps/lobby
 
 # Lobby App
 
-The lobby application handles user-facing streaming pages, accessible via subdomains like `*.secretlobby.io`.
+The lobby application handles user-facing streaming pages, accessible via subdomains like `*.secretlobby.co`.
 
 ## Overview
 
 - **Package**: `@secretlobby/lobby`
 - **Port**: 3002
-- **Production URL**: https://*.secretlobby.io (subdomains)
+- **Production URL**: https://*.secretlobby.co (subdomains)
 
 ## Features
 

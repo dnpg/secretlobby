@@ -10,11 +10,11 @@ SecretLobby consists of multiple applications deployed to different domains.
 
 | App | Domain | Purpose |
 |-----|--------|---------|
-| Marketing | secretlobby.io | Public website |
-| Console | app.secretlobby.io | User dashboard |
-| Lobby | *.secretlobby.io | Streaming (subdomains) |
-| Super Admin | admin.secretlobby.io | Administration |
-| Docs | docs.secretlobby.io | Documentation |
+| Marketing | secretlobby.co | Public website |
+| Console | app.secretlobby.co | User dashboard |
+| Lobby | *.secretlobby.co | Streaming (subdomains) |
+| Super Admin | admin.secretlobby.co | Administration |
+| Docs | docs.secretlobby.co | Documentation |
 
 ## Build Process
 

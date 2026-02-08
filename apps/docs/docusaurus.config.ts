@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://docs.secretlobby.io',
+  url: 'https://docs.secretlobby.co',
   baseUrl: '/',
 
   organizationName: 'secretlobby',
@@ -116,8 +116,8 @@ const config: Config = {
         {
           title: 'Links',
           items: [
-            { label: 'SecretLobby', href: 'https://secretlobby.io' },
-            { label: 'Console', href: 'https://app.secretlobby.io' },
+            { label: 'SecretLobby', href: 'https://secretlobby.co' },
+            { label: 'Console', href: 'https://app.secretlobby.co' },
           ],
         },
       ],

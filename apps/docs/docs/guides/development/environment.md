@@ -36,7 +36,7 @@ AWS_ACCESS_KEY_ID="your-access-key"
 AWS_SECRET_ACCESS_KEY="your-secret-key"
 AWS_REGION="us-east-1"
 S3_BUCKET="secretlobby-storage"
-S3_CDN_URL="https://cdn.secretlobby.io"
+S3_CDN_URL="https://cdn.secretlobby.co"
 ```
 
 ### Stripe Payments
@@ -51,7 +51,7 @@ STRIPE_WEBHOOK_SECRET="whsec_..."
 
 ```bash
 RESEND_API_KEY="re_..."
-EMAIL_FROM="noreply@secretlobby.io"
+EMAIL_FROM="noreply@secretlobby.co"
 ```
 
 ### OAuth Providers
