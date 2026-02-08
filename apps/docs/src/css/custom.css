@@ -1,0 +1,30 @@
+/**
+ * Any CSS included here will be global. The classic template
+ * bundles Infima by default. Infima is a CSS framework designed to
+ * work well for content-centric websites.
+ */
+
+/* SecretLobby brand colors - based on marketing red #ed1b2f */
+:root {
+  --ifm-color-primary: #ed1b2f;
+  --ifm-color-primary-dark: #d5182a;
+  --ifm-color-primary-darker: #c91628;
+  --ifm-color-primary-darkest: #a51220;
+  --ifm-color-primary-light: #ef3347;
+  --ifm-color-primary-lighter: #f04153;
+  --ifm-color-primary-lightest: #f36a78;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode - slightly lighter red for better readability */
+[data-theme='dark'] {
+  --ifm-color-primary: #f04153;
+  --ifm-color-primary-dark: #ed1b2f;
+  --ifm-color-primary-darker: #e01527;
+  --ifm-color-primary-darkest: #b9111f;
+  --ifm-color-primary-light: #f36a78;
+  --ifm-color-primary-lighter: #f57d89;
+  --ifm-color-primary-lightest: #f9a8b0;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
