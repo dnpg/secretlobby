@@ -19,8 +19,8 @@ Welcome to the SecretLobby documentation. This guide will help you get up and ru
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/secretlobby/band-blast.git
-cd band-blast
+git clone https://github.com/dnpg/secretlobby.git
+cd secretlobby
 ```
 
 ### 2. Install Dependencies
@@ -67,7 +67,7 @@ This starts all applications:
 ## Project Structure
 
 ```
-band-blast/
+secretlobby/
 ├── apps/
 │   ├── marketing/     # Public website
 │   ├── console/       # User dashboard

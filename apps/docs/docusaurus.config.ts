@@ -5,17 +5,52 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'SecretLobby Documentation',
   tagline: 'Complete documentation for SecretLobby platform',
-  favicon: 'img/favicon.ico',
+  favicon: 'https://cdn.secretlobby.co/prod/system/favicons/favicon.ico',
 
   future: {
     v4: true,
   },
 
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '16x16',
+        href: 'https://cdn.secretlobby.co/prod/system/favicons/favicon-16x16.png',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'icon',
+        type: 'image/png',
+        sizes: '32x32',
+        href: 'https://cdn.secretlobby.co/prod/system/favicons/favicon-32x32.png',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'apple-touch-icon',
+        href: 'https://cdn.secretlobby.co/prod/system/favicons/apple-touch-icon.png',
+      },
+    },
+    {
+      tagName: 'link',
+      attributes: {
+        rel: 'manifest',
+        href: 'https://cdn.secretlobby.co/prod/system/favicons/site.webmanifest',
+      },
+    },
+  ],
+
   url: 'https://docs.secretlobby.co',
   baseUrl: '/',
 
-  organizationName: 'secretlobby',
-  projectName: 'band-blast',
+  organizationName: 'dnpg',
+  projectName: 'secretlobby',
 
   onBrokenLinks: 'throw',
 
@@ -78,7 +113,7 @@ const config: Config = {
           label: 'Guides',
         },
         {
-          href: 'https://github.com/secretlobby/band-blast',
+          href: 'https://github.com/dnpg/secretlobby',
           label: 'GitHub',
           position: 'right',
         },
