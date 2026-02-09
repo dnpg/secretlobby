@@ -4,6 +4,7 @@ export default [
   // API (no layout)
   route("api/media", "routes/api.media.ts"),
   route("api/webhooks/stripe", "routes/api.webhooks.stripe.ts"),
+  route("api/switch-lobby", "routes/api.switch-lobby.tsx"),
 
   // Authentication
   route("login", "routes/login.tsx"),
@@ -19,6 +20,21 @@ export default [
   // Dashboard (protected with layout)
   layout("routes/_layout.tsx", [
     index("routes/_layout._index.tsx"),
+    route("lobbies", "routes/_layout.lobbies.tsx"),
+    route("lobbies/new", "routes/_layout.lobbies.new.tsx"),
+
+    // Per-lobby routes
+    layout("routes/_layout.lobby.tsx", { path: "lobby/:lobbyId" }, [
+      index("routes/_layout.lobby._index.tsx"),
+      route("playlist", "routes/_layout.lobby.playlist.tsx"),
+      route("theme", "routes/_layout.lobby.theme.tsx"),
+      route("login-page", "routes/_layout.lobby.login.tsx"),
+      route("social", "routes/_layout.lobby.social.tsx"),
+      route("technical-info", "routes/_layout.lobby.technical-info.tsx"),
+      route("password", "routes/_layout.lobby.password.tsx"),
+    ]),
+
+    // Global routes (account-level, not per-lobby)
     route("media", "routes/_layout.media.tsx"),
     route("playlist", "routes/_layout.playlist.tsx"),
     route("theme", "routes/_layout.theme.tsx"),

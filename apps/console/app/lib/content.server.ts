@@ -269,13 +269,18 @@ interface TechnicalInfo {
   content: string;
 }
 
+// =============================================================================
+// Account Settings (Global - applies to all lobbies)
+// =============================================================================
+
 interface AccountSettings {
-  theme?: ThemeSettings;
+  googleAnalytics?: GoogleAnalyticsSettings;
   allowUserColorMode?: boolean;
+  // Legacy: these will be migrated to lobby.settings
+  theme?: ThemeSettings;
   loginPage?: Partial<LoginPageSettings>;
   socialLinks?: SocialLinksSettings;
   technicalInfo?: TechnicalInfo;
-  googleAnalytics?: { trackingId: string };
   [key: string]: unknown;
 }
 
@@ -295,6 +300,38 @@ async function updateAccountSettings(accountId: string, updates: Partial<Account
   const merged = { ...current, ...updates };
   await prisma.account.update({
     where: { id: accountId },
+    data: { settings: JSON.parse(JSON.stringify(merged)) },
+  });
+}
+
+// =============================================================================
+// Lobby Settings (Per-lobby customization)
+// =============================================================================
+
+interface LobbySettings {
+  theme?: ThemeSettings;
+  loginPage?: Partial<LoginPageSettings>;
+  socialLinks?: SocialLinksSettings;
+  technicalInfo?: TechnicalInfo;
+  [key: string]: unknown;
+}
+
+async function getLobbySettingsById(lobbyId: string): Promise<LobbySettings> {
+  const lobby = await prisma.lobby.findUnique({
+    where: { id: lobbyId },
+    select: { settings: true },
+  });
+  if (!lobby?.settings || typeof lobby.settings !== "object") {
+    return {};
+  }
+  return lobby.settings as LobbySettings;
+}
+
+async function updateLobbySettingsById(lobbyId: string, updates: Partial<LobbySettings>): Promise<void> {
+  const current = await getLobbySettingsById(lobbyId);
+  const merged = { ...current, ...updates };
+  await prisma.lobby.update({
+    where: { id: lobbyId },
     data: { settings: JSON.parse(JSON.stringify(merged)) },
   });
 }
@@ -459,4 +496,54 @@ export async function getGoogleAnalyticsSettings(accountId: string): Promise<Goo
 
 export async function updateGoogleAnalyticsSettings(accountId: string, googleAnalytics: GoogleAnalyticsSettings): Promise<void> {
   await updateAccountSettings(accountId, { googleAnalytics });
+}
+
+// =============================================================================
+// Lobby-Specific Settings Functions (Per-Lobby)
+// =============================================================================
+
+export async function getLobbyThemeSettings(lobbyId: string): Promise<ThemeSettings> {
+  const settings = await getLobbySettingsById(lobbyId);
+  const theme = { ...defaultTheme, ...settings.theme };
+  if (!theme.colorMode) {
+    theme.colorMode = "dark";
+  }
+  return theme;
+}
+
+export async function updateLobbyThemeSettings(lobbyId: string, theme: Partial<ThemeSettings>): Promise<void> {
+  const currentTheme = await getLobbyThemeSettings(lobbyId);
+  await updateLobbySettingsById(lobbyId, { theme: { ...currentTheme, ...theme } });
+}
+
+export async function resetLobbyThemeSettings(lobbyId: string): Promise<void> {
+  await updateLobbySettingsById(lobbyId, { theme: defaultTheme });
+}
+
+export async function getLobbyLoginPageSettings(lobbyId: string): Promise<LoginPageSettings> {
+  const settings = await getLobbySettingsById(lobbyId);
+  return { ...defaultLoginPageSettings, ...settings.loginPage };
+}
+
+export async function updateLobbyLoginPageSettings(lobbyId: string, updates: Partial<LoginPageSettings>): Promise<void> {
+  const current = await getLobbyLoginPageSettings(lobbyId);
+  await updateLobbySettingsById(lobbyId, { loginPage: { ...current, ...updates } });
+}
+
+export async function getLobbySocialLinksSettings(lobbyId: string): Promise<SocialLinksSettings> {
+  const settings = await getLobbySettingsById(lobbyId);
+  return { ...defaultSocialLinksSettings, ...settings.socialLinks };
+}
+
+export async function updateLobbySocialLinksSettings(lobbyId: string, socialLinks: SocialLinksSettings): Promise<void> {
+  await updateLobbySettingsById(lobbyId, { socialLinks });
+}
+
+export async function getLobbyTechnicalInfoSettings(lobbyId: string): Promise<TechnicalInfoSettings> {
+  const settings = await getLobbySettingsById(lobbyId);
+  return { ...defaultTechnicalInfoSettings, ...settings.technicalInfo };
+}
+
+export async function updateLobbyTechnicalInfoSettings(lobbyId: string, technicalInfo: TechnicalInfoSettings): Promise<void> {
+  await updateLobbySettingsById(lobbyId, { technicalInfo });
 }

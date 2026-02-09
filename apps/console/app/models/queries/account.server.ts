@@ -32,8 +32,10 @@ export async function getAccountWithDomains(accountId: string) {
     where: { id: accountId },
     select: {
       id: true,
+      name: true,
       slug: true,
       subscriptionTier: true,
+      defaultLobbyId: true,
       createdAt: true,
       updatedAt: true,
       domains: {
@@ -42,6 +44,7 @@ export async function getAccountWithDomains(accountId: string) {
           id: true,
           domain: true,
           status: true,
+          verificationToken: true,
           accountId: true,
           createdAt: true,
           updatedAt: true,

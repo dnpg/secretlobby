@@ -198,43 +198,61 @@ textarea:focus-visible {
   border: 0;
 }
 
+/* Brand colors */
+:root {
+  --color-brand-red: #ed1b2f;
+  --color-brand-red-hover: #d4192a;
+  --color-brand-red-light: #f87171;
+  --color-brand-red-muted: rgba(237, 27, 47, 0.15);
+}
+
 /* Dark theme (default) */
 :root,
 [data-theme="dark"] {
-  --color-bg-primary: #030712;
-  --color-bg-secondary: #111827;
-  --color-bg-tertiary: #1f2937;
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #0f0f0f;
+  --color-bg-tertiary: #1a1a1a;
+  --color-bg-card: #141414;
   --color-text-primary: #ffffff;
-  --color-text-secondary: #9ca3af;
-  --color-text-muted: #6b7280;
-  --color-border: #374151;
-  --color-primary: #ffffff;
-  --color-primary-hover: #e5e7eb;
-  --color-primary-text: #111827;
-  --color-secondary: #1f2937;
-  --color-secondary-hover: #374151;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-border: #27272a;
+  --color-border-subtle: #1f1f23;
+  --color-primary: var(--color-brand-red);
+  --color-primary-hover: var(--color-brand-red-hover);
+  --color-primary-text: #ffffff;
+  --color-secondary: #27272a;
+  --color-secondary-hover: #3f3f46;
   --color-secondary-text: #ffffff;
-  --color-accent: #ffffff;
-  --color-accent-muted: #ffffff33;
+  --color-accent: var(--color-brand-red);
+  --color-accent-muted: var(--color-brand-red-muted);
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
 }
 
 /* Light theme */
 [data-theme="light"] {
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f3f4f6;
-  --color-bg-tertiary: #e5e7eb;
-  --color-text-primary: #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-muted: #9ca3af;
-  --color-border: #d1d5db;
-  --color-primary: #111827;
-  --color-primary-hover: #374151;
+  --color-bg-primary: #fafafa;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f4f4f5;
+  --color-bg-card: #ffffff;
+  --color-text-primary: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #a1a1aa;
+  --color-border: #e4e4e7;
+  --color-border-subtle: #f4f4f5;
+  --color-primary: var(--color-brand-red);
+  --color-primary-hover: var(--color-brand-red-hover);
   --color-primary-text: #ffffff;
-  --color-secondary: #e5e7eb;
-  --color-secondary-hover: #d1d5db;
-  --color-secondary-text: #111827;
-  --color-accent: #111827;
-  --color-accent-muted: #11182733;
+  --color-secondary: #f4f4f5;
+  --color-secondary-hover: #e4e4e7;
+  --color-secondary-text: #18181b;
+  --color-accent: var(--color-brand-red);
+  --color-accent-muted: var(--color-brand-red-muted);
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
 }
 
 /* Theme utility classes */
@@ -266,18 +284,146 @@ textarea:focus-visible {
   border-color: var(--color-border);
 }
 
+@utility bg-theme-card {
+  background-color: var(--color-bg-card);
+}
+
+@utility border-theme-subtle {
+  border-color: var(--color-border-subtle);
+}
+
 @utility btn-primary {
   background-color: var(--color-primary);
   color: var(--color-primary-text);
+  font-weight: 500;
+  transition: all 0.15s ease;
   &:hover {
     background-color: var(--color-primary-hover);
+    transform: translateY(-1px);
+  }
+  &:active {
+    transform: translateY(0);
   }
 }
 
 @utility btn-secondary {
   background-color: var(--color-secondary);
   color: var(--color-secondary-text);
+  font-weight: 500;
+  transition: all 0.15s ease;
+  border: 1px solid var(--color-border);
   &:hover {
     background-color: var(--color-secondary-hover);
+    border-color: var(--color-border);
   }
+}
+
+@utility btn-ghost {
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  transition: all 0.15s ease;
+  &:hover {
+    background-color: var(--color-secondary);
+    color: var(--color-text-primary);
+  }
+}
+
+@utility btn-danger {
+  background-color: var(--color-error);
+  color: #ffffff;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  &:hover {
+    opacity: 0.9;
+  }
+}
+
+/* Card styling */
+@utility card {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+/* Input styling */
+@utility input-theme {
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  transition: all 0.15s ease;
+  &:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-muted);
+    outline: none;
+  }
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+}
+
+/* Badge styling */
+@utility badge-default {
+  background-color: var(--color-secondary);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+}
+
+@utility badge-brand {
+  background-color: var(--color-brand-red-muted);
+  color: var(--color-brand-red);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+}
+
+/* Logo animation */
+@keyframes logo-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.logo-animated:hover {
+  animation: logo-pulse 2s ease-in-out infinite;
+}
+
+/* Hide scrollbar but allow scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Smooth transitions for theme switching */
+* {
+  transition-property: background-color, border-color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+/* Override for elements that shouldn't animate */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, transform;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+/* Disable transitions for animated elements that handle their own */
+.animated-border,
+.animated-border::before,
+.animated-border::after {
+  transition-property: opacity !important;
 }

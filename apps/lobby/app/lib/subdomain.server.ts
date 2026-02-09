@@ -14,6 +14,7 @@ export interface TenantContext {
   account: Account | null;
   lobby: Lobby | null;
   subdomain: string | null;
+  lobbySlug: string | null;
   isCustomDomain: boolean;
 }
 
@@ -99,14 +100,45 @@ export function isCustomDomain(request: Request): boolean {
 }
 
 /**
+ * Extract a potential lobby slug from the URL path.
+ * URLs like /my-lobby or /my-lobby/page become lobby slug "my-lobby"
+ */
+function extractLobbySlugFromPath(request: Request): string | null {
+  const url = new URL(request.url);
+  const pathParts = url.pathname.split("/").filter(Boolean);
+
+  // First path segment could be a lobby slug
+  if (pathParts.length > 0) {
+    const potentialSlug = pathParts[0];
+    // Exclude known routes that aren't lobby slugs
+    const excludedPaths = ["api", "assets", "favicon.ico", "robots.txt", "sitemap.xml"];
+    if (!excludedPaths.includes(potentialSlug)) {
+      return potentialSlug;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Resolve the tenant (account + lobby) from the request.
  * Used in loaders to filter data by band_id.
+ *
+ * URL structure:
+ * - {account}.secretlobby.co → default lobby
+ * - {account}.secretlobby.co/{lobbySlug} → specific lobby
+ * - custom-domain.com → lobby assigned to that domain
+ * - custom-domain.com/{lobbySlug} → specific lobby on custom domain
  */
 export async function resolveTenant(request: Request): Promise<TenantContext> {
   const subdomain = extractSubdomain(request);
   const customDomain = isCustomDomain(request);
-  console.log('the dsub',subdomain);
-  console.log('the custom',customDomain);
+  const lobbySlugFromPath = extractLobbySlugFromPath(request);
+
+  console.log("[subdomain] Subdomain:", subdomain);
+  console.log("[subdomain] Custom domain:", customDomain);
+  console.log("[subdomain] Lobby slug from path:", lobbySlugFromPath);
+
   // Try subdomain resolution first
   if (subdomain) {
     const account = await prisma.account.findUnique({
@@ -122,8 +154,6 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
         createdAt: true,
         updatedAt: true,
         lobbies: {
-          where: { isDefault: true },
-          take: 1,
           select: {
             id: true,
             name: true,
@@ -142,10 +172,24 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
     });
 
     if (account) {
+      // Find the correct lobby based on path or default
+      let lobby = null;
+
+      if (lobbySlugFromPath) {
+        // Try to find lobby by slug
+        lobby = account.lobbies.find((l) => l.slug === lobbySlugFromPath) || null;
+      }
+
+      // Fall back to default lobby if no path-based lobby found
+      if (!lobby) {
+        lobby = account.lobbies.find((l) => l.isDefault) || account.lobbies[0] || null;
+      }
+
       return {
-        account: account as any, // Type cast needed due to select vs full type
-        lobby: account.lobbies[0] || null,
+        account: account as any,
+        lobby: lobby || null,
         subdomain,
+        lobbySlug: lobbySlugFromPath,
         isCustomDomain: false,
       };
     }
@@ -164,6 +208,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
         id: true,
         domain: true,
         status: true,
+        lobbyId: true, // Check for per-lobby domain
         account: {
           select: {
             id: true,
@@ -176,8 +221,6 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
             createdAt: true,
             updatedAt: true,
             lobbies: {
-              where: { isDefault: true },
-              take: 1,
               select: {
                 id: true,
                 name: true,
@@ -198,10 +241,29 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
     });
 
     if (domain?.account) {
+      // Find the correct lobby
+      let lobby = null;
+
+      // If domain is assigned to a specific lobby, use that
+      if (domain.lobbyId) {
+        lobby = domain.account.lobbies.find((l) => l.id === domain.lobbyId) || null;
+      }
+
+      // Otherwise check path-based slug
+      if (!lobby && lobbySlugFromPath) {
+        lobby = domain.account.lobbies.find((l) => l.slug === lobbySlugFromPath) || null;
+      }
+
+      // Fall back to default lobby
+      if (!lobby) {
+        lobby = domain.account.lobbies.find((l) => l.isDefault) || domain.account.lobbies[0] || null;
+      }
+
       return {
-        account: domain.account as any, // Type cast needed due to select vs full type
-        lobby: domain.account.lobbies[0] || null,
+        account: domain.account as any,
+        lobby: lobby || null,
         subdomain: null,
+        lobbySlug: lobbySlugFromPath,
         isCustomDomain: true,
       };
     }
@@ -211,6 +273,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
     account: null,
     lobby: null,
     subdomain,
+    lobbySlug: lobbySlugFromPath,
     isCustomDomain: customDomain,
   };
 }
@@ -222,6 +285,7 @@ export async function requireTenant(request: Request): Promise<{
   account: Account;
   lobby: Lobby;
   subdomain: string | null;
+  lobbySlug: string | null;
   isCustomDomain: boolean;
 }> {
   const tenant = await resolveTenant(request);
@@ -238,6 +302,7 @@ export async function requireTenant(request: Request): Promise<{
     account: tenant.account,
     lobby: tenant.lobby,
     subdomain: tenant.subdomain,
+    lobbySlug: tenant.lobbySlug,
     isCustomDomain: tenant.isCustomDomain,
   };
 }

@@ -18,6 +18,10 @@ export interface SessionData {
   currentAccountSlug?: string;
   currentAccountRole?: string;
 
+  // Lobby context (for multi-lobby support)
+  currentLobbyId?: string;
+  currentLobbySlug?: string;
+
   // OAuth state
   googleState?: string;
   googleCodeVerifier?: string;
