@@ -1,4 +1,5 @@
 import { prisma, type Account, type Lobby } from "@secretlobby/db";
+import { validatePreviewToken } from "@secretlobby/auth";
 
 /**
  * Check if the request is from localhost (development mode)
@@ -16,6 +17,7 @@ export interface TenantContext {
   subdomain: string | null;
   lobbySlug: string | null;
   isCustomDomain: boolean;
+  isPreview: boolean;
 }
 
 /**
@@ -121,6 +123,21 @@ function extractLobbySlugFromPath(request: Request): string | null {
 }
 
 /**
+ * Extract and validate preview token from the request URL.
+ * Returns the validated token info if valid, null otherwise.
+ */
+function getPreviewToken(request: Request): { lobbyId: string; accountId: string } | null {
+  const url = new URL(request.url);
+  const previewToken = url.searchParams.get("preview");
+
+  if (!previewToken) {
+    return null;
+  }
+
+  return validatePreviewToken(previewToken);
+}
+
+/**
  * Resolve the tenant (account + lobby) from the request.
  * Used in loaders to filter data by band_id.
  *
@@ -129,15 +146,20 @@ function extractLobbySlugFromPath(request: Request): string | null {
  * - {account}.secretlobby.co/{lobbySlug} → specific lobby
  * - custom-domain.com → lobby assigned to that domain
  * - custom-domain.com/{lobbySlug} → specific lobby on custom domain
+ *
+ * Preview mode:
+ * - If ?preview={token} is present, validates the token and allows viewing unpublished lobbies
  */
 export async function resolveTenant(request: Request): Promise<TenantContext> {
   const subdomain = extractSubdomain(request);
   const customDomain = isCustomDomain(request);
   const lobbySlugFromPath = extractLobbySlugFromPath(request);
+  const previewTokenInfo = getPreviewToken(request);
 
   console.log("[subdomain] Subdomain:", subdomain);
   console.log("[subdomain] Custom domain:", customDomain);
   console.log("[subdomain] Lobby slug from path:", lobbySlugFromPath);
+  console.log("[subdomain] Preview token valid:", !!previewTokenInfo);
 
   // Try subdomain resolution first
   if (subdomain) {
@@ -160,6 +182,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
             slug: true,
             password: true,
             isDefault: true,
+            isPublished: true,
             accountId: true,
             settings: true,
             title: true,
@@ -174,6 +197,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
     if (account) {
       // Find the correct lobby based on path or default
       let lobby = null;
+      let isPreview = false;
 
       if (lobbySlugFromPath) {
         // Try to find lobby by slug
@@ -185,12 +209,29 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
         lobby = account.lobbies.find((l) => l.isDefault) || account.lobbies[0] || null;
       }
 
+      // Check if lobby is accessible
+      if (lobby) {
+        // If lobby is unpublished, check for valid preview token
+        if (!lobby.isPublished) {
+          if (previewTokenInfo && previewTokenInfo.lobbyId === lobby.id && previewTokenInfo.accountId === account.id) {
+            // Valid preview token - allow access
+            isPreview = true;
+            console.log("[subdomain] Preview mode enabled for lobby:", lobby.id);
+          } else {
+            // No valid preview token - deny access to unpublished lobby
+            console.log("[subdomain] Lobby is unpublished and no valid preview token");
+            lobby = null;
+          }
+        }
+      }
+
       return {
         account: account as any,
         lobby: lobby || null,
         subdomain,
         lobbySlug: lobbySlugFromPath,
         isCustomDomain: false,
+        isPreview,
       };
     }
   }
@@ -227,6 +268,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
                 slug: true,
                 password: true,
                 isDefault: true,
+                isPublished: true,
                 accountId: true,
                 settings: true,
                 title: true,
@@ -243,6 +285,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
     if (domain?.account) {
       // Find the correct lobby
       let lobby = null;
+      let isPreview = false;
 
       // If domain is assigned to a specific lobby, use that
       if (domain.lobbyId) {
@@ -259,12 +302,29 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
         lobby = domain.account.lobbies.find((l) => l.isDefault) || domain.account.lobbies[0] || null;
       }
 
+      // Check if lobby is accessible
+      if (lobby) {
+        // If lobby is unpublished, check for valid preview token
+        if (!lobby.isPublished) {
+          if (previewTokenInfo && previewTokenInfo.lobbyId === lobby.id && previewTokenInfo.accountId === domain.account.id) {
+            // Valid preview token - allow access
+            isPreview = true;
+            console.log("[subdomain] Preview mode enabled for lobby:", lobby.id);
+          } else {
+            // No valid preview token - deny access to unpublished lobby
+            console.log("[subdomain] Lobby is unpublished and no valid preview token");
+            lobby = null;
+          }
+        }
+      }
+
       return {
         account: domain.account as any,
         lobby: lobby || null,
         subdomain: null,
         lobbySlug: lobbySlugFromPath,
         isCustomDomain: true,
+        isPreview,
       };
     }
   }
@@ -275,6 +335,7 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
     subdomain,
     lobbySlug: lobbySlugFromPath,
     isCustomDomain: customDomain,
+    isPreview: false,
   };
 }
 
@@ -287,6 +348,7 @@ export async function requireTenant(request: Request): Promise<{
   subdomain: string | null;
   lobbySlug: string | null;
   isCustomDomain: boolean;
+  isPreview: boolean;
 }> {
   const tenant = await resolveTenant(request);
 
@@ -304,5 +366,6 @@ export async function requireTenant(request: Request): Promise<{
     subdomain: tenant.subdomain,
     lobbySlug: tenant.lobbySlug,
     isCustomDomain: tenant.isCustomDomain,
+    isPreview: tenant.isPreview,
   };
 }

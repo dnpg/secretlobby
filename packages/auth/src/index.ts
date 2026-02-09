@@ -12,6 +12,10 @@ export {
   requireAccountAccess,
   requireAdminRole,
   getCsrfToken,
+  // Multi-lobby authentication
+  logoutFromLobby,
+  isAuthenticatedForLobby,
+  authenticateForLobby,
   type SessionData,
 } from "./session.server.js";
 
@@ -50,6 +54,12 @@ export {
   forgotPasswordSchema,
   type PasswordRequirement,
 } from "./password-validation.js";
+
+// Preview tokens for unpublished lobbies
+export {
+  generatePreviewToken,
+  validatePreviewToken,
+} from "./preview.server.js";
 
 // Re-export arctic utilities for OAuth flows
 export { generateState, generateCodeVerifier } from "arctic";

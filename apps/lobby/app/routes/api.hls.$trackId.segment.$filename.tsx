@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.hls.$trackId.segment.$filename";
-import { getSession } from "@secretlobby/auth";
+import { getSession, isAuthenticatedForLobby } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { verifyPreloadToken } from "~/lib/token.server";
@@ -26,9 +26,8 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(null, { status: 400 });
   }
 
-  // Auth: session or preload token
-  const isAuthenticated =
-    session.isAuthenticated && session.lobbyId === tenant.lobby.id;
+  // Auth: session (multi-lobby aware) or preload token
+  const isAuthenticated = isAuthenticatedForLobby(session, tenant.lobby.id);
 
   let usedPreloadToken = false;
   if (tenant.lobby.password && !isAuthenticated) {

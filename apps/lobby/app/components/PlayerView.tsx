@@ -822,11 +822,11 @@ export function PlayerView({
 
       {/* Header */}
       <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
-        <Form method="post" action="/logout">
+        <Form method="post" action="/logout" reloadDocument>
           <input type="hidden" name="_csrf" value={csrfToken} />
           <button
             type="submit"
-            className="px-4 py-2 text-sm transition"
+            className="px-4 py-2 text-sm transition cursor-pointer"
             style={{
               borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
               backgroundColor: "var(--color-secondary)",

@@ -1,5 +1,5 @@
 import type { Route } from "./+types/api.stream-mp3.$trackId";
-import { getSession } from "@secretlobby/auth";
+import { getSession, isAuthenticatedForLobby } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { verifyPreloadToken } from "~/lib/token.server";
@@ -23,9 +23,8 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(null, { status: 400 });
   }
 
-  // Auth: session or preload token
-  const isAuthenticated =
-    session.isAuthenticated && session.lobbyId === tenant.lobby.id;
+  // Auth: session (multi-lobby aware) or preload token
+  const isAuthenticated = isAuthenticatedForLobby(session, tenant.lobby.id);
 
   if (tenant.lobby.password && !isAuthenticated) {
     const url = new URL(request.url);

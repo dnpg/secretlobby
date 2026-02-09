@@ -1,4 +1,4 @@
-import { type RouteConfig, index, route, layout } from "@react-router/dev/routes";
+import { type RouteConfig, index, route, layout, prefix } from "@react-router/dev/routes";
 
 export default [
   // API (no layout)
@@ -23,8 +23,8 @@ export default [
     route("lobbies", "routes/_layout.lobbies.tsx"),
     route("lobbies/new", "routes/_layout.lobbies.new.tsx"),
 
-    // Per-lobby routes
-    layout("routes/_layout.lobby.tsx", { path: "lobby/:lobbyId" }, [
+    // Per-lobby routes - use route with children for nested layout
+    route("lobby/:lobbyId", "routes/_layout.lobby.tsx", [
       index("routes/_layout.lobby._index.tsx"),
       route("playlist", "routes/_layout.lobby.playlist.tsx"),
       route("theme", "routes/_layout.lobby.theme.tsx"),

@@ -3,7 +3,7 @@ import { Form, useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
-import { getSession, createSessionResponse } from "@secretlobby/auth";
+import { getSession, createSessionResponse, authenticateForLobby, isAuthenticatedForLobby } from "@secretlobby/auth";
 import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/content.server";
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
@@ -366,13 +366,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const { account, lobby } = tenant;
 
-  // Check if lobby requires password and user is authenticated
-  const isAuthenticated =
-    session.isAuthenticated && session.lobbyId === lobby.id;
+  // Check if lobby requires password and user is authenticated for THIS specific lobby
+  const isAuthenticated = isAuthenticatedForLobby(session, lobby.id);
 
   const needsPassword = !!lobby.password && !isAuthenticated;
 
-  // Extract login page, theme, and social links settings from account
+  // Extract per-lobby settings from lobby.settings
   let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
   let loginLogoImageUrl: string | null = null;
   let themeSettings: ThemeSettings = defaultTheme;
@@ -381,23 +380,29 @@ export async function loader({ request }: Route.LoaderArgs) {
   let gaTrackingId: string | null = null;
   let gtmContainerId: string | null = null;
 
-  if (account.settings && typeof account.settings === "object") {
-    const accountSettings = account.settings as Record<string, unknown>;
-    if (accountSettings.loginPage && typeof accountSettings.loginPage === "object") {
-      loginPageSettings = { ...defaultLoginPageSettings, ...(accountSettings.loginPage as Partial<LoginPageSettings>) };
+  // Read per-lobby settings from lobby.settings
+  if (lobby.settings && typeof lobby.settings === "object") {
+    const lobbySettings = lobby.settings as Record<string, unknown>;
+    if (lobbySettings.loginPage && typeof lobbySettings.loginPage === "object") {
+      loginPageSettings = { ...defaultLoginPageSettings, ...(lobbySettings.loginPage as Partial<LoginPageSettings>) };
     }
-    if (accountSettings.theme && typeof accountSettings.theme === "object") {
-      themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    if (lobbySettings.theme && typeof lobbySettings.theme === "object") {
+      themeSettings = { ...defaultTheme, ...(lobbySettings.theme as Partial<ThemeSettings>) };
     }
-    if (accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
-      socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
+    if (lobbySettings.socialLinks && typeof lobbySettings.socialLinks === "object") {
+      socialLinksSettings = lobbySettings.socialLinks as SocialLinksSettings;
     }
-    if (accountSettings.technicalInfo && typeof accountSettings.technicalInfo === "object") {
-      const ti = accountSettings.technicalInfo as { title?: string; content?: string };
+    if (lobbySettings.technicalInfo && typeof lobbySettings.technicalInfo === "object") {
+      const ti = lobbySettings.technicalInfo as { title?: string; content?: string };
       if (ti.title || ti.content) {
         technicalInfo = { title: ti.title || "", content: ti.content || "" };
       }
     }
+  }
+
+  // Read global settings from account.settings (Google Analytics)
+  if (account.settings && typeof account.settings === "object") {
+    const accountSettings = account.settings as Record<string, unknown>;
     if (accountSettings.googleAnalytics && typeof accountSettings.googleAnalytics === "object") {
       const ga = accountSettings.googleAnalytics as { trackingId?: string; gtmContainerId?: string };
       if (ga.trackingId) {
@@ -681,15 +686,12 @@ export async function action({ request }: Route.ActionArgs) {
   await resetRateLimit(request, RATE_LIMIT_CONFIGS.LOBBY_PASSWORD);
   await resetViolations(ip, "lobby-password", tenant.lobby.id);
 
-  // Create authenticated session for this lobby
-  return createSessionResponse(
-    {
-      isAuthenticated: true,
-      lobbyId: tenant.lobby.id,
-    },
-    request,
-    "/"
-  );
+  // Get the current path to redirect back to (preserves lobby slug)
+  const url = new URL(request.url);
+  const redirectPath = url.pathname || "/";
+
+  // Authenticate for this specific lobby only (supports multi-lobby sessions)
+  return authenticateForLobby(request, tenant.lobby.id, redirectPath);
 }
 
 export default function LobbyIndex() {

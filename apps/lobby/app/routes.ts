@@ -4,6 +4,11 @@ export default [
   // Main lobby entry (password-protected)
   index("routes/_index.tsx"),
 
+  // Secondary lobby by slug (e.g., /my-lobby)
+  // This catches /:lobbySlug paths and uses the same logic as _index.tsx
+  // The resolveTenant function extracts the lobby slug from the URL path
+  route(":lobbySlug", "routes/$lobbySlug.tsx"),
+
   // Logout
   route("logout", "routes/logout.tsx"),
 

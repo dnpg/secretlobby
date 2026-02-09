@@ -3,10 +3,13 @@ import { getSessionSecret } from "./env.server.js";
 import { generateCsrfToken } from "./csrf.server.js";
 
 export interface SessionData {
-  // Legacy: lobby access (password-based)
+  // Legacy: lobby access (password-based) - single lobby
   isAuthenticated?: boolean;
   lobbyId?: string;
   isAdmin?: boolean;
+
+  // Multi-lobby authentication: array of authenticated lobby IDs
+  authenticatedLobbyIds?: string[];
 
   // User-based authentication
   userId?: string;
@@ -93,6 +96,84 @@ export async function destroySession(
 
   const session = await getIronSession<SessionData>(request, response, getSessionOptions());
   session.destroy();
+
+  return response;
+}
+
+/**
+ * Logout from a specific lobby without destroying the entire session.
+ * Removes the lobbyId from authenticatedLobbyIds array.
+ */
+export async function logoutFromLobby(
+  request: Request,
+  lobbyId: string,
+  redirectTo: string
+): Promise<Response> {
+  const response = new Response(null, {
+    status: 302,
+    headers: { Location: redirectTo },
+  });
+
+  const session = await getIronSession<SessionData>(request, response, getSessionOptions());
+
+  // Remove from authenticated lobbies array
+  if (session.authenticatedLobbyIds) {
+    session.authenticatedLobbyIds = session.authenticatedLobbyIds.filter(id => id !== lobbyId);
+  }
+
+  // Clear legacy fields if they match this lobby
+  if (session.lobbyId === lobbyId) {
+    session.isAuthenticated = false;
+    session.lobbyId = undefined;
+  }
+
+  await session.save();
+
+  return response;
+}
+
+/**
+ * Check if user is authenticated for a specific lobby
+ */
+export function isAuthenticatedForLobby(session: SessionData, lobbyId: string): boolean {
+  // Check new multi-lobby array first
+  if (session.authenticatedLobbyIds?.includes(lobbyId)) {
+    return true;
+  }
+  // Fall back to legacy single-lobby check
+  return session.isAuthenticated === true && session.lobbyId === lobbyId;
+}
+
+/**
+ * Add a lobby to the authenticated lobbies list
+ */
+export async function authenticateForLobby(
+  request: Request,
+  lobbyId: string,
+  redirectTo: string
+): Promise<Response> {
+  const response = new Response(null, {
+    status: 302,
+    headers: { Location: redirectTo },
+  });
+
+  const session = await getIronSession<SessionData>(request, response, getSessionOptions());
+
+  // Initialize array if needed
+  if (!session.authenticatedLobbyIds) {
+    session.authenticatedLobbyIds = [];
+  }
+
+  // Add lobby if not already authenticated
+  if (!session.authenticatedLobbyIds.includes(lobbyId)) {
+    session.authenticatedLobbyIds.push(lobbyId);
+  }
+
+  // Also set legacy fields for backwards compatibility
+  session.isAuthenticated = true;
+  session.lobbyId = lobbyId;
+
+  await session.save();
 
   return response;
 }

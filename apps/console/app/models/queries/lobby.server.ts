@@ -180,6 +180,57 @@ export async function getLobbyCount(accountId: string) {
   });
 }
 
+// Alias for getLobbyCount
+export const countLobbies = getLobbyCount;
+
+/**
+ * Search lobbies with pagination
+ */
+export async function searchLobbies(
+  accountId: string,
+  search: string,
+  page: number = 1,
+  perPage: number = 5
+) {
+  const skip = (page - 1) * perPage;
+
+  const where = search
+    ? {
+        accountId,
+        OR: [
+          { name: { contains: search, mode: "insensitive" as const } },
+          { slug: { contains: search, mode: "insensitive" as const } },
+          { title: { contains: search, mode: "insensitive" as const } },
+        ],
+      }
+    : { accountId };
+
+  return prisma.lobby.findMany({
+    where,
+    orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+    skip,
+    take: perPage,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      title: true,
+      isDefault: true,
+      isPublished: true,
+      createdAt: true,
+      updatedAt: true,
+      bannerMedia: {
+        select: {
+          id: true,
+          key: true,
+          filename: true,
+          type: true,
+        },
+      },
+    },
+  });
+}
+
 // =============================================================================
 // Default Lobby Queries (existing - kept for backwards compatibility)
 // =============================================================================

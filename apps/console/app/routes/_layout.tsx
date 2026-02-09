@@ -1,7 +1,10 @@
-import { Outlet, NavLink, redirect, Form, useLoaderData } from "react-router";
+import { useState, useEffect, useRef } from "react";
+import { Outlet, NavLink, redirect, Form, useLoaderData, useLocation, useParams, useFetcher, Link } from "react-router";
 import type { Route } from "./+types/_layout";
-import { ColorModeToggle } from "@secretlobby/ui";
-import { LobbySwitcher } from "~/components/LobbySwitcher";
+import { ColorModeToggle, cn } from "@secretlobby/ui";
+
+// Cookie name for sidebar state
+const SIDEBAR_COOKIE = "console_sidebar";
 
 function Logo({ className = "" }: { className?: string }) {
   return (
@@ -50,11 +53,112 @@ function Logo({ className = "" }: { className?: string }) {
   );
 }
 
+// Icons for nav items
+const Icons = {
+  lobbies: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+    </svg>
+  ),
+  content: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  ),
+  media: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+    </svg>
+  ),
+  playlist: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+    </svg>
+  ),
+  theme: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 005.304 0l6.401-6.402M6.75 21A3.75 3.75 0 013 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 003.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008z" />
+    </svg>
+  ),
+  login: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+  ),
+  social: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
+    </svg>
+  ),
+  techInfo: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+    </svg>
+  ),
+  password: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+    </svg>
+  ),
+  settings: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  billing: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+    </svg>
+  ),
+  menu: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+    </svg>
+  ),
+  panelRightOpen: (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M15 3v18" />
+      <path d="m10 15-3-3 3-3" />
+    </svg>
+  ),
+  panelRightClose: (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M15 3v18" />
+      <path d="m8 9 3 3-3 3" />
+    </svg>
+  ),
+  close: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  ),
+  back: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+    </svg>
+  ),
+  user: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+    </svg>
+  ),
+  logout: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+    </svg>
+  ),
+};
+
+const LOBBIES_PER_PAGE = 5;
+
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
   const { getAccountWithBasicInfo } = await import("~/models/queries/account.server");
-  const { getLobbiesByAccountId, getDefaultLobbyByAccountId } = await import("~/models/queries/lobby.server");
+  const { getLobbiesByAccountId, searchLobbies, countLobbies } = await import("~/models/queries/lobby.server");
 
   const { session } = await getSession(request);
 
@@ -66,23 +170,38 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/login");
   }
 
-  // Fetch account and lobbies
-  const [account, lobbies] = await Promise.all([
+  // Parse search params for lobby filtering
+  const url = new URL(request.url);
+  const lobbySearch = url.searchParams.get("lobbySearch") || "";
+  const lobbyPage = parseInt(url.searchParams.get("lobbyPage") || "1", 10);
+
+  // Fetch account and lobby count
+  const [account, totalLobbies] = await Promise.all([
     getAccountWithBasicInfo(accountId),
-    getLobbiesByAccountId(accountId),
+    countLobbies(accountId),
   ]);
 
   if (!account) {
     throw redirect("/login");
   }
 
+  // Fetch lobbies with pagination/search if needed
+  let lobbies;
+  if (lobbySearch || totalLobbies > LOBBIES_PER_PAGE) {
+    lobbies = await searchLobbies(accountId, lobbySearch, lobbyPage, LOBBIES_PER_PAGE);
+  } else {
+    lobbies = await getLobbiesByAccountId(accountId);
+  }
+
   // Determine current lobby (from session or default)
   let currentLobbyId = session.currentLobbyId;
   let currentLobbySlug = session.currentLobbySlug;
 
-  if (!currentLobbyId || !lobbies.find((l) => l.id === currentLobbyId)) {
+  // Get all lobbies briefly to find the default if needed
+  const allLobbies = await getLobbiesByAccountId(accountId);
+  if (!currentLobbyId || !allLobbies.find((l) => l.id === currentLobbyId)) {
     // Fall back to default lobby
-    const defaultLobby = lobbies.find((l) => l.isDefault) || lobbies[0];
+    const defaultLobby = allLobbies.find((l) => l.isDefault) || allLobbies[0];
     if (defaultLobby) {
       currentLobbyId = defaultLobby.id;
       currentLobbySlug = defaultLobby.slug;
@@ -93,9 +212,22 @@ export async function loader({ request }: Route.LoaderArgs) {
   const baseDomain = process.env.CORE_DOMAIN || "secretlobby.io";
 
   // Detect if we're in local development (check hostname)
-  const url = new URL(request.url);
   const hostname = request.headers.get("host") || url.hostname;
   const isLocalDev = hostname.includes("localhost") || hostname.includes(".local") || hostname.startsWith("127.0.0.1");
+
+  // Read sidebar state from cookie
+  const cookieHeader = request.headers.get("Cookie") || "";
+  const cookies = Object.fromEntries(
+    cookieHeader.split("; ").filter(Boolean).map((c) => {
+      const [key, ...val] = c.split("=");
+      return [key, val.join("=")];
+    })
+  );
+  const sidebarCollapsed = cookies[SIDEBAR_COOKIE] === "collapsed";
+
+  // Calculate pagination
+  const totalPages = Math.ceil(totalLobbies / LOBBIES_PER_PAGE);
+  const needsPagination = totalLobbies > LOBBIES_PER_PAGE;
 
   return {
     user: {
@@ -113,119 +245,424 @@ export async function loader({ request }: Route.LoaderArgs) {
       slug: l.slug,
       isDefault: l.isDefault,
     })),
+    lobbyPagination: {
+      currentPage: lobbyPage,
+      totalPages,
+      totalLobbies,
+      needsPagination,
+      search: lobbySearch,
+    },
     currentLobbyId,
     currentLobbySlug,
     baseDomain,
     isLocalDev,
+    sidebarCollapsed,
   };
 }
 
-const navItems = [
-  { to: "lobbies", label: "Lobbies" },
-  { to: "", label: "Content", end: true },
-  { to: "media", label: "Media" },
-  { to: "playlist", label: "Playlist" },
-  { to: "theme", label: "Theme" },
-  { to: "login-page", label: "Login" },
-  { to: "social", label: "Social" },
-  { to: "technical-info", label: "Tech Info" },
-  { to: "settings", label: "Settings" },
-  { to: "billing", label: "Billing" },
+// Main navigation items (shown when NOT editing a lobby)
+const mainNavItems = [
+  { to: "lobbies", label: "Lobbies", icon: "lobbies" as const },
+  { to: "media", label: "Media", icon: "media" as const },
+  { to: "settings", label: "Settings", icon: "settings" as const },
+];
+
+// Lobby-specific navigation items (shown when editing a lobby)
+const lobbyNavItems = [
+  { to: "", label: "Content", end: true, icon: "content" as const },
+  { to: "playlist", label: "Playlist", icon: "playlist" as const },
+  { to: "theme", label: "Theme", icon: "theme" as const },
+  { to: "login-page", label: "Login Page", icon: "login" as const },
+  { to: "social", label: "Social Links", icon: "social" as const },
+  { to: "technical-info", label: "Tech Info", icon: "techInfo" as const },
+  { to: "password", label: "Password", icon: "password" as const },
 ];
 
 export default function AdminLayout() {
-  const { user, account, lobbies, currentLobbyId, currentLobbySlug, baseDomain, isLocalDev } = useLoaderData<typeof loader>();
-  const protocol = isLocalDev ? "http" : "https";
+  const { user, account, lobbies, lobbyPagination, currentLobbyId, currentLobbySlug, baseDomain, isLocalDev, sidebarCollapsed: initialCollapsed } = useLoaderData<typeof loader>();
+  const location = useLocation();
+  const params = useParams();
+  const fetcher = useFetcher();
 
-  // Build lobby URL: account.slug.domain/lobbySlug (for non-default lobbies)
-  const currentLobby = lobbies.find((l) => l.id === currentLobbyId);
-  const lobbyUrl = currentLobby?.isDefault
-    ? `${protocol}://${account.slug}.${baseDomain}`
-    : `${protocol}://${account.slug}.${baseDomain}/${currentLobbySlug || ""}`;
+  // Detect if we're in a lobby editing context
+  const isInLobbyRoute = location.pathname.startsWith("/lobby/");
+  const lobbyIdFromUrl = params.lobbyId;
+  const currentEditingLobby = lobbyIdFromUrl ? lobbies.find((l) => l.id === lobbyIdFromUrl) : null;
+
+  // Sidebar state
+  const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [lobbySearch, setLobbySearch] = useState(lobbyPagination.search);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isLobbySwitcherOpen, setIsLobbySwitcherOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const lobbySwitcherRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Toggle sidebar and save to cookie
+  const toggleSidebar = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    // Save to cookie (expires in 1 year)
+    document.cookie = `${SIDEBAR_COOKIE}=${newState ? "collapsed" : "expanded"}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+  };
+
+  // Close mobile menu and lobby switcher on route change
+  useEffect(() => {
+    setIsMobileOpen(false);
+    setIsLobbySwitcherOpen(false);
+  }, [location.pathname]);
+
+  // Close lobby switcher when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (lobbySwitcherRef.current && !lobbySwitcherRef.current.contains(event.target as Node)) {
+        setIsLobbySwitcherOpen(false);
+      }
+    }
+    if (isLobbySwitcherOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isLobbySwitcherOpen]);
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    if (isUserMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isUserMenuOpen]);
+
+  // Handle lobby search with debounce
+  const handleLobbySearch = (value: string) => {
+    setLobbySearch(value);
+    if (searchTimeout) clearTimeout(searchTimeout);
+    const timeout = setTimeout(() => {
+      const searchParams = new URLSearchParams(location.search);
+      if (value) {
+        searchParams.set("lobbySearch", value);
+        searchParams.set("lobbyPage", "1");
+      } else {
+        searchParams.delete("lobbySearch");
+        searchParams.delete("lobbyPage");
+      }
+      fetcher.load(`${location.pathname}?${searchParams.toString()}`);
+    }, 300);
+    setSearchTimeout(timeout);
+  };
+
+  // Handle lobby page change
+  const handleLobbyPageChange = (page: number) => {
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.set("lobbyPage", page.toString());
+    if (lobbySearch) searchParams.set("lobbySearch", lobbySearch);
+    fetcher.load(`${location.pathname}?${searchParams.toString()}`);
+  };
+
+  // Use fetcher data if available, otherwise use loader data
+  const displayLobbies = fetcher.data?.lobbies || lobbies;
+  const displayPagination = fetcher.data?.lobbyPagination || lobbyPagination;
+
+  // Determine which nav items to show
+  const navItems = isInLobbyRoute ? lobbyNavItems : mainNavItems;
+  const baseNavPath = isInLobbyRoute ? `/lobby/${lobbyIdFromUrl}` : "";
 
   return (
-    <div className="min-h-screen bg-theme-primary text-theme-primary">
-      <header className="bg-theme-secondary border-b border-theme">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center gap-6">
-            {/* Logo and Title */}
-            <div className="flex items-center gap-3">
-              <Logo className="w-9 h-9 logo-animated" />
-              <h1 className="text-lg font-semibold tracking-tight">Console</h1>
-            </div>
+    <div className="min-h-screen bg-theme-primary text-theme-primary flex">
+      {/* Mobile overlay */}
+      {isMobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
 
-            {/* Lobby Switcher */}
-            {lobbies.length > 1 && (
-              <div className="hidden md:block pl-6 border-l border-theme">
-                <LobbySwitcher
-                  lobbies={lobbies}
-                  currentLobbyId={currentLobbyId || null}
-                />
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed lg:sticky top-1 left-1 bottom-1 z-50 h-[calc(100vh-8px)] bg-theme-secondary shadow-md rounded-xl
+          border border-black/10 dark:border-white/15
+          flex flex-col transition-all duration-300 ease-in-out
+          ${isMobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+          ${isCollapsed ? "lg:w-[72px]" : "lg:w-64"}
+          w-64
+        `}
+      >
+        {/* Logo Header */}
+        <div className={`flex items-center gap-3 px-4 lg:px-6 py-[13px] ${isCollapsed ? "lg:justify-center lg:px-3" : ""}`}>
+          <Logo className="w-9 h-9 flex-shrink-0 logo-animated" />
+          {!isCollapsed && (
+            <span className="text-lg font-semibold tracking-tight">Console</span>
+          )}
+          {/* Mobile close button */}
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="lg:hidden ml-auto p-2 rounded-lg hover:bg-theme-tertiary text-theme-secondary cursor-pointer"
+          >
+            {Icons.close}
+          </button>
+        </div>
+
+        {/* Back to Main Menu (when in lobby edit mode) */}
+        {isInLobbyRoute && (
+          <div className={`p-3 border-b border-theme ${isCollapsed ? "lg:px-2" : ""}`}>
+            <NavLink
+              to="/lobbies"
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium cursor-pointer
+                text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary
+                ${isCollapsed ? "lg:justify-center lg:px-0" : ""}
+              `}
+              title={isCollapsed ? "Back to Lobbies" : undefined}
+            >
+              {Icons.back}
+              {!isCollapsed && <span>Back to Lobbies</span>}
+            </NavLink>
+          </div>
+        )}
+
+        {/* Lobby Switcher Dropdown (when editing a lobby) */}
+        {isInLobbyRoute && !isCollapsed && (
+          <div ref={lobbySwitcherRef} className="relative p-3 border-b border-theme">
+            {/* Dropdown Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsLobbySwitcherOpen(!isLobbySwitcherOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 text-sm bg-theme-tertiary hover:bg-[var(--color-secondary-hover)] rounded-lg border border-theme transition cursor-pointer"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-theme-secondary">Lobby:</span>
+                <span className="font-medium truncate">{currentEditingLobby?.name}</span>
+              </div>
+              <svg
+                className={cn("w-4 h-4 text-theme-muted transition-transform flex-shrink-0", isLobbySwitcherOpen && "rotate-180")}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown Content - Absolutely positioned */}
+            {isLobbySwitcherOpen && (
+              <div className="absolute left-3 right-3 top-full mt-1 z-50 bg-theme-secondary rounded-lg border border-theme shadow-lg overflow-hidden">
+                {/* Search (only if pagination needed) */}
+                {displayPagination.needsPagination && (
+                  <div className="p-2 border-b border-theme">
+                    <input
+                      type="text"
+                      placeholder="Search lobbies..."
+                      value={lobbySearch}
+                      onChange={(e) => handleLobbySearch(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm bg-theme-tertiary border border-theme rounded-lg focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-red)]"
+                    />
+                  </div>
+                )}
+
+                {/* Lobby List */}
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {displayLobbies.map((lobby: { id: string; name: string; slug: string; isDefault: boolean }) => (
+                    <Link
+                      key={lobby.id}
+                      to={`/lobby/${lobby.id}`}
+                      onClick={() => setIsLobbySwitcherOpen(false)}
+                      className={cn(
+                        "flex items-center justify-between px-4 py-2 text-sm transition-all cursor-pointer",
+                        lobby.id === lobbyIdFromUrl
+                          ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
+                          : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate">{lobby.name}</span>
+                        {lobby.isDefault && (
+                          <span className="text-xs opacity-60">(default)</span>
+                        )}
+                      </div>
+                      {lobby.id === lobbyIdFromUrl && (
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </Link>
+                  ))}
+                  {displayLobbies.length === 0 && (
+                    <p className="text-sm text-theme-muted px-4 py-2">No lobbies found</p>
+                  )}
+                </div>
+
+                {/* Pagination (if needed) */}
+                {displayPagination.needsPagination && displayPagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between px-3 py-2 border-t border-theme">
+                    <button
+                      type="button"
+                      onClick={() => handleLobbyPageChange(displayPagination.currentPage - 1)}
+                      disabled={displayPagination.currentPage <= 1}
+                      className="px-2 py-1 text-xs text-theme-secondary hover:text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="text-xs text-theme-muted">
+                      {displayPagination.currentPage} / {displayPagination.totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleLobbyPageChange(displayPagination.currentPage + 1)}
+                      disabled={displayPagination.currentPage >= displayPagination.totalPages}
+                      className="px-2 py-1 text-xs text-theme-secondary hover:text-theme-primary disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
+        )}
 
-          <div className="flex items-center gap-3">
-            {/* User info */}
-            <div className="text-sm text-theme-secondary hidden sm:flex items-center gap-2">
-              <span className="font-medium text-theme-primary">{user.name || user.email}</span>
-              {account.role && (
-                <span className="badge-brand">
-                  {account.role}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <ColorModeToggle />
-              <a
-                href={lobbyUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 text-sm btn-primary rounded-lg cursor-pointer"
-              >
-                View Lobby
-              </a>
-              <Form method="post" action="/logout">
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-sm btn-ghost rounded-lg cursor-pointer"
-                >
-                  Logout
-                </button>
-              </Form>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Navigation Tabs */}
-      <nav className="bg-theme-secondary border-b border-theme">
-        <div className="container mx-auto px-4">
-          <div className="flex gap-1 overflow-x-auto scrollbar-hide">
-            {navItems.map((item) => (
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+          {navItems.map((item) => {
+            const to = item.to ? `${baseNavPath}/${item.to}` : baseNavPath || "/";
+            return (
               <NavLink
                 key={item.to}
-                to={item.to}
+                to={to}
                 end={item.end}
+                onClick={() => setIsMobileOpen(false)}
                 className={({ isActive }) =>
-                  `px-4 py-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 -mb-px ${
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-sm font-medium cursor-pointer
+                  ${isCollapsed ? "lg:justify-center lg:px-0" : ""}
+                  ${
                     isActive
-                      ? "border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                      : "border-transparent text-theme-secondary hover:text-theme-primary hover:border-[var(--color-border)]"
+                      ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
+                      : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
                   }`
                 }
+                title={isCollapsed ? item.label : undefined}
               >
-                {item.label}
+                {Icons[item.icon]}
+                {!isCollapsed && <span>{item.label}</span>}
               </NavLink>
-            ))}
-          </div>
-        </div>
-      </nav>
+            );
+          })}
+        </nav>
 
-      <main className="container mx-auto px-4 py-8">
-        <Outlet />
-      </main>
+      </aside>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top Header */}
+        <header className="sticky top-0 z-30">
+          <div className="flex items-center justify-between px-4 lg:px-6 py-[13px]">
+            {/* Left side - Toggle & Mobile menu */}
+            <div className="flex items-center gap-2">
+              {/* Sidebar toggle (Desktop) */}
+              <button
+                onClick={toggleSidebar}
+                className="hidden lg:flex p-2 -ml-2 rounded-lg hover:bg-theme-tertiary text-theme-secondary transition-colors cursor-pointer"
+                title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {isCollapsed ? Icons.panelRightClose : Icons.panelRightOpen}
+              </button>
+
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setIsMobileOpen(true)}
+                className="lg:hidden p-2 -ml-2 rounded-lg hover:bg-theme-tertiary text-theme-secondary cursor-pointer"
+              >
+                {Icons.menu}
+              </button>
+
+              {/* Current Context (Mobile) */}
+              <div className="lg:hidden flex items-center gap-2">
+                <Logo className="w-7 h-7" />
+                <span className="font-medium text-sm">
+                  {isInLobbyRoute && currentEditingLobby ? currentEditingLobby.name : "Console"}
+                </span>
+              </div>
+            </div>
+
+            {/* Right side controls */}
+            <div className="flex items-center gap-3">
+              <ColorModeToggle />
+
+              {/* User Menu Dropdown */}
+              <div ref={userMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 p-1 rounded-full hover:bg-theme-tertiary transition-colors cursor-pointer"
+                  title={user.name || user.email || "User menu"}
+                >
+                  {/* User Avatar */}
+                  <div className="w-8 h-8 rounded-full bg-[var(--color-brand-red)] flex items-center justify-center text-white text-sm font-medium">
+                    {(user.name || user.email || "U").charAt(0).toUpperCase()}
+                  </div>
+                </button>
+
+                {/* User Dropdown */}
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-theme-secondary rounded-lg border border-theme shadow-lg overflow-hidden z-50">
+                    {/* User Info */}
+                    <div className="px-4 py-3 border-b border-theme">
+                      <p className="font-medium text-theme-primary truncate">{user.name || "User"}</p>
+                      <p className="text-sm text-theme-muted truncate">{user.email}</p>
+                    </div>
+
+                    {/* Menu Items */}
+                    <div className="py-1">
+                      <Link
+                        to="/profile"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition-colors cursor-pointer"
+                      >
+                        {Icons.user}
+                        <span>Profile</span>
+                      </Link>
+                      <Link
+                        to="/billing"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition-colors cursor-pointer"
+                      >
+                        {Icons.billing}
+                        <span>Billing</span>
+                      </Link>
+                    </div>
+
+                    {/* Logout */}
+                    <div className="border-t border-theme py-1">
+                      <Form method="post" action="/logout" reloadDocument>
+                        <button
+                          type="submit"
+                          className="flex items-center gap-3 w-full px-4 py-2 text-sm text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition-colors cursor-pointer"
+                        >
+                          {Icons.logout}
+                          <span>Logout</span>
+                        </button>
+                      </Form>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+          <div className="max-w-6xl mx-auto">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
