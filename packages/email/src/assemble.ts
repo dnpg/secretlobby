@@ -63,7 +63,7 @@ export async function getAssembledEmail(
     year: variables.year ?? new Date().getFullYear(),
     consoleUrl,
     // Backwards compatibility for older header templates using {{logoUrl}}
-    logoUrl: variables.logoUrl ?? `${consoleUrl}/secret-lobby.png`,
+    logoUrl: variables.logoUrl ?? `${consoleUrl}/secret-lobby-logo.png`,
   };
 
   let subject: string;

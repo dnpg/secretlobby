@@ -110,6 +110,8 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     password_reset: DEFAULT_PASSWORD_RESET_BODY_HTML,
   };
 
+  const consoleUrl = process.env.CONSOLE_URL ?? "https://console.secretlobby.co";
+
   return {
     template,
     elements: {
@@ -118,6 +120,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     },
     defaultSubject: DEFAULT_EMAIL_SUBJECTS[key as keyof typeof DEFAULT_EMAIL_SUBJECTS] ?? "",
     defaultBodyHtml: defaultBodies[key] ?? "",
+    consoleUrl,
   };
 }
 
@@ -147,7 +150,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function EditTemplatePage() {
-  const { template, elements, defaultSubject, defaultBodyHtml } = useLoaderData<typeof loader>();
+  const { template, elements, defaultSubject, defaultBodyHtml, consoleUrl } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
@@ -157,7 +160,7 @@ export default function EditTemplatePage() {
   const [previewVars, setPreviewVars] = useState<Record<string, string | number>>(() => ({
     ...getDefaultPreviewVars(template.key),
     year: new Date().getFullYear(),
-    consoleUrl: "https://console.secretlobby.co",
+    consoleUrl,
   }));
 
   useEffect(() => {
@@ -172,9 +175,9 @@ export default function EditTemplatePage() {
     setPreviewVars({
       ...getDefaultPreviewVars(template.key),
       year: new Date().getFullYear(),
-      consoleUrl: "https://console.secretlobby.co",
+      consoleUrl,
     });
-  }, [template.key, template.subject, template.bodyHtml]);
+  }, [template.key, template.subject, template.bodyHtml, consoleUrl]);
 
   const previewHtml = useMemo(() => {
     const vars = previewVars;
@@ -296,19 +299,6 @@ export default function EditTemplatePage() {
                       ...prev,
                       year: Number(e.target.value || new Date().getFullYear()),
                     }))
-                  }
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  consoleUrl (logo base URL)
-                </label>
-                <input
-                  type="url"
-                  value={String(previewVars.consoleUrl ?? "https://console.secretlobby.co")}
-                  onChange={(e) =>
-                    setPreviewVars((prev) => ({ ...prev, consoleUrl: e.target.value }))
                   }
                   className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
                 />
