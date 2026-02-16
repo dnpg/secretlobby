@@ -1,9 +1,62 @@
 import { prisma, type Account, type Lobby } from "@secretlobby/db";
 import { validatePreviewToken } from "@secretlobby/auth";
 
+/** Cookie name for persisting preview token across navigation (e.g. after password submit) */
+export const PREVIEW_COOKIE_NAME = "preview_token";
+
+const PREVIEW_COOKIE_MAX_AGE = 60 * 60; // 1 hour, match token expiry
+
+function parseCookie(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp("(^|;\\s*)" + name.replace(/[.*+?^${}()|[\]\\]/g, "\\$0") + "=([^;]*)"));
+  return match ? decodeURIComponent(match[2].trim()) : null;
+}
+
 /**
- * Check if the request is from localhost (development mode)
+ * Build Set-Cookie header value to persist preview token (call when URL has ?preview=token).
  */
+export function getPreviewCookieHeader(token: string): string {
+  const isProd = process.env.NODE_ENV === "production";
+  return [
+    `${PREVIEW_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    "Path=/",
+    `Max-Age=${PREVIEW_COOKIE_MAX_AGE}`,
+    "SameSite=Lax",
+    ...(isProd ? ["Secure"] : []),
+  ].join("; ");
+}
+
+/**
+ * Build Set-Cookie header value to clear the preview cookie (exit preview).
+ */
+export function getClearPreviewCookieHeader(): string {
+  const isProd = process.env.NODE_ENV === "production";
+  return [
+    `${PREVIEW_COOKIE_NAME}=`,
+    "Path=/",
+    "Max-Age=0",
+    "SameSite=Lax",
+    ...(isProd ? ["Secure"] : []),
+  ].join("; ");
+}
+
+/**
+ * Extract and validate preview token from the request (URL first, then cookie).
+ * Cookie allows preview to persist across navigation (e.g. after password submit).
+ * Returns the validated token info if valid, null otherwise.
+ */
+function getPreviewToken(request: Request): { lobbyId: string; accountId: string } | null {
+  const url = new URL(request.url);
+  const fromUrl = url.searchParams.get("preview");
+  if (fromUrl) {
+    const info = validatePreviewToken(fromUrl);
+    if (info) return info;
+  }
+  const fromCookie = parseCookie(request.headers.get("Cookie"), PREVIEW_COOKIE_NAME);
+  if (fromCookie) return validatePreviewToken(fromCookie);
+  return null;
+}
+
 export function isLocalhost(request: Request): boolean {
   const url = new URL(request.url);
   const hostname = request.headers.get("host") || url.hostname;
@@ -120,21 +173,6 @@ function extractLobbySlugFromPath(request: Request): string | null {
   }
 
   return null;
-}
-
-/**
- * Extract and validate preview token from the request URL.
- * Returns the validated token info if valid, null otherwise.
- */
-function getPreviewToken(request: Request): { lobbyId: string; accountId: string } | null {
-  const url = new URL(request.url);
-  const previewToken = url.searchParams.get("preview");
-
-  if (!previewToken) {
-    return null;
-  }
-
-  return validatePreviewToken(previewToken);
 }
 
 /**

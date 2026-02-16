@@ -15,6 +15,9 @@ export default [
   // Logout
   route("logout", "routes/logout.tsx"),
 
+  // Exit preview mode (clears preview cookie and redirects)
+  route("exit-preview", "routes/exit-preview.tsx"),
+
   // HLS audio streaming API routes
   route("api/hls/:trackId/playlist", "routes/api.hls.$trackId.playlist.tsx"),
   route("api/hls/:trackId/segment/:filename", "routes/api.hls.$trackId.segment.$filename.tsx"),

@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { Form, useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
-import { resolveTenant, isLocalhost } from "~/lib/subdomain.server";
+import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
 import { getSession, createSessionResponse, authenticateForLobby, isAuthenticatedForLobby } from "@secretlobby/auth";
 import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/content.server";
@@ -9,6 +9,7 @@ import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
 import type { SocialLinksSettings } from "~/components/SocialLinks";
+import { PreviewBar } from "~/components/PreviewBar";
 import { useHlsAudio } from "~/hooks/useHlsAudio";
 import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
 
@@ -298,6 +299,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       account: null,
       requiresPassword: !isAuthenticated,
       isAuthenticated,
+      isPreview: false,
       imageUrls: {
         background: null,
         backgroundDark: null,
@@ -337,6 +339,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       account: null,
       requiresPassword: false,
       isAuthenticated: false,
+      isPreview: false,
       imageUrls: {
         background: null,
         backgroundDark: null,
@@ -546,7 +549,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
-  return {
+  const data = {
     isLocalhost: false,
     content: null,
     lobby: {
@@ -560,6 +563,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     },
     requiresPassword: needsPassword,
     isAuthenticated: !needsPassword,
+    isPreview: tenant.isPreview,
     imageUrls,
     tracks,
     autoplayTrackId,
@@ -578,6 +582,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     gtmContainerId,
     csrfToken,
   };
+
+  // Persist preview token in cookie when present in URL so it survives navigation (e.g. after password submit)
+  const previewInUrl = new URL(request.url).searchParams.get("preview");
+  if (tenant.isPreview && previewInUrl) {
+    return new Response(JSON.stringify(data), {
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": getPreviewCookieHeader(previewInUrl),
+      },
+    });
+  }
+  return data;
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -870,7 +886,7 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
+  const { lobby, account, requiresPassword, isPreview, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
 
   // Compute content based on authentication state
   const lp = loginPageSettings;
@@ -901,6 +917,10 @@ export default function LobbyIndex() {
       >
         {requiresPassword ? "Skip to password field" : "Skip to player controls"}
       </a>
+
+      {isPreview && <PreviewBar />}
+
+      {isPreview && <div aria-hidden className="shrink-0" style={{ minHeight: 44 }} />}
 
       {requiresPassword ? (
         // Login page content
