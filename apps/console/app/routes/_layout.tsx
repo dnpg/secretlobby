@@ -299,6 +299,7 @@ export default function AdminLayout() {
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isLobbySwitcherOpen, setIsLobbySwitcherOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const lobbySwitcherRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -341,6 +342,16 @@ export default function AdminLayout() {
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isUserMenuOpen]);
+
+  // Add subtle glassy header background when scrolling
+  useEffect(() => {
+    function handleScroll() {
+      setScrolled(window.scrollY > 0);
+    }
+    handleScroll();
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Handle lobby search with debounce
   const handleLobbySearch = (value: string) => {
@@ -563,8 +574,16 @@ export default function AdminLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Header */}
-        <header className="sticky top-0 z-30">
-          <div className="flex items-center justify-between px-4 lg:px-6 py-[13px]">
+        <header className="sticky top-0 z-30 pl-[8px] pr-[2px] pt-[2px]">
+          <div
+            className={cn(
+              "rounded-xl border transition-all duration-300 backdrop-blur-xl",
+              scrolled
+                ? "shadow-lg border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70"
+                : "border-transparent bg-transparent"
+            )}
+          >
+            <div className="flex items-center justify-between px-4 lg:px-6 py-[13px]">
             {/* Left side - Toggle & Mobile menu */}
             <div className="flex items-center gap-2">
               {/* Sidebar toggle (Desktop) */}
@@ -655,6 +674,7 @@ export default function AdminLayout() {
                   </div>
                 )}
               </div>
+            </div>
             </div>
           </div>
         </header>

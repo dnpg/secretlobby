@@ -57,6 +57,20 @@ export async function verifyEmailWithToken(
     return { success: false, error: "invalid_token" };
   }
 
+  // If this token is for an email-change flow, apply the pending email first.
+  if (user.pendingEmail) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email: user.pendingEmail,
+        pendingEmail: null,
+        emailVerified: true,
+        emailVerifyToken: null,
+      },
+    });
+    return { success: true, userId: user.id };
+  }
+
   if (user.emailVerified) {
     return { success: false, error: "already_verified" };
   }
@@ -164,4 +178,49 @@ export async function sendVerificationEmail(
   });
 
   return token;
+}
+
+/**
+ * Starts an email change flow:
+ * - Stores the new email in pendingEmail
+ * - Generates a verification token
+ * - Sends a verification email to the NEW address
+ * The user's primary email is only updated after the verification link is confirmed.
+ */
+export async function requestEmailChange(
+  userId: string,
+  newEmail: string,
+  baseUrl: string
+): Promise<string> {
+  const email = newEmail.toLowerCase().trim();
+  if (!email) {
+    throw new Error("Email is required");
+  }
+
+  const token = generateVerificationToken();
+
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      pendingEmail: email,
+      emailVerifyToken: token,
+      emailVerified: false,
+    },
+    select: {
+      name: true,
+      pendingEmail: true,
+      emailVerifyToken: true,
+    },
+  });
+
+  const effectiveToken = user.emailVerifyToken ?? token;
+  const verificationUrl = generateVerificationUrl(effectiveToken, baseUrl);
+
+  await sendEmailVerification({
+    to: user.pendingEmail || email,
+    verificationUrl,
+    userName: user.name || undefined,
+  });
+
+  return effectiveToken;
 }

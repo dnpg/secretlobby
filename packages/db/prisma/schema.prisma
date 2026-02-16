@@ -123,6 +123,8 @@ model User {
   // Email verification
   emailVerified    Boolean @default(false)
   emailVerifyToken String?
+  /// Pending email address for email-change flow (only applied after verification)
+  pendingEmail     String?
 
   // Password reset
   passwordResetToken   String?

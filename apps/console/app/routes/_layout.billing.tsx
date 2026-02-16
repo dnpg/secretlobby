@@ -168,21 +168,11 @@ export default function Billing() {
           </div>
         </div>
 
-        <div className="mt-6 pt-6 border-t border-theme flex gap-3">
-          <Link
-            to="/billing/plans"
-            className="px-4 py-2 btn-primary rounded-lg transition inline-block cursor-pointer"
-          >
-            {isFree ? "Upgrade Plan" : "Change Plan"}
-          </Link>
-          {!isFree && subscription && !subscription.cancelAtPeriodEnd && (
-            <Link
-              to="/billing/plans?action=cancel"
-              className="px-4 py-2 btn-secondary rounded-lg transition inline-block cursor-pointer"
-            >
-              Cancel Subscription
-            </Link>
-          )}
+        <div className="mt-6 pt-6 border-t border-theme">
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <span className="text-amber-400 text-sm font-medium">Update plan</span>
+            <span className="text-theme-secondary text-sm">coming soon</span>
+          </div>
         </div>
       </div>
 

@@ -15,6 +15,7 @@ export default [
   route("logout", "routes/logout.tsx"),
   route("forgot-password", "routes/forgot-password.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
+  route("verify-email", "routes/verify-email.tsx"),
 
   // OAuth
   route("auth/google", "routes/auth.google.tsx"),
@@ -45,6 +46,7 @@ export default [
     route("social", "routes/_layout.social.tsx"),
     route("technical-info", "routes/_layout.technical-info.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
+    route("profile", "routes/_layout.profile.tsx"),
     route("billing", "routes/_layout.billing.tsx"),
     route("billing/plans", "routes/_layout.billing.plans.tsx"),
     route("billing/history", "routes/_layout.billing.history.tsx"),

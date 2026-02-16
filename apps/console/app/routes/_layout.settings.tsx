@@ -232,96 +232,31 @@ export default function Settings() {
         </Form>
       </div>
 
-      {/* Custom Domains */}
-      <div className="bg-theme-secondary border border-theme rounded-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">Custom Domains</h3>
-        <p className="text-sm text-theme-secondary mb-4">
-          Connect your own domain to your lobby (e.g., music.yourband.com)
-        </p>
-
-        {/* Add Domain Form */}
-        <Form method="post" className="mb-6">
-          <input type="hidden" name="intent" value="add_domain" />
-          <input type="hidden" name="_csrf" value={csrfToken} />
-          <div className="flex gap-2">
-            <input
-              type="text"
-              name="domain"
-              placeholder="music.yourband.com"
-              pattern="^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$"
-              required
-              className="flex-1 px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder:text-theme-secondary/50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              type="submit"
-              className="px-4 py-2 btn-primary rounded-lg transition"
-            >
-              Add Domain
-            </button>
+      {/* Custom Domains - Coming soon (upgrade-style) */}
+      <div className="bg-theme-secondary border border-theme rounded-lg p-6 relative overflow-hidden">
+        <div className="absolute top-3 right-3">
+          <span className="px-2 py-1 text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full">
+            Coming soon
+          </span>
+        </div>
+        <div className="flex items-start gap-3 mb-4">
+          <div className="shrink-0 w-10 h-10 rounded-lg bg-theme-tertiary border border-theme flex items-center justify-center">
+            <svg className="w-5 h-5 text-theme-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
           </div>
-        </Form>
-
-        {/* Domains List */}
-        {domains.length > 0 ? (
-          <div className="space-y-3">
-            {domains.map((domain) => (
-              <div
-                key={domain.id}
-                className="flex items-center justify-between p-4 bg-theme-tertiary border border-theme rounded-lg"
-              >
-                <div className="flex-1">
-                  <div className="font-medium">{domain.domain}</div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        domain.status === "VERIFIED"
-                          ? "bg-green-500/20 text-green-400"
-                          : domain.status === "FAILED"
-                          ? "bg-red-500/20 text-red-400"
-                          : "bg-yellow-500/20 text-yellow-400"
-                      }`}
-                    >
-                      {domain.status}
-                    </span>
-                    {domain.status === "PENDING" && (
-                      <span className="text-xs text-theme-secondary">
-                        Verification token: {domain.verificationToken}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <Form method="post">
-                  <input type="hidden" name="intent" value="delete_domain" />
-                  <input type="hidden" name="domainId" value={domain.id} />
-                  <input type="hidden" name="_csrf" value={csrfToken} />
-                  <button
-                    type="submit"
-                    className="px-3 py-1 text-sm text-red-400 hover:text-red-300 transition"
-                  >
-                    Remove
-                  </button>
-                </Form>
-              </div>
-            ))}
+          <div>
+            <h3 className="text-lg font-semibold mb-1">Custom Domains</h3>
+            <p className="text-sm text-theme-secondary">
+              Connect your own domain to your lobby (e.g., music.yourband.com). This feature will be available soon—no upgrade required.
+            </p>
           </div>
-        ) : (
-          <div className="text-center py-8 text-theme-secondary">
-            No custom domains added yet
-          </div>
-        )}
-
-        {/* DNS Instructions */}
-        {domains.some((d) => d.status === "PENDING") && (
-          <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <h4 className="font-semibold text-blue-400 mb-2">DNS Setup Instructions</h4>
-            <ol className="text-sm text-theme-secondary space-y-2 list-decimal list-inside">
-              <li>Add a CNAME record pointing to: <code className="bg-theme-tertiary px-2 py-0.5 rounded">lobby.{baseDomain}</code></li>
-              <li>Add a TXT record with the verification token shown above</li>
-              <li>Wait up to 24 hours for DNS propagation</li>
-              <li>We'll automatically verify your domain once DNS is configured</li>
-            </ol>
-          </div>
-        )}
+        </div>
+        <div className="py-4 px-4 bg-theme-tertiary/50 border border-theme rounded-lg">
+          <p className="text-sm text-theme-muted">
+            We're working on bringing custom domains to everyone. Check back later or contact support if you need early access.
+          </p>
+        </div>
       </div>
 
       {/* Default Lobby Info */}
