@@ -61,5 +61,13 @@ export {
   validatePreviewToken,
 } from "./preview.server.js";
 
+// Designer tokens for iframe preview
+export {
+  generateDesignerToken,
+  validateDesignerToken,
+  type DesignerPage,
+  type DesignerTokenValidationResult,
+} from "./designer-token.server.js";
+
 // Re-export arctic utilities for OAuth flows
 export { generateState, generateCodeVerifier } from "arctic";

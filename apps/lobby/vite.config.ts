@@ -35,10 +35,16 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: [
       "secretlobby.local",
+      "console.secretlobby.local",
       "www.secretlobby.local",
       "app.secretlobby.local",
       "admin.secretlobby.local",
       ".secretlobby.local", // Allow all subdomains
+      ".secretlobby.co", // Production subdomains
     ],
+    headers: {
+      // Allow iframe embedding from console in development
+      "Content-Security-Policy": "frame-ancestors 'self' http://localhost:* http://127.0.0.1:* http://*.secretlobby.local https://*.secretlobby.co",
+    },
   },
 });

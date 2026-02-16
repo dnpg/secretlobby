@@ -238,6 +238,7 @@ interface PlayerViewProps {
   technicalInfo?: TechnicalInfo | null;
   initialTrackId?: string | null;
   csrfToken: string;
+  isDesignerMode?: boolean;
 }
 
 export function PlayerView({
@@ -254,6 +255,7 @@ export function PlayerView({
   technicalInfo,
   initialTrackId,
   csrfToken,
+  isDesignerMode = false,
 }: PlayerViewProps) {
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, cancelAutoPlay, estimatedDuration } = audio;
 
@@ -822,26 +824,39 @@ export function PlayerView({
 
       {/* Header */}
       <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
-        <Form method="post" action="/logout" reloadDocument>
-          <input type="hidden" name="_csrf" value={csrfToken} />
-          <button
-            type="submit"
-            className="px-4 py-2 text-sm transition cursor-pointer"
+        {isDesignerMode ? (
+          <span
+            className="px-4 py-2 text-sm"
             style={{
               borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
-              backgroundColor: "var(--color-secondary)",
-              color: "var(--color-secondary-text)",
-            }}
-            onClick={() => {
-              trackEvent('logout', {
-                event_category: 'authentication',
-                method: 'button_click',
-              });
+              backgroundColor: "rgba(59, 130, 246, 0.2)",
+              color: "#60a5fa",
             }}
           >
-            Logout
-          </button>
-        </Form>
+            Designer Preview
+          </span>
+        ) : (
+          <Form method="post" action="/logout" reloadDocument>
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm transition cursor-pointer"
+              style={{
+                borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
+                backgroundColor: "var(--color-secondary)",
+                color: "var(--color-secondary-text)",
+              }}
+              onClick={() => {
+                trackEvent('logout', {
+                  event_category: 'authentication',
+                  method: 'button_click',
+                });
+              }}
+            >
+              Logout
+            </button>
+          </Form>
+        )}
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-6xl" style={{ color: "var(--color-text-primary)" }}>

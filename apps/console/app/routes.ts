@@ -1,6 +1,9 @@
 import { type RouteConfig, index, route, layout, prefix } from "@react-router/dev/routes";
 
 export default [
+  // Designer mode (full-screen, no layout)
+  route("designer/:lobbyId", "routes/designer.$lobbyId.tsx"),
+
   // API (no layout)
   route("api/media", "routes/api.media.ts"),
   route("api/webhooks/stripe", "routes/api.webhooks.stripe.ts"),

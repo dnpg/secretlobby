@@ -1,6 +1,9 @@
 import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
+  // Designer preview API (for console iframe)
+  route("api/designer-preview", "routes/api.designer-preview.tsx"),
+
   // Main lobby entry (password-protected)
   index("routes/_index.tsx"),
 
