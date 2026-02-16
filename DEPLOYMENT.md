@@ -5,10 +5,10 @@ This guide explains how to deploy the SecretLobby monorepo to your VPS using Dok
 ## Architecture
 
 This is a Turborepo monorepo with 4 applications:
-- **marketing** - Main marketing site (`secretlobby.io`)
-- **console** - Admin dashboard (`app.secretlobby.io`)
-- **lobby** - User-facing lobby pages (`*.secretlobby.io`)
-- **super-admin** - Super admin panel (`admin.secretlobby.io`)
+- **marketing** - Main marketing site (`secretlobby.co`)
+- **console** - Admin dashboard (`console.secretlobby.co`)
+- **lobby** - User-facing lobby pages (`*.secretlobby.co`)
+- **super-admin** - Super admin panel (`main.secretlobby.co`)
 
 All apps share:
 - **@secretlobby/db** - Prisma database client
@@ -114,7 +114,7 @@ Each app needs these environment variables in Dokploy:
 ### Shared Variables (all apps)
 ```bash
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 SESSION_SECRET=generate-a-secure-32-char-minimum-secret
 ```
 
@@ -137,7 +137,7 @@ REDIS_URL=redis://redis:6379
 ```bash
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-AUTH_URL=https://app.secretlobby.io
+AUTH_URL=https://app.secretlobby.co
 ```
 
 ---
@@ -146,7 +146,7 @@ AUTH_URL=https://app.secretlobby.io
 
 Create **4 separate services** in Dokploy, one for each app.
 
-### Service 1: Marketing (secretlobby.io)
+### Service 1: Marketing (secretlobby.co)
 
 | Setting | Value |
 |---------|-------|
@@ -154,16 +154,16 @@ Create **4 separate services** in Dokploy, one for each app.
 | Dockerfile | `docker/Dockerfile` |
 | Build Args | `APP_NAME=marketing` |
 | Port | 3000 |
-| Domain | `secretlobby.io`, `www.secretlobby.io` |
+| Domain | `secretlobby.co`, `www.secretlobby.co` |
 
 Environment Variables:
 ```
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
-CONSOLE_URL=//app.secretlobby.io
+CORE_DOMAIN=secretlobby.co
+CONSOLE_URL=//app.secretlobby.co
 ```
 
-### Service 2: Console (app.secretlobby.io)
+### Service 2: Console (app.secretlobby.co)
 
 | Setting | Value |
 |---------|-------|
@@ -172,18 +172,18 @@ CONSOLE_URL=//app.secretlobby.io
 | Build Args | `APP_NAME=console`, `RUN_MIGRATIONS=true` |
 | BuildKit Secret | `DATABASE_URL=postgresql://...` |
 | Port | 3000 |
-| Domain | `app.secretlobby.io` |
+| Domain | `app.secretlobby.co` |
 
 Environment Variables:
 ```
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 SESSION_SECRET=your-secret-min-32-chars
 REDIS_URL=redis://redis:6379
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-AUTH_URL=https://app.secretlobby.io
+AUTH_URL=https://app.secretlobby.co
 R2_ACCOUNT_ID=your-cloudflare-account-id
 R2_ACCESS_KEY_ID=your-r2-access-key
 R2_SECRET_ACCESS_KEY=your-r2-secret-key
@@ -191,7 +191,7 @@ R2_BUCKET_NAME=secretlobby-media
 R2_PUBLIC_URL=https://cdn.secretlobby.co
 ```
 
-### Service 3: Lobby (*.secretlobby.io)
+### Service 3: Lobby (*.secretlobby.co)
 
 | Setting | Value |
 |---------|-------|
@@ -199,16 +199,16 @@ R2_PUBLIC_URL=https://cdn.secretlobby.co
 | Dockerfile | `docker/Dockerfile` |
 | Build Args | `APP_NAME=lobby` |
 | Port | 3000 |
-| Domain | `*.secretlobby.io` (wildcard) |
+| Domain | `*.secretlobby.co` (wildcard) |
 
 Environment Variables:
 ```
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 SESSION_SECRET=your-secret-min-32-chars
 REDIS_URL=redis://redis:6379
-APP_DOMAIN=secretlobby.io
+APP_DOMAIN=secretlobby.co
 R2_ACCOUNT_ID=your-cloudflare-account-id
 R2_ACCESS_KEY_ID=your-r2-access-key
 R2_SECRET_ACCESS_KEY=your-r2-secret-key
@@ -216,7 +216,7 @@ R2_BUCKET_NAME=secretlobby-media
 R2_PUBLIC_URL=https://cdn.secretlobby.co
 ```
 
-### Service 4: Super Admin (admin.secretlobby.io)
+### Service 4: Super Admin (admin.secretlobby.co)
 
 | Setting | Value |
 |---------|-------|
@@ -224,17 +224,17 @@ R2_PUBLIC_URL=https://cdn.secretlobby.co
 | Dockerfile | `docker/Dockerfile` |
 | Build Args | `APP_NAME=super-admin` |
 | Port | 3000 |
-| Domain | `admin.secretlobby.io` |
+| Domain | `admin.secretlobby.co` |
 
 Environment Variables:
 ```
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 SESSION_SECRET=your-secret-min-32-chars
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-AUTH_URL=https://admin.secretlobby.io
+AUTH_URL=https://admin.secretlobby.co
 ```
 
 ---
@@ -388,10 +388,10 @@ npx prisma migrate deploy
 
 | Service | APP_NAME | RUN_MIGRATIONS | Domain |
 |---------|----------|----------------|--------|
-| Marketing | marketing | false | secretlobby.io |
-| Console | console | true | app.secretlobby.io |
-| Lobby | lobby | false | *.secretlobby.io |
-| Super Admin | super-admin | false | admin.secretlobby.io |
+| Marketing | marketing | false | secretlobby.co |
+| Console | console | true | app.secretlobby.co |
+| Lobby | lobby | false | *.secretlobby.co |
+| Super Admin | super-admin | false | admin.secretlobby.co |
 
 ---
 

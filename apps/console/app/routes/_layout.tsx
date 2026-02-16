@@ -209,7 +209,10 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   // Use CORE_DOMAIN from environment
-  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.io";
+  const baseDomain = process.env.CORE_DOMAIN;
+  if (!baseDomain) {
+    throw new Error("CORE_DOMAIN environment variable must be set");
+  }
 
   // Detect if we're in local development (check hostname)
   const hostname = request.headers.get("host") || url.hostname;

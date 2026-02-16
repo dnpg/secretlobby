@@ -8,9 +8,9 @@ Cross-Site Request Forgery (CSRF) protection has been implemented across the Ban
 
 CSRF is an attack that tricks a user's browser into performing unwanted actions on a web application where the user is authenticated. For example:
 
-1. User logs into `console.secretlobby.io`
+1. User logs into `console.secretlobby.co`
 2. User visits malicious site `evil.com`
-3. `evil.com` makes a hidden POST request to `console.secretlobby.io/settings` to change user settings
+3. `evil.com` makes a hidden POST request to `console.secretlobby.co/settings` to change user settings
 4. Without CSRF protection, this request would succeed because the user's session cookie is automatically sent
 
 ## How Our Protection Works

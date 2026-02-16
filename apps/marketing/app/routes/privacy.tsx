@@ -135,7 +135,7 @@ export default function Privacy() {
               <li><strong>Opt-out:</strong> Opt out of marketing communications at any time</li>
             </ul>
             <p className="text-gray-300 leading-relaxed mt-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
-              To exercise these rights, please contact us at privacy@secretlobby.io.
+              To exercise these rights, please contact us at privacy@secretlobby.co.
             </p>
           </section>
 
@@ -181,7 +181,7 @@ export default function Privacy() {
             </p>
             <div className="mt-4 text-gray-300">
               <p>Secret Lobby</p>
-              <p>Email: privacy@secretlobby.io</p>
+              <p>Email: privacy@secretlobby.co</p>
             </div>
           </section>
         </div>

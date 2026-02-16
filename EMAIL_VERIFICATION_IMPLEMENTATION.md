@@ -131,7 +131,7 @@ const user = await createUser(email, password, name);
 const { user, verificationToken } = await createUserWithVerification(
   email,
   password,
-  "https://app.secretlobby.io",
+  "https://console.secretlobby.co",
   name
 );
 ```
@@ -392,10 +392,10 @@ return (
 ```bash
 # Email service (Resend)
 RESEND_API_KEY=re_xxxxxxxxxxxxx
-EMAIL_FROM="SecretLobby <noreply@secretlobby.io>"
+EMAIL_FROM="SecretLobby <noreply@secretlobby.co>"
 
 # Base URL for verification links
-AUTH_URL=https://app.secretlobby.io  # Production
+AUTH_URL=https://console.secretlobby.co  # Production
 # AUTH_URL=http://localhost:3000     # Development
 ```
 
@@ -476,7 +476,7 @@ Checks if a user's email is verified.
 #### `generateVerificationUrl(token: string, baseUrl: string): string`
 Generates the complete verification URL.
 
-**Example:** `https://app.secretlobby.io/verify-email?token=abc123...`
+**Example:** `https://console.secretlobby.co/verify-email?token=abc123...`
 
 #### `sendVerificationEmail(userId: string, baseUrl: string): Promise<string>`
 Complete flow: creates token, generates URL, sends email.

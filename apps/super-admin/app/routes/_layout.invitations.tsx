@@ -25,7 +25,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     getInvitationStats(),
   ]);
 
-  const consoleUrl = process.env.CONSOLE_URL || "https://app.secretlobby.io";
+  const consoleUrl = process.env.CONSOLE_URL || "https://console.secretlobby.co";
 
   return {
     invitations: data.invitations,

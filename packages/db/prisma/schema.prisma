@@ -1,4 +1,4 @@
-// Multi-tenant schema for secretlobby.io
+// Multi-tenant schema for secretlobby.co
 // Band/Artist lobby landing pages platform
 
 generator client {
@@ -83,7 +83,7 @@ enum InvitationStatus {
 model Account {
   id   String @id @default(cuid())
   name String // Organization/Band name
-  slug String @unique // Subdomain: {slug}.secretlobby.io
+  slug String @unique // Subdomain: {slug}.secretlobby.co
 
   // Subscription & Billing
   subscriptionTier SubscriptionTier @default(FREE)
@@ -207,7 +207,7 @@ model Lobby {
 
   // Basic info
   name        String // Internal name
-  slug        String // URL path: {account-slug}.secretlobby.io/{lobby-slug}
+  slug        String // URL path: {account-slug}.secretlobby.co/{lobby-slug}
   title       String? // Public title
   description String? // Public description
 
@@ -505,7 +505,7 @@ model SystemSettings {
 
   // Platform Settings
   platformName     String   @default("SecretLobby")
-  supportEmail     String   @default("support@secretlobby.io")
+  supportEmail     String   @default("support@secretlobby.co")
 
   // Feature Flags
   allowSignups     Boolean  @default(true)

@@ -143,7 +143,7 @@ export default function Terms() {
               Secret Lobby respects the intellectual property rights of others and expects users to do the same. We will respond to notices of alleged copyright infringement that comply with the Digital Millennium Copyright Act (DMCA).
             </p>
             <p className="text-gray-300 leading-relaxed mt-4" style={{ textWrapStyle: "balance" } as React.CSSProperties}>
-              If you believe your copyrighted work has been infringed on our platform, please send a DMCA notice to dmca@secretlobby.io with the required information.
+              If you believe your copyrighted work has been infringed on our platform, please send a DMCA notice to dmca@secretlobby.co with the required information.
             </p>
           </section>
 
@@ -237,7 +237,7 @@ export default function Terms() {
             </p>
             <div className="mt-4 text-gray-300">
               <p>Secret Lobby</p>
-              <p>Email: legal@secretlobby.io</p>
+              <p>Email: legal@secretlobby.co</p>
             </div>
           </section>
         </div>

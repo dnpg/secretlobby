@@ -134,7 +134,7 @@ export async function createUser(
  * Creates a new user with password and sends email verification
  * @param email - User's email address
  * @param password - User's password
- * @param baseUrl - Base URL for verification link (e.g., https://app.secretlobby.io)
+ * @param baseUrl - Base URL for verification link (e.g., https://console.secretlobby.co)
  * @param name - Optional user name
  * @returns The created user and verification token
  */

@@ -4,7 +4,7 @@ CREATE TABLE "SystemSettings" (
     "enabledGateways" TEXT[] DEFAULT ARRAY['stripe']::TEXT[],
     "defaultGateway" TEXT NOT NULL DEFAULT 'stripe',
     "platformName" TEXT NOT NULL DEFAULT 'SecretLobby',
-    "supportEmail" TEXT NOT NULL DEFAULT 'support@secretlobby.io',
+    "supportEmail" TEXT NOT NULL DEFAULT 'support@secretlobby.co',
     "allowSignups" BOOLEAN NOT NULL DEFAULT true,
     "maintenanceMode" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

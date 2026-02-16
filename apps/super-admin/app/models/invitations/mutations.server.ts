@@ -10,7 +10,7 @@ function generateInviteCode(): string {
 }
 
 function getInviteUrl(code: string): string {
-  const consoleUrl = process.env.CONSOLE_URL || "https://app.secretlobby.io";
+  const consoleUrl = process.env.CONSOLE_URL || "https://console.secretlobby.co";
   return `${consoleUrl}/signup?code=${code}`;
 }
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ============================================================================
-# secretlobby.io - Local Development Setup Script
+# secretlobby.co - Local Development Setup Script
 # ============================================================================
 # This script sets up the local development environment:
 # 1. Adds required entries to /etc/hosts
@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 
 echo ""
 echo "============================================================"
-echo "  secretlobby.io - Local Development Setup"
+echo "  secretlobby.co - Local Development Setup"
 echo "============================================================"
 echo ""
 
@@ -71,7 +71,7 @@ if [ ${#MISSING_ENTRIES[@]} -gt 0 ]; then
 
         # Add entries
         echo "" | sudo tee -a "$HOSTS_FILE" > /dev/null
-        echo "# secretlobby.io local development" | sudo tee -a "$HOSTS_FILE" > /dev/null
+        echo "# secretlobby.co local development" | sudo tee -a "$HOSTS_FILE" > /dev/null
         echo "127.0.0.1 ${MISSING_ENTRIES[*]}" | sudo tee -a "$HOSTS_FILE" > /dev/null
 
         echo -e "${GREEN}✓ Entries added successfully!${NC}"

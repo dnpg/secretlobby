@@ -10,7 +10,7 @@ This project uses **Option 1: Designated Migration App** approach for running da
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Console App (app.secretlobby.io)                   │
+│  Console App (console.secretlobby.co)                   │
 │  ┌──────────────────────────────────────────────┐   │
 │  │ 1. Container starts                          │   │
 │  │ 2. Entrypoint script checks RUN_MIGRATIONS  │   │
@@ -77,23 +77,23 @@ docker run -d \
 
 ### Dokploy Deployment
 
-#### Console App (app.secretlobby.io)
+#### Console App (console.secretlobby.co)
 ```bash
 # Environment Variables
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 SESSION_SECRET=your-secret-here
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 RUN_MIGRATIONS=true  # ← CRITICAL: Only console has this
 ```
 
-#### Marketing App (secretlobby.io)
+#### Marketing App (secretlobby.co)
 ```bash
 # Environment Variables
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 SESSION_SECRET=your-secret-here
-CONSOLE_URL=//app.secretlobby.io
+CONSOLE_URL=//console.secretlobby.co
 # NO RUN_MIGRATIONS - marketing skips migrations
 ```
 
@@ -101,7 +101,7 @@ CONSOLE_URL=//app.secretlobby.io
 ```bash
 # Environment Variables
 NODE_ENV=production
-CORE_DOMAIN=secretlobby.io
+CORE_DOMAIN=secretlobby.co
 SESSION_SECRET=your-secret-here
 DATABASE_URL=postgresql://user:password@postgres:5432/secretlobby
 # NO RUN_MIGRATIONS - these apps skip migrations

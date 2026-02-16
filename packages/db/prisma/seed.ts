@@ -1,5 +1,5 @@
 /**
- * Database Seed Script for secretlobby.io
+ * Database Seed Script for secretlobby.co
  *
  * Creates test data for local development:
  * - Demo user with password login
@@ -430,7 +430,7 @@ async function main() {
       enabledGateways: ["stripe"],
       defaultGateway: "stripe",
       platformName: "SecretLobby",
-      supportEmail: "support@secretlobby.io",
+      supportEmail: "support@secretlobby.co",
       allowSignups: true,
       maintenanceMode: false,
     },

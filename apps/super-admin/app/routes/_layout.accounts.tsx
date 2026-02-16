@@ -25,8 +25,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   });
 
   // Get base domain from environment
-  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.io";
-  const consoleDomain = process.env.CONSOLE_DOMAIN || `app.${baseDomain}`;
+  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.co";
+  const consoleDomain = process.env.CONSOLE_DOMAIN || `console.${baseDomain}`;
 
   // Detect if we're in local development
   const url = new URL(request.url);

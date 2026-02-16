@@ -118,7 +118,7 @@ export async function isEmailVerified(userId: string): Promise<boolean> {
 /**
  * Generates a verification URL for the user
  * @param token - The verification token
- * @param baseUrl - The base URL of the application (e.g., https://app.secretlobby.io)
+ * @param baseUrl - The base URL of the application (e.g., https://console.secretlobby.co)
  * @returns The complete verification URL
  */
 export function generateVerificationUrl(token: string, baseUrl: string): string {

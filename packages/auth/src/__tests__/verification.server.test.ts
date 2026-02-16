@@ -311,20 +311,20 @@ describe("Email Verification", () => {
   describe("generateVerificationUrl", () => {
     it("should generate verification URL with token", () => {
       const token = "abc123def456";
-      const baseUrl = "https://app.secretlobby.io";
+      const baseUrl = "https://console.secretlobby.co";
 
       const url = generateVerificationUrl(token, baseUrl);
 
-      expect(url).toBe("https://app.secretlobby.io/verify-email?token=abc123def456");
+      expect(url).toBe("https://console.secretlobby.co/verify-email?token=abc123def456");
     });
 
     it("should remove trailing slash from base URL", () => {
       const token = "abc123";
-      const baseUrl = "https://app.secretlobby.io/";
+      const baseUrl = "https://console.secretlobby.co/";
 
       const url = generateVerificationUrl(token, baseUrl);
 
-      expect(url).toBe("https://app.secretlobby.io/verify-email?token=abc123");
+      expect(url).toBe("https://console.secretlobby.co/verify-email?token=abc123");
     });
 
     it("should work with localhost URLs", () => {
@@ -358,7 +358,7 @@ describe("Email Verification", () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
       vi.mocked(prisma.user.update).mockResolvedValue(mockUser);
 
-      const baseUrl = "https://app.secretlobby.io";
+      const baseUrl = "https://console.secretlobby.co";
       const token = await sendVerificationEmail("user-123", baseUrl);
 
       expect(token).toBeDefined();
@@ -374,7 +374,7 @@ describe("Email Verification", () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
 
       await expect(
-        sendVerificationEmail("non-existent", "https://app.secretlobby.io")
+        sendVerificationEmail("non-existent", "https://console.secretlobby.co")
       ).rejects.toThrow("User not found");
     });
 
@@ -386,7 +386,7 @@ describe("Email Verification", () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
 
       await expect(
-        sendVerificationEmail("user-123", "https://app.secretlobby.io")
+        sendVerificationEmail("user-123", "https://console.secretlobby.co")
       ).rejects.toThrow("Email already verified");
     });
 
@@ -400,7 +400,7 @@ describe("Email Verification", () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
       vi.mocked(prisma.user.update).mockResolvedValue(mockUser);
 
-      await sendVerificationEmail("user-123", "https://app.secretlobby.io");
+      await sendVerificationEmail("user-123", "https://console.secretlobby.co");
 
       expect(sendEmailVerification).toHaveBeenCalledWith({
         to: "test@example.com",
@@ -417,7 +417,7 @@ describe("Email Verification", () => {
       vi.mocked(prisma.user.findUnique).mockResolvedValue(mockUser);
       vi.mocked(prisma.user.update).mockResolvedValue(mockUser);
 
-      await sendVerificationEmail("user-123", "https://app.secretlobby.io");
+      await sendVerificationEmail("user-123", "https://console.secretlobby.co");
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: "user-123" },

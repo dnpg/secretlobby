@@ -282,10 +282,10 @@ export default function Billing() {
           contact our support team.
         </p>
         <a
-          href="mailto:support@secretlobby.io"
+          href="mailto:support@secretlobby.co"
           className="text-blue-400 hover:text-blue-300 transition text-sm"
         >
-          support@secretlobby.io
+          support@secretlobby.co
         </a>
       </div>
     </div>

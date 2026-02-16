@@ -1,6 +1,6 @@
 # Band-Blast Security Documentation
 
-This folder contains comprehensive documentation for the security features implemented in Band-Blast (secretlobby.io).
+This folder contains comprehensive documentation for the security features implemented in Band-Blast (secretlobby.co).
 
 ## Documents
 
@@ -150,8 +150,8 @@ Practical guide for rolling out enhanced rate limiting:
 
 ### Contact
 
-- **Security Issues**: security@secretlobby.io
-- **Support**: support@secretlobby.io
+- **Security Issues**: security@secretlobby.co
+- **Support**: support@secretlobby.co
 - **Documentation Updates**: Create PR or issue on GitHub
 
 ## Changelog

@@ -66,7 +66,7 @@ export function extractSubdomain(request: Request): string | null {
   const hostWithoutPort = getHostname(request);
 
   // Use CORE_DOMAIN from environment
-  const appDomain = process.env.CORE_DOMAIN || "secretlobby.io";
+  const appDomain = process.env.CORE_DOMAIN || "secretlobby.co";
 
   console.log("[subdomain] Checking if", hostWithoutPort, "ends with", `.${appDomain}`);
 
@@ -91,7 +91,7 @@ export function isCustomDomain(request: Request): boolean {
   const hostWithoutPort = getHostname(request);
 
   // Use CORE_DOMAIN from environment
-  const appDomain = process.env.CORE_DOMAIN || "secretlobby.io";
+  const appDomain = process.env.CORE_DOMAIN || "secretlobby.co";
 
   return (
     !hostWithoutPort.endsWith(`.${appDomain}`) &&

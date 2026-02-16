@@ -22,7 +22,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   });
 
   // Get base domain from environment
-  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.io";
+  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.co";
 
   // Get account slug for subdomain URLs
   const account = await prisma.account.findUnique({

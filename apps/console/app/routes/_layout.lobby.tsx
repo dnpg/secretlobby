@@ -59,7 +59,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     : null;
 
   // Build lobby URL
-  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.io";
+  const baseDomain = process.env.CORE_DOMAIN || "secretlobby.co";
   const url = new URL(request.url);
   const hostname = request.headers.get("host") || url.hostname;
   const isLocalDev = hostname.includes("localhost") || hostname.includes(".local") || hostname.startsWith("127.0.0.1");

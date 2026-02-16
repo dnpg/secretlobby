@@ -15,7 +15,7 @@ export async function sendEmailVerification({
   userName,
 }: SendEmailVerificationParams) {
   const resend = getResendClient();
-  const from = process.env.EMAIL_FROM || "SecretLobby <noreply@secretlobby.io>";
+  const from = process.env.EMAIL_FROM || "SecretLobby <noreply@secretlobby.co>";
   const displayName = userName || "there";
 
   const { error } = await resend.emails.send({
