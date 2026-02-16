@@ -37,7 +37,7 @@ export default defineConfig({
       "secretlobby.local",
       "console.secretlobby.local",
       "www.secretlobby.local",
-      "app.secretlobby.local",
+      "console.secretlobby.local",
       "admin.secretlobby.local",
       ".secretlobby.local", // Allow all subdomains
       ".secretlobby.co", // Production subdomains

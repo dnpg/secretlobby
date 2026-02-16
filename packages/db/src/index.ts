@@ -20,6 +20,8 @@ export type {
   RateLimitViolation,
   InterestedPerson,
   Invitation,
+  EmailHtmlElement,
+  EmailTemplate,
 } from "./generated/client/client.js";
 
 // Re-export enums

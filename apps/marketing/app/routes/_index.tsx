@@ -15,7 +15,7 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { getTranslations } = await import("~/i18n");
 
-  const consoleUrl = process.env.CONSOLE_URL || "//app.secretlobby.local";
+  const consoleUrl = process.env.CONSOLE_URL || "//console.secretlobby.local";
 
   // Check if locale is in URL params (e.g., /es)
   const urlLocale = params.locale;

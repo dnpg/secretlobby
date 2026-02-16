@@ -22,6 +22,11 @@ export default [
     route("domains", "routes/_layout.domains.tsx"),
     route("interested", "routes/_layout.interested.tsx"),
     route("invitations", "routes/_layout.invitations.tsx"),
+    route("emails", "routes/_layout.emails.tsx", [
+      index("routes/_layout.emails._index.tsx"),
+      route("templates/:key", "routes/_layout.emails.templates.$key.tsx"),
+      route("elements/:key", "routes/_layout.emails.elements.$key.tsx"),
+    ]),
     route("plans", "routes/_layout.plans.tsx"),
     route("security", "routes/_layout.security.tsx"),
     route("security/:ipAddress", "routes/_layout.security.$ipAddress.tsx"),

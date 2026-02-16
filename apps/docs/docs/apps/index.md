@@ -12,7 +12,7 @@ SecretLobby is composed of four main applications, each serving a specific purpo
 | App | Port | Domain | Purpose |
 |-----|------|--------|---------|
 | [Marketing](/apps/marketing) | 3000 | secretlobby.co | Public marketing website |
-| [Console](/apps/console) | 3001 | app.secretlobby.co | User dashboard and management |
+| [Console](/apps/console) | 3001 | console.secretlobby.co | User dashboard and management |
 | [Lobby](/apps/lobby) | 3002 | *.secretlobby.co | Streaming and public lobbies |
 | [Super Admin](/apps/super-admin) | 3003 | admin.secretlobby.co | Platform administration |
 

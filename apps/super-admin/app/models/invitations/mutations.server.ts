@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { prisma, InvitationStatus } from "@secretlobby/db";
-import { sendInvitationEmail } from "@secretlobby/email";
+import { getAssembledEmail, sendInvitationEmail } from "@secretlobby/email";
 import { createLogger } from "@secretlobby/logger/server";
 
 const logger = createLogger({ service: "super-admin:invitations" });
@@ -67,12 +67,26 @@ export async function createInvitation(options: CreateInvitationOptions) {
     });
   }
 
-  // Send the email
+  // Send the email (use DB templates when available)
   try {
+    const repo = {
+      getTemplate: (key: string) =>
+        prisma.emailTemplate.findUnique({ where: { key } }).then((t) => (t ? { subject: t.subject, bodyHtml: t.bodyHtml } : null)),
+      getElement: (key: string) =>
+        prisma.emailHtmlElement.findUnique({ where: { key } }).then((e) => (e ? { html: e.html } : null)),
+    };
+    const consoleUrl = process.env.CONSOLE_URL || "https://console.secretlobby.co";
+    const content = await getAssembledEmail(
+      "invitation",
+      { userName: "there", inviteUrl, expiresInDays, consoleUrl },
+      repo
+    );
     await sendInvitationEmail({
       to: email,
       inviteUrl,
       expiresInDays,
+      subject: content.subject,
+      html: content.html,
     });
     logger.info({ email, invitationId: invitation.id }, "Invitation email sent");
   } catch (error) {
@@ -122,12 +136,27 @@ export async function resendInvitation(id: string, sentBy: string) {
     });
   }
 
-  // Send the email
+  // Send the email (use DB templates when available)
   try {
+    const userName = invitation.interestedPerson?.name || "there";
+    const repo = {
+      getTemplate: (key: string) =>
+        prisma.emailTemplate.findUnique({ where: { key } }).then((t) => (t ? { subject: t.subject, bodyHtml: t.bodyHtml } : null)),
+      getElement: (key: string) =>
+        prisma.emailHtmlElement.findUnique({ where: { key } }).then((e) => (e ? { html: e.html } : null)),
+    };
+    const consoleUrl = process.env.CONSOLE_URL || "https://console.secretlobby.co";
+    const content = await getAssembledEmail(
+      "invitation",
+      { userName, inviteUrl, expiresInDays: 7, consoleUrl },
+      repo
+    );
     await sendInvitationEmail({
       to: invitation.email,
       inviteUrl,
-      userName: invitation.interestedPerson?.name || undefined,
+      userName,
+      subject: content.subject,
+      html: content.html,
     });
     logger.info({ email: invitation.email, invitationId: id }, "Invitation resent");
   } catch (error) {

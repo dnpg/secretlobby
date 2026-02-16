@@ -36,7 +36,7 @@ await sendEmail({
   subject: 'Verify your email',
   html: templates.verifyEmail({
     name: 'John',
-    verificationUrl: 'https://app.secretlobby.co/verify?token=xxx',
+    verificationUrl: 'https://console.secretlobby.co/verify?token=xxx',
   }),
 });
 ```

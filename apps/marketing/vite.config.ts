@@ -10,7 +10,7 @@ export default defineConfig({
     allowedHosts: [
       "secretlobby.local",
       "www.secretlobby.local",
-      "app.secretlobby.local",
+      "console.secretlobby.local",
       "admin.secretlobby.local",
       ".secretlobby.local", // Allow all subdomains
     ],

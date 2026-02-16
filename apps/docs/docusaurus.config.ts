@@ -152,7 +152,7 @@ const config: Config = {
           title: 'Links',
           items: [
             { label: 'SecretLobby', href: 'https://secretlobby.co' },
-            { label: 'Console', href: 'https://app.secretlobby.co' },
+            { label: 'Console', href: 'https://console.secretlobby.co' },
           ],
         },
       ],

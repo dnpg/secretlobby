@@ -648,3 +648,34 @@ model Invitation {
   @@index([status])
   @@index([expiresAt])
 }
+
+// ============================================================================
+// EMAIL HTML ELEMENT (Reusable header/footer/custom blocks for emails)
+// ============================================================================
+
+model EmailHtmlElement {
+  id        String   @id @default(cuid())
+  key       String   @unique // e.g. "header", "footer"
+  name      String   // Display name
+  html      String   @db.Text // Inline-styled HTML safe for all email clients
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+// ============================================================================
+// EMAIL TEMPLATE (Notification email templates: subject + body)
+// ============================================================================
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  key       String   @unique // e.g. "invitation", "email_verification", "password_reset"
+  name      String   // Display name
+  subject   String   // Subject line; supports {{placeholders}}
+  bodyHtml  String   @db.Text // Body only (header/footer wrapped at send time); inline styles, table-based
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}

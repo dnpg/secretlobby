@@ -6,6 +6,7 @@
   - Run `mcp__memory__context_get` to retrieve project architecture and tech stack
 
   ## Project: Band-Blast (SecretLobby.co)
+  - Primary domain is `secretlobby.co` (not `.io`) — use `.co` in links and defaults.
   See MCP memory for full details about architecture, tech stack, and features.
 
   ## Marketing Site Hero Canvas

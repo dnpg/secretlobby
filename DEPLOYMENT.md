@@ -137,7 +137,7 @@ REDIS_URL=redis://redis:6379
 ```bash
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-AUTH_URL=https://app.secretlobby.co
+AUTH_URL=https://console.secretlobby.co
 ```
 
 ---
@@ -160,10 +160,10 @@ Environment Variables:
 ```
 NODE_ENV=production
 CORE_DOMAIN=secretlobby.co
-CONSOLE_URL=//app.secretlobby.co
+CONSOLE_URL=//console.secretlobby.co
 ```
 
-### Service 2: Console (app.secretlobby.co)
+### Service 2: Console (console.secretlobby.co)
 
 | Setting | Value |
 |---------|-------|
@@ -172,7 +172,7 @@ CONSOLE_URL=//app.secretlobby.co
 | Build Args | `APP_NAME=console`, `RUN_MIGRATIONS=true` |
 | BuildKit Secret | `DATABASE_URL=postgresql://...` |
 | Port | 3000 |
-| Domain | `app.secretlobby.co` |
+| Domain | `console.secretlobby.co` |
 
 Environment Variables:
 ```
@@ -183,7 +183,7 @@ SESSION_SECRET=your-secret-min-32-chars
 REDIS_URL=redis://redis:6379
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-AUTH_URL=https://app.secretlobby.co
+AUTH_URL=https://console.secretlobby.co
 R2_ACCOUNT_ID=your-cloudflare-account-id
 R2_ACCESS_KEY_ID=your-r2-access-key
 R2_SECRET_ACCESS_KEY=your-r2-secret-key
@@ -327,7 +327,7 @@ The local docker-compose uses Traefik as reverse proxy with:
 | Route | Priority | Service |
 |-------|----------|---------|
 | `secretlobby.co` | 100 | marketing |
-| `app.secretlobby.co` | 100 | console |
+| `console.secretlobby.co` | 100 | console |
 | `admin.secretlobby.co` | 100 | super-admin |
 | `*.secretlobby.co` | 10 | lobby |
 | `*` (catch-all) | 1 | lobby |
@@ -389,7 +389,7 @@ npx prisma migrate deploy
 | Service | APP_NAME | RUN_MIGRATIONS | Domain |
 |---------|----------|----------------|--------|
 | Marketing | marketing | false | secretlobby.co |
-| Console | console | true | app.secretlobby.co |
+| Console | console | true | console.secretlobby.co |
 | Lobby | lobby | false | *.secretlobby.co |
 | Super Admin | super-admin | false | admin.secretlobby.co |
 

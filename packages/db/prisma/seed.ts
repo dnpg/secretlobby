@@ -439,13 +439,189 @@ async function main() {
   console.log("  ✓ System settings initialized");
 
   // ============================================================================
+  // 10. Email HTML elements (header, footer) and notification templates
+  // ============================================================================
+  console.log("\nCreating default email elements and templates...");
+
+  await prisma.emailHtmlElement.upsert({
+    where: { key: "header" },
+    update: {
+      html: `<!-- Email Header: white bg, centered logo ({{consoleUrl}}) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td align="center" style="padding:24px 24px 16px 24px; text-align:center;">
+      <img src="{{consoleUrl}}/secret-lobby.png" alt="SecretLobby" width="200" height="200" style="display:block; border:0; outline:none; text-decoration:none; margin:0 auto; width:200px; height:200px;" />
+    </td>
+  </tr>
+</table>`,
+    },
+    create: {
+      key: "header",
+      name: "Email Header",
+      html: `<!-- Email Header: white bg, centered logo ({{consoleUrl}}) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td align="center" style="padding:24px 24px 16px 24px; text-align:center;">
+      <img src="{{consoleUrl}}/secret-lobby.png" alt="SecretLobby" width="200" height="200" style="display:block; border:0; outline:none; text-decoration:none; margin:0 auto; width:200px; height:200px;" />
+    </td>
+  </tr>
+</table>`,
+    },
+  });
+
+  await prisma.emailHtmlElement.upsert({
+    where: { key: "footer" },
+    update: {
+      html: `<!-- Email Footer: white bg, black text, brand red link -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td style="padding:24px; border-top:1px solid #e5e7eb;">
+      <p style="margin:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; color:#111111; line-height:1.5;">
+        &copy; {{year}} SecretLobby. All rights reserved.
+      </p>
+      <p style="margin:8px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px;">
+        <a href="https://secretlobby.co" style="color:#ed1b2f; text-decoration:none;">secretlobby.co</a>
+      </p>
+    </td>
+  </tr>
+</table>`,
+    },
+    create: {
+      key: "footer",
+      name: "Email Footer",
+      html: `<!-- Email Footer: white bg, black text, brand red link -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td style="padding:24px; border-top:1px solid #e5e7eb;">
+      <p style="margin:0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px; color:#111111; line-height:1.5;">
+        &copy; {{year}} SecretLobby. All rights reserved.
+      </p>
+      <p style="margin:8px 0 0 0; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size:12px;">
+        <a href="https://secretlobby.co" style="color:#ed1b2f; text-decoration:none;">secretlobby.co</a>
+      </p>
+    </td>
+  </tr>
+</table>`,
+    },
+  });
+
+  const invitationBody = `<!-- Body: Invitation - white bg, black text, brand red CTA -->
+<tr>
+  <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+    <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">You're Invited!</h2>
+    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">You've been invited to join SecretLobby — the private music sharing platform for artists. Create your own password-protected lobby and share your unreleased tracks with your fans.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
+      <tr>
+        <td align="center">
+          <a href="{{inviteUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Create Your Account</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This invitation link will expire in {{expiresInDays}} days and can only be used once.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
+      <tr>
+        <td style="padding-top:16px;">
+          <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="margin:4px 0 0 0;"><a href="{{inviteUrl}}" style="color:#ed1b2f; word-break:break-all;">{{inviteUrl}}</a></p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>`;
+
+  const verificationBody = `<!-- Body: Email verification - white bg, black text, brand red CTA -->
+<tr>
+  <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+    <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Verify your email address</h2>
+    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Thanks for signing up! Please verify your email address to get started with SecretLobby.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
+      <tr>
+        <td align="center">
+          <a href="{{verificationUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Verify Email</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
+      <tr>
+        <td style="padding-top:16px;">
+          <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link:</p>
+          <p style="margin:4px 0 0 0;"><a href="{{verificationUrl}}" style="color:#ed1b2f; word-break:break-all;">{{verificationUrl}}</a></p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>`;
+
+  const passwordResetBody = `<!-- Body: Password reset - white bg, black text, brand red CTA -->
+<tr>
+  <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+    <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Reset your password</h2>
+    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">We received a request to reset your password. Click the button below to choose a new one:</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
+      <tr>
+        <td align="center">
+          <a href="{{resetUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Reset Password</a>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This link will expire in 10 minutes. If you didn't request a password reset, you can safely ignore this email.</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
+      <tr>
+        <td style="padding-top:16px;">
+          <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link:</p>
+          <p style="margin:4px 0 0 0;"><a href="{{resetUrl}}" style="color:#ed1b2f; word-break:break-all;">{{resetUrl}}</a></p>
+        </td>
+      </tr>
+    </table>
+  </td>
+</tr>`;
+
+  await prisma.emailTemplate.upsert({
+    where: { key: "invitation" },
+    update: { subject: "You're invited to SecretLobby!", bodyHtml: invitationBody },
+    create: {
+      key: "invitation",
+      name: "Invitation",
+      subject: "You're invited to SecretLobby!",
+      bodyHtml: invitationBody,
+    },
+  });
+  await prisma.emailTemplate.upsert({
+    where: { key: "email_verification" },
+    update: { subject: "Verify your email address", bodyHtml: verificationBody },
+    create: {
+      key: "email_verification",
+      name: "Email verification",
+      subject: "Verify your email address",
+      bodyHtml: verificationBody,
+    },
+  });
+  await prisma.emailTemplate.upsert({
+    where: { key: "password_reset" },
+    update: { subject: "Reset your password", bodyHtml: passwordResetBody },
+    create: {
+      key: "password_reset",
+      name: "Password reset",
+      subject: "Reset your password",
+      bodyHtml: passwordResetBody,
+    },
+  });
+
+  console.log("  ✓ Email header and footer elements");
+  console.log("  ✓ Email templates: invitation, email_verification, password_reset");
+
+  // ============================================================================
   // Summary
   // ============================================================================
   console.log("\n" + "=".repeat(60));
   console.log("🎉 Seed completed successfully!\n");
   console.log("Test Credentials:");
   console.log("─".repeat(40));
-  console.log("Console Login (app.secretlobby.local):");
+  console.log("Console Login (console.secretlobby.local):");
   console.log("  Email:    demo@example.com");
   console.log("  Password: user123");
   console.log("");
@@ -463,7 +639,7 @@ async function main() {
   console.log("─".repeat(40));
   console.log("\nSubdomain URLs (after nginx setup):");
   console.log("  Marketing:    http://secretlobby.local");
-  console.log("  Console:      http://app.secretlobby.local");
+  console.log("  Console:      http://console.secretlobby.local");
   console.log("  Super Admin:  http://admin.secretlobby.local");
   console.log("  Lobby:        http://demo.secretlobby.local");
   console.log("=".repeat(60) + "\n");
