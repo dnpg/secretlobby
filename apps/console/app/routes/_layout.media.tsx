@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLoaderData, redirect } from "react-router";
 import type { Route } from "./+types/_layout.media";
-import { MediaPicker, type MediaItem } from "@secretlobby/ui";
+import { MediaPicker, type MediaItem, useImageTransform } from "@secretlobby/ui";
 
 export function meta() {
   return [{ title: "Media Library - Admin" }];
@@ -95,6 +95,7 @@ export default function MediaLibraryPage() {
   const [deleteInput, setDeleteInput] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { transformUrl, generateSrcSet } = useImageTransform();
 
   const fetchMedia = useCallback(
     async (cursor?: string | null, append = false) => {
@@ -230,7 +231,12 @@ export default function MediaLibraryPage() {
               <div className="aspect-square flex items-center justify-center overflow-hidden bg-theme-tertiary">
                 {item.type === "IMAGE" ? (
                   <img
-                    src={item.url}
+                    src={transformUrl(item.url, { width: 640 })}
+                    srcSet={generateSrcSet(item.url, [320, 640, 960])}
+                    sizes="(min-width: 1024px) 274px, (min-width: 768px) 33vw, 50vw"
+                    width={item.width ?? 640}
+                    height={item.height ?? 640}
+                    loading="lazy"
                     alt={item.alt || item.filename}
                     className="w-full h-full object-cover"
                   />

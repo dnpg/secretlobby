@@ -134,6 +134,46 @@ export default function Profile() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+
+  const handleCopyPassword = () => {
+    if (!newPassword) return;
+    try {
+      const doCopy = async () => {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(newPassword);
+        } else {
+          // Fallback for older browsers / non-secure contexts
+          const textarea = document.createElement("textarea");
+          textarea.value = newPassword;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          try {
+            document.execCommand("copy");
+          } finally {
+            document.body.removeChild(textarea);
+          }
+        }
+      };
+
+      void doCopy().then(
+        () => {
+          setCopiedToClipboard(true);
+          toast.success("Password copied to clipboard");
+          setTimeout(() => setCopiedToClipboard(false), 2000);
+        },
+        () => {
+          toast.error("Could not copy password");
+        }
+      );
+    } catch {
+      toast.error("Could not copy password");
+    }
+  };
 
   useEffect(() => {
     const verified = searchParams.get("verified");
@@ -296,16 +336,38 @@ export default function Profile() {
                 <span>Generate secure password</span>
               </button>
             </div>
-            <input
-              type="password"
-              id="newPassword"
-              name="newPassword"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="w-full max-w-md px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-            />
+            <div className="flex items-center gap-2 max-w-md">
+              <input
+                type={showNewPassword ? "text" : "password"}
+                id="newPassword"
+                name="newPassword"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                className="flex-1 min-w-0 px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+              />
+              {newPassword.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((v) => !v)}
+                    className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                    title={showNewPassword ? "Hide password" : "Show password"}
+                  >
+                    {showNewPassword ? "Hide" : "Show"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyPassword}
+                    className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                    title="Copy password"
+                  >
+                    {copiedToClipboard ? "Copied!" : "Copy"}
+                  </button>
+                </>
+              )}
+            </div>
             {newPassword.length > 0 && (
               <div className="mt-2 max-w-md">
                 <div className="flex gap-1 mb-1">

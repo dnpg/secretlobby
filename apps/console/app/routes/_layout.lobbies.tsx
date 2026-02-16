@@ -1,7 +1,7 @@
 import { useLoaderData, useActionData, Link, Form, useNavigation, redirect } from "react-router";
 import { useEffect } from "react";
 import type { Route } from "./+types/_layout.lobbies";
-import { cn } from "@secretlobby/ui";
+import { cn, useImageTransform } from "@secretlobby/ui";
 import { toast } from "sonner";
 
 export function meta() {
@@ -205,13 +205,31 @@ function LobbyCard({
   lobby: LobbyCard;
   isSubmitting: boolean;
 }) {
+  const { transformUrl, generateSrcSet } = useImageTransform();
+
+  const bannerBaseWidth = 640;
+  const bannerHeighPx = 128; // h-32
+  const bannerWidths = [320, 640, 960, 1280];
+
+  const bannerSrc = lobby.bannerUrl
+    ? transformUrl(lobby.bannerUrl, { width: bannerBaseWidth })
+    : null;
+  const bannerSrcSet = lobby.bannerUrl
+    ? generateSrcSet(lobby.bannerUrl, bannerWidths)
+    : null;
+
   return (
     <div className="bg-theme-secondary rounded-xl border border-theme overflow-hidden group">
       {/* Banner / Preview */}
       <div className="h-32 bg-theme-tertiary relative">
         {lobby.bannerUrl ? (
           <img
-            src={lobby.bannerUrl}
+            src={bannerSrc || lobby.bannerUrl}
+            srcSet={bannerSrcSet || undefined}
+            sizes="(min-width: 1024px) 336px, (min-width: 768px) 354px, 340px"
+            width={bannerBaseWidth}
+            height={bannerHeighPx}
+            loading="lazy"
             alt={lobby.name}
             className="w-full h-full object-cover"
           />

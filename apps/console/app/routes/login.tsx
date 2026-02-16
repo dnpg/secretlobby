@@ -1,6 +1,6 @@
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/login";
-import { cn } from "@secretlobby/ui";
+import { cn, useImageTransform } from "@secretlobby/ui";
 import { defaultLoginPageSettings, type LoginPageSettings } from "~/lib/content.server";
 import { useRef, useEffect } from "react";
 
@@ -317,12 +317,15 @@ export default function Login() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+  const { transformUrl, generateSrcSet } = useImageTransform();
 
   const displayError = errorMessage || actionData?.error;
   const isWarning = actionData?.warning;
   const isLocked = actionData?.locked;
 
   const { title, description, logoType } = loginSettings;
+
+  const logoWidth = 180;
 
   return (
     <main
@@ -336,7 +339,16 @@ export default function Login() {
             <div className="text-center mb-8">
               {logoType === "image" && logoImageUrl ? (
                 <a href={marketingUrl} className="flex justify-center mb-4">
-                  <img src={logoImageUrl} alt={title || "Logo"} className="max-w-[180px] max-h-[60px] object-contain" />
+                  <img
+                    src={transformUrl(logoImageUrl, { width: logoWidth })}
+                    srcSet={generateSrcSet(logoImageUrl, [logoWidth, 360])}
+                    sizes="(max-width: 400px) 90px, 180px"
+                    width={logoWidth}
+                    height={60}
+                    loading="eager"
+                    alt={title || "Logo"}
+                    className="max-w-[180px] max-h-[60px] object-contain"
+                  />
                 </a>
               ) : (
                 <a href={marketingUrl} className="flex justify-center mb-4">

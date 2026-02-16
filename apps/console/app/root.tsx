@@ -10,7 +10,7 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { ColorModeProvider, type UserColorMode } from "@secretlobby/ui";
+import { ColorModeProvider, ImageTransformProvider, type UserColorMode } from "@secretlobby/ui";
 import { Toaster } from "sonner";
 import { prisma } from "@secretlobby/db";
 import { getPublicUrl } from "@secretlobby/storage";
@@ -64,7 +64,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     // Ignore errors - favicon is optional
   }
 
-  return { colorMode, resolvedTheme, gaMeasurementId, faviconBaseUrl };
+  const imageTransformPattern = process.env.IMAGE_TRANSFORM_PATTERN || "{url}";
+
+  return { colorMode, resolvedTheme, gaMeasurementId, faviconBaseUrl, imageTransformPattern };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -139,11 +141,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   const data = useLoaderData<typeof loader>();
   const colorMode = data?.colorMode ?? "dark";
+  const imageTransformPattern = data?.imageTransformPattern ?? "{url}";
 
   return (
     <ColorModeProvider initialColorMode={colorMode} allowUserColorMode={true}>
-      <Outlet />
-      <Toaster theme="dark" position="bottom-right" richColors closeButton />
+      <ImageTransformProvider pattern={imageTransformPattern}>
+        <Outlet />
+        <Toaster theme="dark" position="bottom-right" richColors closeButton />
+      </ImageTransformProvider>
     </ColorModeProvider>
   );
 }

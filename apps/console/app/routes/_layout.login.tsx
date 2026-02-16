@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import type { Route } from "./+types/_layout.login";
-import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
+import { cn, MediaPicker, type MediaItem, useImageTransform } from "@secretlobby/ui";
 import type { LoginPageSettings } from "~/lib/content.server";
 import { toast } from "sonner";
 
@@ -193,6 +193,7 @@ export default function AdminLogin() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const submit = useSubmit();
+  const { transformUrl, generateSrcSet } = useImageTransform();
 
   const handleLogoSelect = (media: MediaItem) => {
     submit(
@@ -222,7 +223,16 @@ export default function AdminLogin() {
         {loginSettings.logoType === "image" && logoImageUrl ? (
           <div className="flex items-center gap-4">
             <div className="w-24 h-24 rounded-lg border border-theme overflow-hidden bg-theme-tertiary flex-shrink-0 flex items-center justify-center">
-              <img src={logoImageUrl} alt="Login logo" className="max-w-full max-h-full object-contain" />
+              <img
+                src={transformUrl(logoImageUrl, { width: 96 })}
+                srcSet={generateSrcSet(logoImageUrl, [96, 192])}
+                sizes="96px"
+                width={96}
+                height={96}
+                loading="lazy"
+                alt="Login logo"
+                className="max-w-full max-h-full object-contain"
+              />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-theme-primary mb-2">Current logo</p>

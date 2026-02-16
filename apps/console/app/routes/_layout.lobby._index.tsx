@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect, useOutletContext } from "react-router";
 import type { Route } from "./+types/_layout.lobby._index";
-import { cn, RichTextEditor, MediaPicker, type MediaItem } from "@secretlobby/ui";
+import { cn, RichTextEditor, MediaPicker, type MediaItem, useImageTransform } from "@secretlobby/ui";
 import { toast } from "sonner";
 import type { LobbyContext } from "./_layout.lobby";
 
@@ -166,6 +166,7 @@ function ImageSlot({
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const submit = useSubmit();
+  const { transformUrl, generateSrcSet } = useImageTransform();
 
   const handleSelect = (media: MediaItem) => {
     submit(
@@ -174,6 +175,9 @@ function ImageSlot({
     );
   };
 
+  const slotSize = 96;
+  const slotWidths = [96, 192];
+
   return (
     <div className="space-y-3">
       <label className="block text-sm font-medium">{label}</label>
@@ -181,7 +185,12 @@ function ImageSlot({
         <div className="flex items-center gap-4">
           <div className="w-24 h-24 rounded-lg border border-theme overflow-hidden bg-theme-tertiary flex-shrink-0">
             <img
-              src={current.url}
+              src={transformUrl(current.url, { width: slotSize })}
+              srcSet={generateSrcSet(current.url, slotWidths)}
+              sizes="96px"
+              width={slotSize}
+              height={slotSize}
+              loading="lazy"
               alt={current.filename}
               className="w-full h-full object-cover"
             />
