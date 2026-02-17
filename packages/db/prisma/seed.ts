@@ -228,60 +228,48 @@ async function main() {
   // ============================================================================
   // 7. Create Super Admin User (from environment variables)
   // ============================================================================
-  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+  // Env vars are loaded by the seed script: dotenv -e ../../.env (repo root .env)
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim();
   const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
 
   if (superAdminEmail && superAdminPassword) {
-    console.log("\nCreating super admin user...");
+    console.log("\nCreating super admin user (Staff only, no Account)...");
 
-    // Create a dedicated super admin account
-    const superAdminAccount = await prisma.account.upsert({
-      where: { slug: "super-admin" },
-      update: {},
-      create: {
-        name: "Super Admin",
-        slug: "super-admin",
-        subscriptionTier: "ENTERPRISE",
-        settings: {
-          isSuperAdminAccount: true,
-        },
-      },
-    });
+    const emailLower = superAdminEmail.toLowerCase();
 
     const superAdminUser = await prisma.user.upsert({
-      where: { email: superAdminEmail.toLowerCase() },
+      where: { email: emailLower },
       update: {
         passwordHash: await hashPassword(superAdminPassword),
       },
       create: {
-        email: superAdminEmail.toLowerCase(),
+        email: emailLower,
         passwordHash: await hashPassword(superAdminPassword),
         name: "Super Admin",
         emailVerified: true,
       },
     });
 
-    await prisma.accountUser.upsert({
-      where: {
-        accountId_userId: {
-          accountId: superAdminAccount.id,
-          userId: superAdminUser.id,
-        },
-      },
-      update: {
-        role: "OWNER",
-      },
+    await prisma.staff.upsert({
+      where: { userId: superAdminUser.id },
+      update: { role: "OWNER" },
       create: {
-        accountId: superAdminAccount.id,
         userId: superAdminUser.id,
         role: "OWNER",
-        acceptedAt: new Date(),
       },
     });
 
-    console.log(`  ✓ Super Admin: ${superAdminUser.email} (OWNER of super-admin account)`);
+    const staffCheck = await prisma.staff.findUnique({
+      where: { userId: superAdminUser.id },
+    });
+    if (!staffCheck) {
+      console.error("  ❌ Failed to create Staff record for super admin. Super Admin login will not work.");
+    } else {
+      console.log(`  ✓ Super Admin: ${superAdminUser.email} (Staff OWNER; no Account created)`);
+      console.log("  → Log in to Super Admin with the email and password from your .env (SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD)");
+    }
   } else {
-    console.log("\n⚠️  Skipping super admin user (SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD not set)");
+    console.log("\n⚠️  Skipping super admin user: set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in the repo root .env, then run: pnpm db:create-super-admin (or pnpm db:seed for local dev)");
   }
 
   // ============================================================================
@@ -450,7 +438,7 @@ async function main() {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; margin:0 auto; background-color:#ffffff;">
   <tr>
     <td align="center" style="padding:24px 24px 16px 24px; text-align:center;">
-      <img src="{{consoleUrl}}/secret-lobby-logo.png" alt="SecretLobby" width="200" height="200" style="display:block; border:0; outline:none; text-decoration:none; margin:0 auto; width:200px; height:200px;" />
+      <img src="{{consoleUrl}}/secret-lobby-logo.png" alt="SecretLobby" width="100" height="100" style="display:block; border:0; outline:none; text-decoration:none; margin:0 auto; width:100px; height:100px;" />
     </td>
   </tr>
 </table>`,
@@ -462,7 +450,7 @@ async function main() {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:600px; margin:0 auto; background-color:#ffffff;">
   <tr>
     <td align="center" style="padding:24px 24px 16px 24px; text-align:center;">
-      <img src="{{consoleUrl}}/secret-lobby-logo.png" alt="SecretLobby" width="200" height="200" style="display:block; border:0; outline:none; text-decoration:none; margin:0 auto; width:200px; height:200px;" />
+      <img src="{{consoleUrl}}/secret-lobby-logo.png" alt="SecretLobby" width="100" height="100" style="display:block; border:0; outline:none; text-decoration:none; margin:0 auto; width:100px; height:100px;" />
     </td>
   </tr>
 </table>`,
@@ -505,80 +493,86 @@ async function main() {
     },
   });
 
-  const invitationBody = `<!-- Body: Invitation - white bg, black text, brand red CTA -->
-<tr>
-  <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
-    <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">You're Invited!</h2>
-    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
-    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">You've been invited to join SecretLobby — the private music sharing platform for artists. Create your own password-protected lobby and share your unreleased tracks with your fans.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
-      <tr>
-        <td align="center">
-          <a href="{{inviteUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Create Your Account</a>
-        </td>
-      </tr>
-    </table>
-    <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This invitation link will expire in {{expiresInDays}} days and can only be used once.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
-      <tr>
-        <td style="padding-top:16px;">
-          <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link into your browser:</p>
-          <p style="margin:4px 0 0 0;"><a href="{{inviteUrl}}" style="color:#ed1b2f; word-break:break-all;">{{inviteUrl}}</a></p>
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>`;
+  const invitationBody = `<!-- Body: Invitation (contained like header/footer) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+      <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">You're Invited!</h2>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">You've been invited to join SecretLobby — the private music sharing platform for artists. Create your own password-protected lobby and share your unreleased tracks with your fans.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
+        <tr>
+          <td align="center">
+            <a href="{{inviteUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Create Your Account</a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This invitation link will expire in {{expiresInDays}} days and can only be used once.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
+        <tr>
+          <td style="padding-top:16px;">
+            <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link into your browser:</p>
+            <p style="margin:4px 0 0 0;"><a href="{{inviteUrl}}" style="color:#ed1b2f; word-break:break-all;">{{inviteUrl}}</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
 
-  const verificationBody = `<!-- Body: Email verification - white bg, black text, brand red CTA -->
-<tr>
-  <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
-    <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Verify your email address</h2>
-    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
-    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Thanks for signing up! Please verify your email address to get started with SecretLobby.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
-      <tr>
-        <td align="center">
-          <a href="{{verificationUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Verify Email</a>
-        </td>
-      </tr>
-    </table>
-    <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
-      <tr>
-        <td style="padding-top:16px;">
-          <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link:</p>
-          <p style="margin:4px 0 0 0;"><a href="{{verificationUrl}}" style="color:#ed1b2f; word-break:break-all;">{{verificationUrl}}</a></p>
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>`;
+  const verificationBody = `<!-- Body: Email verification (contained like header/footer) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+      <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Verify your email address</h2>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Thanks for signing up! Please verify your email address to get started with SecretLobby.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
+        <tr>
+          <td align="center">
+            <a href="{{verificationUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Verify Email</a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
+        <tr>
+          <td style="padding-top:16px;">
+            <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link:</p>
+            <p style="margin:4px 0 0 0;"><a href="{{verificationUrl}}" style="color:#ed1b2f; word-break:break-all;">{{verificationUrl}}</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
 
-  const passwordResetBody = `<!-- Body: Password reset - white bg, black text, brand red CTA -->
-<tr>
-  <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
-    <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Reset your password</h2>
-    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
-    <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">We received a request to reset your password. Click the button below to choose a new one:</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
-      <tr>
-        <td align="center">
-          <a href="{{resetUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Reset Password</a>
-        </td>
-      </tr>
-    </table>
-    <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This link will expire in 10 minutes. If you didn't request a password reset, you can safely ignore this email.</p>
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
-      <tr>
-        <td style="padding-top:16px;">
-          <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link:</p>
-          <p style="margin:4px 0 0 0;"><a href="{{resetUrl}}" style="color:#ed1b2f; word-break:break-all;">{{resetUrl}}</a></p>
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>`;
+  const passwordResetBody = `<!-- Body: Password reset (contained like header/footer) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+      <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Reset your password</h2>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">We received a request to reset your password. Click the button below to choose a new one:</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
+        <tr>
+          <td align="center">
+            <a href="{{resetUrl}}" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">Reset Password</a>
+          </td>
+        </tr>
+      </table>
+      <p style="margin:0 0 16px 0; font-size:14px; line-height:1.6; color:#111111;">This link will expire in 10 minutes. If you didn't request a password reset, you can safely ignore this email.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 0 0; border-top:1px solid #e5e7eb;">
+        <tr>
+          <td style="padding-top:16px;">
+            <p style="margin:0; font-size:12px; color:#374151;">If the button doesn't work, copy and paste this link:</p>
+            <p style="margin:4px 0 0 0;"><a href="{{resetUrl}}" style="color:#ed1b2f; word-break:break-all;">{{resetUrl}}</a></p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
 
   await prisma.emailTemplate.upsert({
     where: { key: "invitation" },

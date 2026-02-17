@@ -10,13 +10,29 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { ColorModeProvider, type UserColorMode } from "@secretlobby/ui";
 import { prisma } from "@secretlobby/db";
 import { getPublicUrl } from "@secretlobby/storage";
 import { Toaster } from "sonner";
 
 const GA_ID_RE = /^G[T]?-[A-Z0-9]+$/i;
 
-export async function loader() {
+function parseCookie(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const cookieHeader = request.headers.get("Cookie");
+  const cookieMode = parseCookie(cookieHeader, "color-mode");
+  const validModes: UserColorMode[] = ["dark", "light", "system"];
+  const colorMode: UserColorMode =
+    cookieMode && validModes.includes(cookieMode as UserColorMode)
+      ? (cookieMode as UserColorMode)
+      : "dark";
+  const resolvedTheme: "dark" | "light" = colorMode === "system" ? "dark" : colorMode;
+
   const rawGaId = process.env.CONSOLE_GA_MEASUREMENT_ID ?? "";
   const gaMeasurementId = GA_ID_RE.test(rawGaId) ? rawGaId : null;
 
@@ -35,7 +51,7 @@ export async function loader() {
     // Ignore errors - favicon is optional
   }
 
-  return { gaMeasurementId, faviconBaseUrl };
+  return { colorMode, resolvedTheme, gaMeasurementId, faviconBaseUrl };
 }
 
 export const links: Route.LinksFunction = () => [
@@ -53,16 +69,44 @@ export const links: Route.LinksFunction = () => [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useLoaderData<typeof loader>();
+  const colorMode = data?.colorMode ?? "dark";
+  const resolvedTheme = data?.resolvedTheme ?? "dark";
   const gaMeasurementId = data?.gaMeasurementId ?? null;
   const faviconBaseUrl = data?.faviconBaseUrl ?? null;
 
+  const colorModeScript = `
+    (function() {
+      var colorMode = '${colorMode}';
+      function getResolvedMode(mode) {
+        if (mode === 'system') {
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        return mode;
+      }
+      function applyTheme(mode) {
+        var resolved = getResolvedMode(mode);
+        document.documentElement.setAttribute('data-theme', resolved);
+        document.documentElement.setAttribute('data-color-mode', mode);
+      }
+      if (colorMode === 'system') {
+        applyTheme('system');
+      }
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+        var currentMode = document.documentElement.getAttribute('data-color-mode');
+        if (currentMode === 'system') applyTheme('system');
+      });
+      window.__applyColorMode = applyTheme;
+    })();
+  `;
+
   return (
-    <html lang="en" className="dark">
+    <html lang="en" data-theme={resolvedTheme} data-color-mode={colorMode} suppressHydrationWarning>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <script dangerouslySetInnerHTML={{ __html: colorModeScript }} />
         {faviconBaseUrl && (
           <>
             <link rel="icon" href={`${faviconBaseUrl}/favicon.ico`} sizes="48x48" />
@@ -83,7 +127,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </>
         )}
       </head>
-      <body className="bg-gray-900 text-white">
+      <body className="bg-theme-primary text-theme-primary">
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -93,11 +137,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const data = useLoaderData<typeof loader>();
+  const colorMode = data?.colorMode ?? "dark";
+
   return (
-    <>
+    <ColorModeProvider initialColorMode={colorMode} allowUserColorMode={true}>
       <Outlet />
       <Toaster theme="dark" position="bottom-right" richColors closeButton />
-    </>
+    </ColorModeProvider>
   );
 }
 
@@ -119,11 +166,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
   return (
     <main className="pt-16 p-4 container mx-auto">
-      <h1 className="text-2xl font-bold">{message}</h1>
-      <p className="text-gray-400">{details}</p>
+      <h1 className="text-2xl font-bold text-theme-primary">{message}</h1>
+      <p className="text-theme-secondary">{details}</p>
       {stack && (
-        <pre className="w-full p-4 overflow-x-auto mt-4 bg-gray-800 rounded-lg">
-          <code>{stack}</code>
+        <pre className="w-full p-4 overflow-x-auto mt-4 bg-theme-secondary rounded-lg border border-theme">
+          <code className="text-theme-secondary">{stack}</code>
         </pre>
       )}
     </main>

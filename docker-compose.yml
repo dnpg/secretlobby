@@ -62,6 +62,22 @@ services:
       retries: 10
 
   # ==========================================================================
+  # Mailpit (Local Email Testing - Development Only)
+  # ==========================================================================
+  # Catches all outgoing SMTP mail. Web UI: http://localhost:8025
+  # Configure apps to use SMTP: host=mailpit, port=1025 (no auth)
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    networks:
+      - secretlobby-network
+    profiles:
+      - dev
+
+  # ==========================================================================
   # Adminer (Database Management - Development Only)
   # ==========================================================================
   adminer:

@@ -6,6 +6,7 @@ export type {
   Account,
   User,
   AccountUser,
+  Staff,
   Session,
   Lobby,
   Track,
@@ -27,6 +28,7 @@ export type {
 // Re-export enums
 export {
   UserRole,
+  StaffRole,
   DomainStatus,
   SubscriptionTier,
   SubscriptionStatus,

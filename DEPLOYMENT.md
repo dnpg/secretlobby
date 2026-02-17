@@ -140,6 +140,17 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 AUTH_URL=https://console.secretlobby.co
 ```
 
+### Initial Super Admin user (super-admin app)
+
+Do **not** run the full database seed in production (it creates demo data). Create only the first admin user:
+
+```bash
+SUPER_ADMIN_EMAIL=admin@yourdomain.com
+SUPER_ADMIN_PASSWORD=your-strong-secure-password
+```
+
+Then run **once** after migrations: `pnpm db:create-super-admin`. Ensure `DATABASE_URL` and the two vars above are in the environment for that command. See [SUPER_ADMIN_SETUP.md](./SUPER_ADMIN_SETUP.md) for full steps and troubleshooting.
+
 ---
 
 ## Step 3: Deploy Each App in Dokploy

@@ -93,14 +93,10 @@ pnpm prisma migrate reset
 
 ## Seeding
 
-Seed the database with initial data:
+From the **repo root**:
 
-```bash
-cd packages/db
-pnpm prisma db seed
-```
-
-The seed script is located at `packages/db/prisma/seed.ts`.
+- **`pnpm db:create-super-admin`** — Creates only the initial Super Admin user from `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`. Use this in **production** (run once after migrations). Script: `packages/db/prisma/create-super-admin.ts`.
+- **`pnpm db:seed`** — Full seed: demo users, lobbies, sample tracks, and optionally the Super Admin user. For **local development** only; do not run in production. Script: `packages/db/prisma/seed.ts`.
 
 ## Prisma Studio
 

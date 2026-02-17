@@ -1,7 +1,4 @@
-import { getResendClient } from "./client.js";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "email" });
+import { sendMail } from "./transport.js";
 
 interface SendInvitationEmailParams {
   to: string;
@@ -22,7 +19,6 @@ export async function sendInvitationEmail({
   subject: subjectOverride,
   html: htmlOverride,
 }: SendInvitationEmailParams) {
-  const resend = getResendClient();
   const from = process.env.EMAIL_FROM || "SecretLobby <noreply@secretlobby.co>";
   const displayName = userName || "there";
 
@@ -44,18 +40,5 @@ export async function sendInvitationEmail({
     `;
   const html = htmlOverride ?? defaultHtml;
 
-  const { error } = await resend.emails.send({
-    from,
-    to,
-    subject,
-    html,
-  });
-
-  if (error) {
-    logger.error(
-      { to, error: formatError(error) },
-      "Failed to send invitation email"
-    );
-    throw new Error("Failed to send invitation email");
-  }
+  await sendMail({ from, to, subject, html });
 }

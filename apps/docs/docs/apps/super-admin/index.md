@@ -98,6 +98,16 @@ pnpm dev --filter @secretlobby/super-admin
 pnpm build --filter @secretlobby/super-admin
 ```
 
+## Initial setup (first-time login)
+
+Only users with a **Staff** record can log in. Create the first admin from the repo root:
+
+1. Set in `.env`: `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`
+2. Run: **`pnpm db:create-super-admin`**
+3. Log in at the Super Admin app (e.g. http://localhost:3003) with that email and password
+
+**Production:** run only `pnpm db:create-super-admin` (do not run the full `pnpm db:seed`). See **SUPER_ADMIN_SETUP.md** in the repository root for full steps and troubleshooting.
+
 ## Access Control
 
-The super admin app requires elevated privileges. Ensure proper authentication is configured before deployment.
+The super admin app requires elevated privileges (Staff role). Add more staff from the Staff section in the app after the first login.

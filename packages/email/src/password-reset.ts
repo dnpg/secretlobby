@@ -1,7 +1,4 @@
-import { getResendClient } from "./client.js";
-import { createLogger, formatError } from "@secretlobby/logger";
-
-const logger = createLogger({ service: "email" });
+import { sendMail } from "./transport.js";
 
 interface SendPasswordResetEmailParams {
   to: string;
@@ -18,7 +15,6 @@ export async function sendPasswordResetEmail({
   subject: subjectOverride,
   html: htmlOverride,
 }: SendPasswordResetEmailParams) {
-  const resend = getResendClient();
   const from = process.env.EMAIL_FROM || "SecretLobby <noreply@secretlobby.co>";
   const displayName = userName || "there";
 
@@ -38,18 +34,5 @@ export async function sendPasswordResetEmail({
     `;
   const html = htmlOverride ?? defaultHtml;
 
-  const { error } = await resend.emails.send({
-    from,
-    to,
-    subject,
-    html,
-  });
-
-  if (error) {
-    logger.error(
-      { to, error: formatError(error) },
-      "Failed to send password reset email"
-    );
-    throw new Error("Failed to send password reset email");
-  }
+  await sendMail({ from, to, subject, html });
 }

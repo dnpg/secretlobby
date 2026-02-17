@@ -76,6 +76,12 @@ enum InvitationStatus {
   REVOKED   // Admin revoked
 }
 
+/// Staff can access super-admin. Independent of Account; same User can be staff and/or in band accounts.
+enum StaffRole {
+  OWNER  // Can manage staff and full super-admin access
+  ADMIN  // Full super-admin access, cannot manage staff
+}
+
 // ============================================================================
 // ACCOUNT (Tenant)
 // ============================================================================
@@ -142,8 +148,25 @@ model User {
   // Relations
   accounts AccountUser[]
   sessions Session[]
+  staff    Staff?
 
   @@index([email])
+}
+
+// ============================================================================
+// STAFF (Super-admin access; separate from Account membership)
+// ============================================================================
+
+model Staff {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  role      StaffRole @default(ADMIN)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ============================================================================

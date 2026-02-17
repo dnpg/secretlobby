@@ -42,12 +42,15 @@ Configure your environment variables (see [Environment Configuration](/guides/de
 ### 4. Set Up Database
 
 ```bash
-# Run migrations
-cd packages/db
-pnpm prisma migrate dev
+# Run migrations (from repo root)
+pnpm db:migrate
 
-# Seed initial data (optional)
-pnpm prisma db seed
+# Create the initial Super Admin user (required to log in to the admin panel)
+# Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in .env first
+pnpm db:create-super-admin
+
+# Optional: seed demo data (local dev only—creates demo users, lobbies, etc.)
+pnpm db:seed
 ```
 
 ### 5. Start Development Server

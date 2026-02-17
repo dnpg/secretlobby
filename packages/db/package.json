@@ -22,6 +22,7 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "db:create-super-admin": "dotenv -e ../../.env -- tsx prisma/create-super-admin.ts",
     "clean": "rm -rf node_modules src/generated"
   },
   "dependencies": {

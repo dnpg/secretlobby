@@ -21,6 +21,9 @@ export interface SessionData {
   currentAccountSlug?: string;
   currentAccountRole?: string;
 
+  // Staff (super-admin) context: set when user logs in via super-admin and has a Staff record
+  staffRole?: "OWNER" | "ADMIN";
+
   // Lobby context (for multi-lobby support)
   currentLobbyId?: string;
   currentLobbySlug?: string;
@@ -191,6 +194,11 @@ export function isAdmin(session: SessionData): boolean {
   if (session.isAdmin) return true;
   const role = session.currentAccountRole;
   return role === "OWNER" || role === "ADMIN";
+}
+
+/** True if session is staff with OWNER role (can manage staff). */
+export function isStaffOwner(session: SessionData): boolean {
+  return session.staffRole === "OWNER";
 }
 
 export function hasAccountAccess(session: SessionData): boolean {

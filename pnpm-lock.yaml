@@ -451,6 +451,9 @@ importers:
       '@secretlobby/logger':
         specifier: workspace:*
         version: link:../logger
+      nodemailer:
+        specifier: ^6.9.16
+        version: 6.10.1
       resend:
         specifier: ^4.0.0
         version: 4.8.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -458,6 +461,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.6
+      '@types/nodemailer':
+        specifier: ^6.4.16
+        version: 6.4.22
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
@@ -4052,6 +4058,9 @@ packages:
   '@types/node@25.2.1':
     resolution: {integrity: sha512-CPrnr8voK8vC6eEtyRzvMpgp3VyVRhgclonE7qYi6P9sXwYb59ucfrnmFBTaP0yUi8Gk4yZg/LlTJULGxvTNsg==}
 
+  '@types/nodemailer@6.4.22':
+    resolution: {integrity: sha512-HV16KRsW7UyZBITE07B62k8PRAKFqRSFXn1T7vslurVjN761tMDBhk5Lbt17ehyTzK6XcyJnAgUpevrvkcVOzw==}
+
   '@types/pg@8.16.0':
     resolution: {integrity: sha512-RmhMd/wD+CF8Dfo+cVIy3RR5cl8CyfXQ0tGgW6XBL8L4LM/UTEbNXYRbLwU6w+CgrKBNbrQWt4FUtTfaU5jSYQ==}
 
@@ -6506,6 +6515,10 @@ packages:
 
   node-releases@2.0.27:
     resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
+
+  nodemailer@6.10.1:
+    resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
+    engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -13197,7 +13210,7 @@ snapshots:
 
   '@testing-library/dom@10.4.1':
     dependencies:
-      '@babel/code-frame': 7.28.6
+      '@babel/code-frame': 7.29.0
       '@babel/runtime': 7.28.6
       '@types/aria-query': 5.0.4
       aria-query: 5.3.0
@@ -13552,6 +13565,10 @@ snapshots:
   '@types/node@25.2.1':
     dependencies:
       undici-types: 7.16.0
+
+  '@types/nodemailer@6.4.22':
+    dependencies:
+      '@types/node': 25.2.1
 
   '@types/pg@8.16.0':
     dependencies:
@@ -16443,6 +16460,8 @@ snapshots:
   node-fetch-native@1.6.7: {}
 
   node-releases@2.0.27: {}
+
+  nodemailer@6.10.1: {}
 
   normalize-path@3.0.0: {}
 

@@ -47,12 +47,19 @@ STRIPE_PUBLISHABLE_KEY="pk_test_..."
 STRIPE_WEBHOOK_SECRET="whsec_..."
 ```
 
-### Email (Resend)
+### Email
+
+**Production (Resend):** set `RESEND_API_KEY` and `EMAIL_FROM`. Leave `SMTP_HOST` unset.
+
+**Local testing (Mailpit):** run Docker with the `dev` profile so Mailpit is available, then in `.env` set:
 
 ```bash
-RESEND_API_KEY="re_..."
-EMAIL_FROM="noreply@secretlobby.co"
+SMTP_HOST=localhost
+SMTP_PORT=1025
+EMAIL_FROM="SecretLobby <noreply@secretlobby.co>"
 ```
+
+Leave `RESEND_API_KEY` unset (or leave it set; SMTP takes precedence when `SMTP_HOST` is set). Open http://localhost:8025 to view all emails caught by Mailpit.
 
 ### OAuth Providers
 
@@ -88,6 +95,21 @@ The project uses different environment files:
 - `.env.example` - Template for new developers
 - `.env.test` - Test environment
 - `.env.production` - Production (managed separately)
+
+## Super Admin (initial platform admin)
+
+To log in to the Super Admin app you must create the first admin user:
+
+1. Set in your `.env` (repo root):
+
+```bash
+SUPER_ADMIN_EMAIL=admin@yourdomain.com
+SUPER_ADMIN_PASSWORD=your-secure-admin-password
+```
+
+2. Run once: **`pnpm db:create-super-admin`** (from repo root).
+
+This creates a User and Staff record so that email/password can sign in at the Super Admin app (e.g. http://localhost:3003). **In production** use only this command—do not run the full database seed. See **SUPER_ADMIN_SETUP.md** in the repository root for full steps and troubleshooting.
 
 ## Per-App Variables
 

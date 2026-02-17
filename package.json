@@ -19,6 +19,7 @@
     "db:studio": "pnpm --filter @secretlobby/db db:studio",
     "db:reset": "pnpm --filter @secretlobby/db db:reset",
     "db:seed": "pnpm --filter @secretlobby/db db:seed",
+    "db:create-super-admin": "pnpm --filter @secretlobby/db db:create-super-admin",
     "clean": "turbo run clean && rm -rf node_modules",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },

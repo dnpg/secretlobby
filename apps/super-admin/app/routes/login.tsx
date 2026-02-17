@@ -22,8 +22,33 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
+/** Load SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD from .env in cwd or parent dirs (no dotenv dep). */
+async function loadSuperAdminEnv() {
+  const path = await import("path");
+  const fs = await import("fs");
+  const cwd = process.cwd();
+  for (const dir of [cwd, path.join(cwd, ".."), path.join(cwd, "..", "..")]) {
+    const envPath = path.join(dir, ".env");
+    try {
+      const raw = fs.readFileSync(envPath, "utf8");
+      for (const line of raw.split("\n")) {
+        const m = line.match(/^SUPER_ADMIN_(EMAIL|PASSWORD)\s*=\s*(.*)$/);
+        if (m) {
+          const key = `SUPER_ADMIN_${m[1]}`;
+          const val = m[2].replace(/^["']|["']$/g, "").trim();
+          if (val && !process.env[key]) process.env[key] = val;
+        }
+      }
+    } catch {
+      // .env not found or unreadable
+    }
+  }
+}
+
 export async function action({ request }: Route.ActionArgs) {
   const { csrfProtect } = await import("@secretlobby/auth/csrf");
+
+  await loadSuperAdminEnv();
 
   // Verify CSRF token (uses HMAC validation - no session needed)
   await csrfProtect(request);
@@ -47,17 +72,38 @@ export async function action({ request }: Route.ActionArgs) {
 
   const user = result.user;
 
-  if (user.accounts.length === 0) {
-    return { error: "You don't have access to any accounts." };
+  const { prisma } = await import("@secretlobby/db");
+  // Look up staff by related user email to avoid any ID mismatches
+  let staff = await prisma.staff.findFirst({
+    where: {
+      user: {
+        email: user.email.toLowerCase(),
+      },
+    },
+  });
+
+  // Bootstrap: ensure this user has Staff so login succeeds
+  if (!staff) {
+    const totalStaff = await prisma.staff.count();
+    const configuredEmail = process.env.SUPER_ADMIN_EMAIL?.trim()?.toLowerCase();
+    const emailMatches = configuredEmail && user.email.toLowerCase() === configuredEmail;
+
+    // Allow when: (1) no Staff exist yet (first-ever admin), or (2) email matches SUPER_ADMIN_EMAIL
+    if (totalStaff === 0 || emailMatches) {
+      staff = await prisma.staff.upsert({
+        where: { userId: user.id },
+        update: { role: "OWNER" },
+        create: { userId: user.id, role: "OWNER" },
+      });
+    }
   }
 
-  // For super admin, require OWNER role
-  const hasOwnerAccess = user.accounts.some((a) => a.role === "OWNER");
-  if (!hasOwnerAccess) {
-    return { error: "Super admin access required." };
+  if (!staff) {
+    return {
+      error:
+        "This account does not have Super Admin access. Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in your .env, then run: pnpm db:create-super-admin",
+    };
   }
-
-  const primaryAccount = user.accounts.find((a) => a.role === "OWNER") || user.accounts[0];
 
   return createSessionResponse(
     {
@@ -66,9 +112,7 @@ export async function action({ request }: Route.ActionArgs) {
       userId: user.id,
       userEmail: user.email,
       userName: user.name || undefined,
-      currentAccountId: primaryAccount.accountId,
-      currentAccountSlug: primaryAccount.account.slug,
-      currentAccountRole: primaryAccount.role,
+      staffRole: staff.role,
     },
     request,
     "/"

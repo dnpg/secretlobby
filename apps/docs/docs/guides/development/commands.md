@@ -87,46 +87,58 @@ pnpm test:watch
 
 ## Database
 
+All database commands are run from the **repo root** unless noted.
+
 ### Run Migrations
 
 ```bash
-cd packages/db
-pnpm prisma migrate dev
+pnpm db:migrate
+```
+
+### Deploy Migrations (production)
+
+```bash
+pnpm db:migrate:deploy
 ```
 
 ### Create Migration
 
 ```bash
-cd packages/db
-pnpm prisma migrate dev --name <migration-name>
+cd packages/db && pnpm prisma migrate dev --name <migration-name>
 ```
 
 ### Reset Database
 
 ```bash
-cd packages/db
-pnpm prisma migrate reset
+pnpm db:reset
 ```
 
-### Seed Database
+### Create Super Admin user (production-safe)
+
+Creates or updates the initial platform admin from `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD`. Use this in production; do not run the full seed there.
 
 ```bash
-cd packages/db
-pnpm prisma db seed
+pnpm db:create-super-admin
+```
+
+### Seed Database (local dev only)
+
+Seeds demo data (demo users, lobbies, sample tracks) and optionally the Super Admin user. **Do not run in production.**
+
+```bash
+pnpm db:seed
 ```
 
 ### Open Prisma Studio
 
 ```bash
-cd packages/db
-pnpm prisma studio
+pnpm db:studio
 ```
 
 ### Generate Prisma Client
 
 ```bash
-cd packages/db
-pnpm prisma generate
+pnpm db:generate
 ```
 
 ## Type Checking
