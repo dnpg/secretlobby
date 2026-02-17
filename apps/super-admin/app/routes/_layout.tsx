@@ -180,7 +180,9 @@ export default function Layout() {
   const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
 
   const toggleSidebar = () => {
     const newState = !isCollapsed;
@@ -199,6 +201,18 @@ export default function Layout() {
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isUserMenuOpen]);
+
+  // Backdrop effect when scrolling (match console header); main has overflow-auto so listen to it
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    function handleScroll() {
+      setScrolled(el.scrollTop > 0);
+    }
+    handleScroll();
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const staffRoleLabel = user.staffRole === "OWNER" ? "Owner" : user.staffRole === "ADMIN" ? "Admin" : null;
 
@@ -257,7 +271,14 @@ export default function Layout() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <header className="sticky top-0 z-30 pl-[8px] pr-[2px] pt-[2px]">
-          <div className="rounded-xl border border-transparent bg-transparent transition-all duration-300">
+          <div
+            className={cn(
+              "rounded-xl border transition-all duration-300 backdrop-blur-xl",
+              scrolled
+                ? "shadow-lg border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70"
+                : "border-transparent bg-transparent"
+            )}
+          >
             <div className="flex items-center justify-between px-4 lg:px-6 py-[13px]">
               <div className="flex items-center gap-2">
                 <button
@@ -338,7 +359,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main ref={mainRef} className="flex-1 p-4 lg:p-6 overflow-auto">
           <div className="max-w-6xl mx-auto">
             <Outlet />
           </div>

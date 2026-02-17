@@ -336,7 +336,7 @@ function AccountAutocomplete({
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
         />
 
         {/* Dropdown */}
@@ -359,7 +359,7 @@ function AccountAutocomplete({
                       setSearchTerm("");
                     }}
                     className={`w-full text-left px-3 py-2 hover:bg-theme-secondary transition ${
-                      selectedAccountIds.includes(account.id) ? "bg-blue-900/30" : ""
+                      selectedAccountIds.includes(account.id) ? "bg-(--color-brand-red-muted)" : ""
                     }`}
                   >
                     <div className="font-medium">{account.name}</div>
@@ -421,7 +421,7 @@ function ManualBlockForm({ accounts }: { accounts: Array<{ id: string; name: str
               name="ipAddress"
               required
               placeholder="192.168.1.100"
-              className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
             />
           </div>
 
@@ -431,7 +431,7 @@ function ManualBlockForm({ accounts }: { accounts: Array<{ id: string; name: str
             </label>
             <select
               name="endpoint"
-              className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
             >
               <option value="lobby-password">Lobby Password</option>
               <option value="login">Login</option>
@@ -493,7 +493,7 @@ function ManualBlockForm({ accounts }: { accounts: Array<{ id: string; name: str
             name="reason"
             rows={3}
             placeholder="Reason for blocking this IP..."
-            className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
           />
         </div>
 
@@ -762,7 +762,7 @@ function RecentViolationsTable({
                 onChange={(e) => {
                   window.location.href = buildFilterURL({ lockout: e.target.value });
                 }}
-                className="px-3 py-1.5 text-sm bg-theme-tertiary border border-theme rounded text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1.5 text-sm bg-theme-tertiary border border-theme rounded text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
               >
                 {lockoutFilters.map((filter) => (
                   <option key={filter.value} value={filter.value}>
@@ -785,7 +785,7 @@ function RecentViolationsTable({
                   setShowIPDropdown(true);
                 }}
                 onFocus={() => setShowIPDropdown(true)}
-                className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
               />
 
               {/* IP Dropdown */}
@@ -876,12 +876,12 @@ function RecentViolationsTable({
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       violation.violationCount >= 10
-                        ? "bg-red-900/30 text-red-400 border border-red-800"
+                        ? "bg-red-100 text-red-800 border border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800"
                         : violation.violationCount >= 5
-                        ? "bg-orange-900/30 text-orange-400 border border-orange-800"
+                        ? "bg-orange-100 text-orange-800 border border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800"
                         : violation.violationCount >= 3
-                        ? "bg-yellow-900/30 text-yellow-400 border border-yellow-800"
-                        : "bg-blue-900/30 link-primary border border-blue-800"
+                        ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800"
+                        : "bg-(--color-brand-red-muted) link-primary border border-(--color-brand-red)"
                     }`}>
                       {getLockoutScheduleLabel(violation.violationCount)}
                     </span>
@@ -890,11 +890,11 @@ function RecentViolationsTable({
                     <span
                       className={`px-2 py-1 text-xs font-medium rounded ${
                         violation.status === "BLOCKED"
-                          ? "bg-red-900/30 text-red-400 border border-red-800"
+                          ? "bg-red-100 text-red-800 border border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800"
                           : violation.status === "ACTIVE"
-                          ? "bg-yellow-900/30 text-yellow-400 border border-yellow-800"
+                          ? "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800"
                           : violation.status === "RESOLVED"
-                          ? "bg-green-900/30 text-green-400 border border-green-800"
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800"
                           : "bg-theme-tertiary text-theme-primary border border-theme"
                       }`}
                     >

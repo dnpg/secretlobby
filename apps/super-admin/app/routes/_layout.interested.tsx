@@ -116,7 +116,7 @@ export default function InterestedPage() {
                   href={`?filter=${f.value}`}
                   className={`px-3 py-1.5 text-sm font-medium rounded transition ${
                     filter === f.value
-                      ? "bg-blue-600 text-white"
+                      ? "bg-(--color-brand-red) text-white"
                       : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                   }`}
                 >
@@ -235,7 +235,7 @@ function StatusBadge({
 }) {
   if (convertedAt) {
     return (
-      <span className="px-2 py-1 text-xs font-medium rounded bg-green-900/30 text-green-400 border border-green-800">
+      <span className="px-2 py-1 text-xs font-medium rounded bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800">
         Converted
       </span>
     );
@@ -305,7 +305,7 @@ function Pagination({ pagination }: { pagination: any }) {
               href={`?page=${page}`}
               className={`px-3 py-1 text-sm rounded transition ${
                 currentPage === page
-                  ? "bg-blue-600 text-white"
+                  ? "bg-(--color-brand-red) text-white"
                   : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
               }`}
             >

@@ -58,7 +58,7 @@ function AccountAutocomplete({
           {selectedAccounts.map((account) => (
             <span
               key={account.id}
-              className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 text-white rounded-full text-sm"
+              className="inline-flex items-center gap-1 px-3 py-1 bg-(--color-brand-red) text-white rounded-full text-sm"
             >
               {account.name}
               <button
@@ -84,7 +84,7 @@ function AccountAutocomplete({
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
         />
 
         {/* Dropdown */}
@@ -107,7 +107,7 @@ function AccountAutocomplete({
                       setSearchTerm("");
                     }}
                     className={`w-full text-left px-3 py-2 hover:bg-theme-secondary transition ${
-                      selectedAccountIds.includes(account.id) ? "bg-blue-900/30" : ""
+                      selectedAccountIds.includes(account.id) ? "bg-(--color-brand-red-muted)" : ""
                     }`}
                   >
                     <div className="font-medium">{account.name}</div>
@@ -334,7 +334,7 @@ export default function IPAddressDetailPage() {
                 <label className="block text-sm font-medium text-theme-secondary mb-2">Endpoint</label>
                 <select
                   name="endpoint"
-                  className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
                 >
                   <option value="all">All Endpoints</option>
                   {data.ipHistory.summary.endpoints.map((endpoint: string) => (
@@ -352,7 +352,7 @@ export default function IPAddressDetailPage() {
                     type="button"
                     onClick={() => setScope("all")}
                     className={`px-4 py-2 rounded-lg transition ${
-                      scope === "all" ? "bg-blue-600 text-white" : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
+                      scope === "all" ? "bg-(--color-brand-red) text-white" : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                     }`}
                   >
                     All Accounts
@@ -361,7 +361,7 @@ export default function IPAddressDetailPage() {
                     type="button"
                     onClick={() => setScope("account")}
                     className={`px-4 py-2 rounded-lg transition ${
-                      scope === "account" ? "bg-blue-600 text-white" : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
+                      scope === "account" ? "bg-(--color-brand-red) text-white" : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                     }`}
                   >
                     Specific Accounts
@@ -389,7 +389,7 @@ export default function IPAddressDetailPage() {
                   name="reason"
                   rows={3}
                   placeholder="Reason for blocking..."
-                  className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
                 />
               </div>
 

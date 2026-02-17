@@ -78,7 +78,7 @@ export default function AccountLobbies() {
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{lobby.name}</span>
                         {lobby.isDefault && (
-                          <span className="px-1.5 py-0.5 text-xs rounded bg-blue-500/20 text-blue-400">
+                          <span className="px-1.5 py-0.5 text-xs rounded bg-(--color-brand-red-muted) text-(--color-brand-red)">
                             Default
                           </span>
                         )}

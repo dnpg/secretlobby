@@ -225,7 +225,7 @@ export default function InvitationsPage() {
                   href={`?filter=${f.value}`}
                   className={`px-3 py-1.5 text-sm font-medium rounded transition ${
                     filter === f.value
-                      ? "bg-blue-600 text-white"
+                      ? "bg-(--color-brand-red) text-white"
                       : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                   }`}
                 >
@@ -370,8 +370,8 @@ function StatCard({
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
-    PENDING: "bg-yellow-900/30 text-yellow-400 border-yellow-800",
-    USED: "bg-green-900/30 text-green-400 border-green-800",
+    PENDING: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800",
+    USED: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800",
     EXPIRED: "bg-theme-tertiary text-theme-primary border-theme",
     REVOKED: "bg-theme-tertiary text-theme-primary border-theme",
   };
@@ -426,7 +426,7 @@ function Pagination({ pagination, filter }: { pagination: any; filter: string })
               href={`?filter=${filter}&page=${page}`}
               className={`px-3 py-1 text-sm rounded transition ${
                 currentPage === page
-                  ? "bg-blue-600 text-white"
+                  ? "bg-(--color-brand-red) text-white"
                   : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
               }`}
             >

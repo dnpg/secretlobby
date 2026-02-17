@@ -67,7 +67,7 @@ export default function AccountUsers() {
                         accountUser.role === "OWNER"
                           ? "bg-purple-500/20 text-purple-400"
                           : accountUser.role === "ADMIN"
-                          ? "bg-blue-500/20 text-blue-400"
+                          ? "bg-(--color-brand-red-muted) text-(--color-brand-red)"
                           : "bg-theme-tertiary text-theme-secondary"
                       }`}
                     >
