@@ -38,54 +38,46 @@ export default function AccountUsers() {
       </div>
 
       {accountUsers.length > 0 ? (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-700">
+        <div className="card overflow-hidden">
+          <table className="table-theme">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  User
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Role
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Joined Account
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Last Login
-                </th>
+                <th>User</th>
+                <th>Role</th>
+                <th>Joined Account</th>
+                <th>Last Login</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700">
+            <tbody>
               {accountUsers.map((accountUser) => (
-                <tr key={accountUser.id} className="hover:bg-gray-750">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                <tr key={accountUser.id}>
+                  <td>
                     <div>
                       <div className="font-medium">
                         {accountUser.user.name || "—"}
                       </div>
-                      <div className="text-sm text-gray-400">
+                      <div className="text-sm text-theme-secondary">
                         {accountUser.user.email}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td>
                     <span
                       className={`px-2 py-1 text-xs rounded-full ${
                         accountUser.role === "OWNER"
                           ? "bg-purple-500/20 text-purple-400"
                           : accountUser.role === "ADMIN"
                           ? "bg-blue-500/20 text-blue-400"
-                          : "bg-gray-600 text-gray-300"
+                          : "bg-theme-tertiary text-theme-secondary"
                       }`}
                     >
                       {accountUser.role}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
+                  <td className="text-theme-secondary text-sm">
                     {new Date(accountUser.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
+                  <td className="text-theme-secondary text-sm">
                     {accountUser.user.lastLoginAt
                       ? new Date(accountUser.user.lastLoginAt).toLocaleString()
                       : "Never"}
@@ -96,8 +88,8 @@ export default function AccountUsers() {
           </table>
         </div>
       ) : (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-12 text-center">
-          <p className="text-gray-400">No users in this account.</p>
+        <div className="card p-12 text-center">
+          <p className="text-theme-secondary">No users in this account.</p>
         </div>
       )}
     </div>

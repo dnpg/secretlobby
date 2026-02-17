@@ -35,36 +35,36 @@ export default function SuperAdminDashboard() {
       <h2 className="text-2xl font-bold mb-8">Dashboard</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">
+        <div className="card p-6">
+          <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">
             Total Accounts
           </h3>
           <p className="text-4xl font-bold mt-2">{stats.accounts}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">
+        <div className="card p-6">
+          <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">
             Total Users
           </h3>
           <p className="text-4xl font-bold mt-2">{stats.users}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">
+        <div className="card p-6">
+          <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">
             Custom Domains
           </h3>
           <p className="text-4xl font-bold mt-2">{stats.domains}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">
+        <div className="card p-6">
+          <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">
             Active Subscriptions
           </h3>
           <p className="text-4xl font-bold mt-2">{stats.activeSubscriptions}</p>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-          <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">
+        <div className="card p-6">
+          <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">
             Subscription Plans
           </h3>
           <p className="text-4xl font-bold mt-2">{stats.plans}</p>

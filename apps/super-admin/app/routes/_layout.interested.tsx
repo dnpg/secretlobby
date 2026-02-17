@@ -80,7 +80,7 @@ export default function InterestedPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold mb-2">Interested People</h2>
-            <p className="text-gray-400 text-sm">
+            <p className="text-theme-secondary text-sm">
               People who signed up for early access on the marketing site
             </p>
           </div>
@@ -106,8 +106,8 @@ export default function InterestedPage() {
         </div>
 
         {/* Filter and Table */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
             <h3 className="text-xl font-semibold">People</h3>
             <div className="flex gap-2">
               {filters.map((f) => (
@@ -117,7 +117,7 @@ export default function InterestedPage() {
                   className={`px-3 py-1.5 text-sm font-medium rounded transition ${
                     filter === f.value
                       ? "bg-blue-600 text-white"
-                      : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                      : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                   }`}
                 >
                   {f.label} ({f.count})
@@ -127,45 +127,45 @@ export default function InterestedPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700">
+            <table className="table-theme">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Source</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Signed Up</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Source</th>
+                  <th>Signed Up</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700">
+              <tbody>
                 {interested.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-gray-400">
+                    <td colSpan={6} className="text-center text-theme-secondary !py-8">
                       No interested people found
                     </td>
                   </tr>
                 ) : (
                   interested.map((person) => (
-                    <tr key={person.id} className="hover:bg-gray-750">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">{person.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                    <tr key={person.id}>
+                      <td className="text-sm">{person.email}</td>
+                      <td className="text-sm text-theme-secondary">
                         {person.name || "-"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                      <td className="text-sm text-theme-secondary">
                         {person.source || "-"}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                      <td className="text-sm text-theme-secondary">
                         {new Date(person.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td>
                         <StatusBadge
                           inviteSentAt={person.inviteSentAt}
                           convertedAt={person.convertedAt}
                           invitationStatus={person.invitation?.status}
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td>
                         {!person.inviteSentAt && !person.convertedAt && (
                           <Form method="post" className="inline">
                             <input type="hidden" name="intent" value="send-invite" />
@@ -174,14 +174,14 @@ export default function InterestedPage() {
                             <button
                               type="submit"
                               disabled={isSubmitting}
-                              className="text-sm text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                              className="text-sm link-primary disabled:opacity-50"
                             >
                               Send Invite
                             </button>
                           </Form>
                         )}
                         {person.inviteSentAt && !person.convertedAt && person.invitation && (
-                          <span className="text-sm text-gray-500">Invited</span>
+                          <span className="text-sm text-theme-muted">Invited</span>
                         )}
                         {person.convertedAt && (
                           <span className="text-sm text-green-400">Converted</span>
@@ -211,14 +211,14 @@ function StatCard({
   variant?: "default" | "warning" | "success";
 }) {
   const colors = {
-    default: "bg-gray-800 border-gray-700",
+    default: "bg-theme-card border-theme",
     warning: "bg-yellow-900/20 border-yellow-700",
     success: "bg-green-900/20 border-green-700",
   };
 
   return (
     <div className={`rounded-xl p-6 border ${colors[variant]}`}>
-      <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">{title}</h3>
+      <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">{title}</h3>
       <p className="text-4xl font-bold mt-2">{value.toLocaleString()}</p>
     </div>
   );
@@ -244,8 +244,8 @@ function StatusBadge({
   if (inviteSentAt) {
     const statusColors: Record<string, string> = {
       PENDING: "bg-yellow-900/30 text-yellow-400 border-yellow-800",
-      EXPIRED: "bg-gray-700 text-gray-300 border-gray-600",
-      REVOKED: "bg-gray-700 text-gray-300 border-gray-600",
+      EXPIRED: "bg-theme-tertiary text-theme-primary border-theme",
+      REVOKED: "bg-theme-tertiary text-theme-primary border-theme",
     };
 
     return (
@@ -256,7 +256,7 @@ function StatusBadge({
   }
 
   return (
-    <span className="px-2 py-1 text-xs font-medium rounded bg-gray-700 text-gray-300 border border-gray-600">
+    <span className="px-2 py-1 text-xs font-medium rounded bg-theme-tertiary text-theme-primary border border-theme">
       Not Invited
     </span>
   );
@@ -282,8 +282,8 @@ function Pagination({ pagination }: { pagination: any }) {
   }
 
   return (
-    <div className="px-6 py-4 border-t border-gray-700 flex items-center justify-between">
-      <div className="text-sm text-gray-400">
+    <div className="px-6 py-4 border-t border-theme flex items-center justify-between">
+      <div className="text-sm text-theme-secondary">
         Showing {((currentPage - 1) * pagination.pageSize) + 1} to{" "}
         {Math.min(currentPage * pagination.pageSize, pagination.total)} of{" "}
         {pagination.total} results
@@ -291,11 +291,11 @@ function Pagination({ pagination }: { pagination: any }) {
 
       <div className="flex gap-1">
         {currentPage > 1 ? (
-          <a href={`?page=${currentPage - 1}`} className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition">
+          <a href={`?page=${currentPage - 1}`} className="px-3 py-1 text-sm bg-theme-tertiary text-theme-primary rounded hover:bg-theme-secondary transition">
             Previous
           </a>
         ) : (
-          <span className="px-3 py-1 text-sm bg-gray-800 text-gray-500 rounded cursor-not-allowed">Previous</span>
+          <span className="px-3 py-1 text-sm bg-theme-card text-theme-muted rounded cursor-not-allowed">Previous</span>
         )}
 
         {pages.map((page, index) =>
@@ -306,22 +306,22 @@ function Pagination({ pagination }: { pagination: any }) {
               className={`px-3 py-1 text-sm rounded transition ${
                 currentPage === page
                   ? "bg-blue-600 text-white"
-                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                  : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
               }`}
             >
               {page}
             </a>
           ) : (
-            <span key={index} className="px-3 py-1 text-sm text-gray-500">{page}</span>
+            <span key={index} className="px-3 py-1 text-sm text-theme-muted">{page}</span>
           )
         )}
 
         {currentPage < totalPages ? (
-          <a href={`?page=${currentPage + 1}`} className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition">
+          <a href={`?page=${currentPage + 1}`} className="px-3 py-1 text-sm bg-theme-tertiary text-theme-primary rounded hover:bg-theme-secondary transition">
             Next
           </a>
         ) : (
-          <span className="px-3 py-1 text-sm bg-gray-800 text-gray-500 rounded cursor-not-allowed">Next</span>
+          <span className="px-3 py-1 text-sm bg-theme-card text-theme-muted rounded cursor-not-allowed">Next</span>
         )}
       </div>
     </div>

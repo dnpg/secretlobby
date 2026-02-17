@@ -121,6 +121,83 @@
   }
 }
 
+/* Card utility */
+@utility card {
+  background-color: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+
+/* Input utility */
+@utility input-theme {
+  background-color: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  &:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px var(--color-accent-muted);
+  }
+  &::placeholder {
+    color: var(--color-text-muted);
+  }
+}
+
+/* Table styles - professional clean look */
+.table-theme {
+  width: 100%;
+  border-collapse: collapse;
+
+  thead {
+    background-color: var(--color-bg-tertiary);
+
+    th {
+      padding: 0.75rem 1.5rem;
+      text-align: left;
+      font-size: 0.75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-secondary);
+      border-bottom: 1px solid var(--color-border);
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid var(--color-border);
+      transition: background-color 0.15s ease;
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      &:hover {
+        background-color: var(--color-bg-tertiary);
+      }
+    }
+
+    td {
+      padding: 1rem 1.5rem;
+      white-space: nowrap;
+    }
+  }
+}
+
+/* Hover background - use as hover:bg-theme-hover */
+@utility bg-theme-hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Link utilities */
+@utility link-primary {
+  color: var(--color-brand-red);
+  transition: color 0.15s ease;
+  &:hover {
+    color: var(--color-brand-red-hover);
+  }
+}
+
 /* Focus visible for accessibility */
 :focus-visible {
   outline: 2px solid var(--color-accent);

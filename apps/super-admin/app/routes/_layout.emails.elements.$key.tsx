@@ -84,34 +84,34 @@ export default function EditElementPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex items-center gap-4">
-        <Link to="/emails" className="text-gray-400 hover:text-white transition">
+        <Link to="/emails" className="text-theme-secondary hover:text-theme-primary transition">
           ← Back to Emails
         </Link>
       </div>
 
       <div className="mb-8">
         <h2 className="text-2xl font-bold">Edit element: {element.name}</h2>
-        <p className="text-gray-400 text-sm mt-1">
-          Key: <code className="bg-gray-800 px-2 py-0.5 rounded">{element.key}</code>. This block is reused in all notification emails. Use table-based HTML with inline styles only. You can use {"{{year}}"} for the current year.
+        <p className="text-theme-secondary text-sm mt-1">
+          Key: <code className="bg-theme-card px-2 py-0.5 rounded">{element.key}</code>. This block is reused in all notification emails. Use table-based HTML with inline styles only. You can use {"{{year}}"} for the current year.
         </p>
       </div>
 
       <Form method="post" className="space-y-6">
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
-          <label className="block text-sm font-medium text-gray-400 mb-2">Display name</label>
+        <div className="card p-6">
+          <label className="block text-sm font-medium text-theme-secondary mb-2">Display name</label>
           <input
             type="text"
             name="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+            className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
           />
         </div>
 
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
-          <label className="block text-sm font-medium text-gray-400 mb-2">HTML (inline styles only)</label>
-          <p className="text-xs text-gray-500 mb-2">
+        <div className="card p-6">
+          <label className="block text-sm font-medium text-theme-secondary mb-2">HTML (inline styles only)</label>
+          <p className="text-xs text-theme-muted mb-2">
             Use tables and inline styles for compatibility with all email clients. This content is inserted into every notification email.
           </p>
           <textarea
@@ -119,7 +119,7 @@ export default function EditElementPage() {
             value={html}
             onChange={(e) => setHtml(e.target.value)}
             rows={20}
-            className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-sm"
+            className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono text-sm"
             spellCheck={false}
           />
         </div>
@@ -128,7 +128,7 @@ export default function EditElementPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+            className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
           >
             {isSubmitting ? "Saving..." : "Save element"}
           </button>
@@ -140,12 +140,12 @@ export default function EditElementPage() {
                 setHtml(defaultContent.html);
                 toast.success("Reverted to default. Click Save to persist.");
               }}
-              className="px-6 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition"
+              className="px-6 py-2 btn-secondary rounded-lg hover:bg-theme-secondary transition"
             >
               Revert to default
             </button>
           )}
-          <Link to="/emails" className="px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition">
+          <Link to="/emails" className="px-6 py-2 bg-theme-tertiary rounded-lg hover:bg-theme-secondary transition">
             Cancel
           </Link>
         </div>

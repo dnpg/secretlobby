@@ -229,35 +229,35 @@ export default function EditTemplatePage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex items-center gap-4">
-        <Link to="/emails" className="text-gray-400 hover:text-white transition">
+        <Link to="/emails" className="text-theme-secondary hover:text-theme-primary transition">
           ← Back to Emails
         </Link>
       </div>
 
       <div className="mb-8">
         <h2 className="text-2xl font-bold">Edit template: {template.name}</h2>
-        <p className="text-gray-400 text-sm mt-1">
-          Key: <code className="bg-gray-800 px-2 py-0.5 rounded">{template.key}</code>. Use placeholders: {"{{userName}}"}, {"{{inviteUrl}}"}, {"{{verificationUrl}}"}, {"{{resetUrl}}"}, {"{{expiresInDays}}"}.
+        <p className="text-theme-secondary text-sm mt-1">
+          Key: <code className="bg-theme-card px-2 py-0.5 rounded">{template.key}</code>. Use placeholders: {"{{userName}}"}, {"{{inviteUrl}}"}, {"{{verificationUrl}}"}, {"{{resetUrl}}"}, {"{{expiresInDays}}"}.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Form method="post" className="space-y-6">
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
-            <label className="block text-sm font-medium text-gray-400 mb-2">Subject line</label>
+          <div className="card p-6">
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Subject line</label>
             <input
               type="text"
               name="subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               required
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-mono"
+              className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono"
             />
           </div>
 
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
-            <label className="block text-sm font-medium text-gray-400 mb-2">Body HTML (table-based, inline styles only)</label>
-            <p className="text-xs text-gray-500 mb-2">
+          <div className="card p-6">
+            <label className="block text-sm font-medium text-theme-secondary mb-2">Body HTML (table-based, inline styles only)</label>
+            <p className="text-xs text-theme-muted mb-2">
               Use tables and inline styles for compatibility with Gmail, Outlook, Apple Mail. Avoid external CSS or complex layout.
             </p>
             <textarea
@@ -265,7 +265,7 @@ export default function EditTemplatePage() {
               value={bodyHtml}
               onChange={(e) => setBodyHtml(e.target.value)}
               rows={24}
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-sm"
+              className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono text-sm"
               spellCheck={false}
             />
           </div>
@@ -274,7 +274,7 @@ export default function EditTemplatePage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+              className="px-6 py-2 btn-primary rounded-lg transition disabled:opacity-50"
             >
               {isSubmitting ? "Saving..." : "Save template"}
             </button>
@@ -285,21 +285,21 @@ export default function EditTemplatePage() {
                 setBodyHtml(defaultBodyHtml);
                 toast.success("Reverted to default template. Click Save to persist.");
               }}
-              className="px-6 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 transition"
+              className="px-6 py-2 btn-secondary rounded-lg hover:bg-theme-secondary transition"
             >
               Revert to default
             </button>
-            <Link to="/emails" className="px-6 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition">
+            <Link to="/emails" className="px-6 py-2 bg-theme-tertiary rounded-lg hover:bg-theme-secondary transition">
               Cancel
             </Link>
           </div>
         </Form>
 
         <div className="space-y-6">
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+          <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Preview</h3>
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-theme-secondary">
                 Rendered in a sandboxed iframe
               </span>
             </div>
@@ -307,7 +307,7 @@ export default function EditTemplatePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               {Object.keys(getDefaultPreviewVars(template.key)).map((k) => (
                 <div key={k}>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                  <label className="block text-xs font-medium text-theme-secondary mb-1">
                     {k}
                   </label>
                   <input
@@ -322,12 +322,12 @@ export default function EditTemplatePage() {
                             : e.target.value,
                       }))
                     }
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-sm"
                   />
                 </div>
               ))}
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
+                <label className="block text-xs font-medium text-theme-secondary mb-1">
                   year
                 </label>
                 <input
@@ -339,12 +339,12 @@ export default function EditTemplatePage() {
                       year: Number(e.target.value || new Date().getFullYear()),
                     }))
                   }
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+                  className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] text-sm"
                 />
               </div>
             </div>
 
-            <div className="rounded-lg overflow-hidden border border-gray-700 bg-white">
+            <div className="rounded-lg overflow-hidden border border-theme bg-white">
               <iframe
                 title="Email template preview"
                 className="w-full"
@@ -353,7 +353,7 @@ export default function EditTemplatePage() {
                 srcDoc={previewHtml}
               />
             </div>
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-theme-muted mt-3">
               Note: some email-client-specific behaviors (Outlook quirks, Gmail clipping) can only be validated by sending a test email.
             </p>
             <Form method="post" className="mt-4">
@@ -364,7 +364,7 @@ export default function EditTemplatePage() {
               <button
                 type="submit"
                 disabled={isSendingPreview}
-                className="px-4 py-2 bg-gray-600 text-gray-200 rounded-lg hover:bg-gray-500 transition disabled:opacity-50 text-sm"
+                className="px-4 py-2 btn-secondary rounded-lg hover:bg-theme-secondary transition disabled:opacity-50 text-sm"
               >
                 {isSendingPreview ? "Sending…" : "Send preview email to me"}
               </button>

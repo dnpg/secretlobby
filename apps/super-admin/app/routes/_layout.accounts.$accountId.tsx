@@ -38,22 +38,22 @@ export default function AccountLayout() {
         <div className="flex items-center gap-3 mb-2">
           <a
             href="/accounts"
-            className="text-gray-400 hover:text-white transition"
+            className="text-theme-secondary hover:text-theme-primary transition"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </a>
           <h2 className="text-2xl font-bold">{account.name}</h2>
-          <span className="px-2 py-1 text-xs rounded-full bg-gray-700">
+          <span className="px-2 py-1 text-xs rounded-full bg-theme-tertiary">
             {account.subscriptionTier}
           </span>
         </div>
-        <p className="text-gray-400 text-sm">{account.slug}</p>
+        <p className="text-theme-secondary text-sm">{account.slug}</p>
       </div>
 
       {/* Sub-navigation */}
-      <nav className="mb-6 border-b border-gray-700">
+      <nav className="mb-6 border-b border-theme">
         <div className="flex gap-1">
           {navItems.map((item) => (
             <NavLink
@@ -63,8 +63,8 @@ export default function AccountLayout() {
               className={({ isActive }) =>
                 `px-4 py-3 text-sm font-medium transition border-b-2 ${
                   isActive
-                    ? "border-red-500 text-white"
-                    : "border-transparent text-gray-400 hover:text-white"
+                    ? "border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                    : "border-transparent text-theme-secondary hover:text-[var(--color-brand-red)]"
                 }`
               }
             >

@@ -27,7 +27,7 @@ export default function EmailsIndexPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <h2 className="text-2xl font-bold mb-2">Notification Emails</h2>
-        <p className="text-gray-400 text-sm">
+        <p className="text-theme-secondary text-sm">
           Manage reusable HTML blocks (header, footer) and notification email templates.
           Use table-based inline HTML for best compatibility across email clients.
         </p>
@@ -35,28 +35,28 @@ export default function EmailsIndexPage() {
 
       <div className="space-y-8">
         {/* Reusable HTML elements */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700">
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-theme">
             <h3 className="text-lg font-semibold">Reusable HTML Elements</h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-theme-secondary mt-1">
               Header and footer are included in every notification email. Edit the HTML below (inline styles only).
             </p>
           </div>
-          <div className="divide-y divide-gray-700">
+          <div>
             {elements.length === 0 ? (
-              <div className="px-6 py-8 text-center text-gray-400">
-                No elements yet. Run <code className="bg-gray-700 px-2 py-1 rounded">pnpm run db:seed</code> to create default header and footer.
+              <div className="px-6 py-8 text-center text-theme-secondary">
+                No elements yet. Run <code className="bg-theme-tertiary px-2 py-1 rounded">pnpm run db:seed</code> to create default header and footer.
               </div>
             ) : (
-              elements.map((el) => (
-                <div key={el.id} className="px-6 py-4 flex items-center justify-between">
+              elements.map((el, index) => (
+                <div key={el.id} className={`px-6 py-4 flex items-center justify-between ${index < elements.length - 1 ? 'border-b border-[var(--color-border)]' : ''}`}>
                   <div>
                     <span className="font-medium">{el.name}</span>
-                    <span className="text-gray-500 text-sm ml-2">({el.key})</span>
+                    <span className="text-theme-muted text-sm ml-2">({el.key})</span>
                   </div>
                   <Link
                     to={`/emails/elements/${el.key}`}
-                    className="px-4 py-2 bg-gray-700 text-sm rounded-lg hover:bg-gray-600 transition"
+                    className="px-4 py-2 bg-theme-tertiary text-sm rounded-lg hover:bg-theme-secondary transition"
                   >
                     Edit HTML
                   </Link>
@@ -67,40 +67,40 @@ export default function EmailsIndexPage() {
         </div>
 
         {/* Notification templates */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700">
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-theme">
             <h3 className="text-lg font-semibold">Notification Templates</h3>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="text-sm text-theme-secondary mt-1">
               Subject and body for each notification type. Placeholders: {"{{userName}}"}, {"{{inviteUrl}}"}, {"{{verificationUrl}}"}, {"{{resetUrl}}"}, {"{{expiresInDays}}"}.
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700">
+            <table className="table-theme">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Key</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Subject</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actions</th>
+                  <th>Name</th>
+                  <th>Key</th>
+                  <th>Subject</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700">
+              <tbody>
                 {templates.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-gray-400">
-                      No templates yet. Run <code className="bg-gray-700 px-2 py-1 rounded">pnpm run db:seed</code> to create defaults.
+                    <td colSpan={4} className="text-center text-theme-secondary !py-8">
+                      No templates yet. Run <code className="bg-theme-tertiary px-2 py-1 rounded">pnpm run db:seed</code> to create defaults.
                     </td>
                   </tr>
                 ) : (
                   templates.map((t) => (
                     <tr key={t.id}>
-                      <td className="px-6 py-4 font-medium">{t.name}</td>
-                      <td className="px-6 py-4 text-gray-400 text-sm">{t.key}</td>
-                      <td className="px-6 py-4 text-gray-300 text-sm max-w-xs truncate">{t.subject}</td>
-                      <td className="px-6 py-4">
+                      <td className="font-medium">{t.name}</td>
+                      <td className="text-theme-secondary text-sm">{t.key}</td>
+                      <td className="text-theme-primary text-sm max-w-xs truncate">{t.subject}</td>
+                      <td>
                         <Link
                           to={`/emails/templates/${t.key}`}
-                          className="px-4 py-2 bg-gray-700 text-sm rounded-lg hover:bg-gray-600 transition"
+                          className="px-4 py-2 bg-theme-tertiary text-sm rounded-lg hover:bg-theme-secondary transition"
                         >
                           Edit
                         </Link>

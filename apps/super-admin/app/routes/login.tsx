@@ -128,7 +128,7 @@ export default function SuperAdminLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="w-full max-w-md p-8">
-        <div className="bg-gray-800 rounded-2xl p-8 shadow-2xl border border-gray-700">
+        <div className="card p-8 shadow-2xl rounded-2xl">
           <div className="text-center mb-8">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-600 flex items-center justify-center">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,7 +136,7 @@ export default function SuperAdminLogin() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold">Super Admin</h1>
-            <p className="text-gray-400 mt-2">Restricted access</p>
+            <p className="text-theme-secondary mt-2">Restricted access</p>
           </div>
 
           {actionData?.error && (
@@ -148,7 +148,7 @@ export default function SuperAdminLogin() {
           <Form method="post" className="space-y-4">
             <input type="hidden" name="_csrf" value={csrfToken} />
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium text-theme-primary mb-1">
                 Email
               </label>
               <input
@@ -158,11 +158,11 @@ export default function SuperAdminLogin() {
                 placeholder="admin@example.com"
                 required
                 autoComplete="email"
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full px-4 py-3 rounded-lg bg-theme-tertiary border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
               />
             </div>
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+              <label htmlFor="password" className="block text-sm font-medium text-theme-primary mb-1">
                 Password
               </label>
               <input
@@ -172,13 +172,13 @@ export default function SuperAdminLogin() {
                 placeholder="Your password"
                 required
                 autoComplete="current-password"
-                className="w-full px-4 py-3 rounded-lg bg-gray-700 border border-gray-600 text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full px-4 py-3 rounded-lg bg-theme-tertiary border border-theme text-theme-primary placeholder:text-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
               />
             </div>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 px-4 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50"
+              className="w-full py-3 px-4 btn-primary font-semibold rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] disabled:opacity-50"
             >
               {isSubmitting ? "Signing in..." : "Sign In"}
             </button>

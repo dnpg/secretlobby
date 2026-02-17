@@ -48,7 +48,7 @@ function AccountAutocomplete({
 
   return (
     <div className="relative">
-      <label className="block text-sm font-medium text-gray-400 mb-2">
+      <label className="block text-sm font-medium text-theme-secondary mb-2">
         Select Accounts
       </label>
 
@@ -84,7 +84,7 @@ function AccountAutocomplete({
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
-          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
         {/* Dropdown */}
@@ -94,9 +94,9 @@ function AccountAutocomplete({
               className="fixed inset-0 z-10"
               onClick={() => setIsOpen(false)}
             />
-            <div className="absolute z-20 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <div className="absolute z-20 w-full mt-1 bg-theme-tertiary border border-theme rounded-lg shadow-lg max-h-60 overflow-y-auto">
               {filteredAccounts.length === 0 ? (
-                <div className="px-3 py-2 text-gray-400 text-sm">No accounts found</div>
+                <div className="px-3 py-2 text-theme-secondary text-sm">No accounts found</div>
               ) : (
                 filteredAccounts.map((account) => (
                   <button
@@ -106,12 +106,12 @@ function AccountAutocomplete({
                       toggleAccount(account.id);
                       setSearchTerm("");
                     }}
-                    className={`w-full text-left px-3 py-2 hover:bg-gray-600 transition ${
+                    className={`w-full text-left px-3 py-2 hover:bg-theme-secondary transition ${
                       selectedAccountIds.includes(account.id) ? "bg-blue-900/30" : ""
                     }`}
                   >
                     <div className="font-medium">{account.name}</div>
-                    <div className="text-sm text-gray-400">{account.slug}</div>
+                    <div className="text-sm text-theme-secondary">{account.slug}</div>
                   </button>
                 ))
               )}
@@ -218,50 +218,50 @@ export default function IPAddressDetailPage() {
             <div className="flex items-center gap-3 mb-2">
               <Link
                 to="/security"
-                className="text-gray-400 hover:text-white transition"
+                className="text-theme-secondary hover:text-theme-primary transition"
               >
                 ← Back to Security
               </Link>
             </div>
             <h2 className="text-3xl font-bold">IP Address Details</h2>
-            <p className="text-gray-400 text-lg mt-1">
+            <p className="text-theme-secondary text-lg mt-1">
               Full violation history for{" "}
-              <span className="font-mono text-blue-400">{ipHistory.ipAddress}</span>
+              <span className="font-mono link-primary">{ipHistory.ipAddress}</span>
             </p>
           </div>
         </div>
 
         {/* Summary Statistics */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div className="text-gray-400 text-sm font-medium">Total Violations</div>
+          <div className="card p-6">
+            <div className="text-theme-secondary text-sm font-medium">Total Violations</div>
             <div className="text-3xl font-bold mt-2">{ipHistory.summary.totalViolations}</div>
           </div>
           <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-6">
-            <div className="text-gray-400 text-sm font-medium">Active</div>
+            <div className="text-theme-secondary text-sm font-medium">Active</div>
             <div className="text-3xl font-bold mt-2">{ipHistory.summary.activeViolations}</div>
           </div>
           <div className="bg-red-900/20 border border-red-700 rounded-lg p-6">
-            <div className="text-gray-400 text-sm font-medium">Blocked</div>
+            <div className="text-theme-secondary text-sm font-medium">Blocked</div>
             <div className="text-3xl font-bold mt-2">{ipHistory.summary.blockedViolations}</div>
           </div>
-          <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-            <div className="text-gray-400 text-sm font-medium">Endpoints</div>
+          <div className="card p-6">
+            <div className="text-theme-secondary text-sm font-medium">Endpoints</div>
             <div className="text-3xl font-bold mt-2">{ipHistory.summary.endpoints.length}</div>
           </div>
         </div>
 
         {/* Affected Accounts */}
         {ipHistory.summary.affectedAccounts.length > 0 && (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+          <div className="card p-6">
             <h3 className="text-xl font-semibold mb-3">Affected Accounts</h3>
             <div className="flex flex-wrap gap-2">
               {ipHistory.summary.affectedAccounts.map((account: any) => (
                 <span
                   key={account.id}
-                  className="px-4 py-2 bg-gray-700 rounded-lg text-sm"
+                  className="px-4 py-2 bg-theme-tertiary rounded-lg text-sm"
                 >
-                  {account.name} <span className="text-gray-400">({account.slug})</span>
+                  {account.name} <span className="text-theme-secondary">({account.slug})</span>
                 </span>
               ))}
             </div>
@@ -304,7 +304,7 @@ export default function IPAddressDetailPage() {
                 <input type="hidden" name="ipAddress" value={data.ipHistory.ipAddress} />
                 <button
                   type="submit"
-                  className="w-full px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition font-medium border border-gray-600"
+                  className="w-full px-6 py-3 bg-theme-tertiary text-theme-primary rounded-lg hover:bg-theme-secondary transition font-medium border border-theme"
                 >
                   Clear All Violations
                 </button>
@@ -315,12 +315,12 @@ export default function IPAddressDetailPage() {
 
         {/* Inline Block Form */}
         {showBlockForm && (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+          <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-semibold">Block IP Address: {data.ipHistory.ipAddress}</h3>
               <button
                 onClick={() => setShowBlockForm(false)}
-                className="text-gray-400 hover:text-white transition"
+                className="text-theme-secondary hover:text-theme-primary transition"
               >
                 ✕
               </button>
@@ -331,10 +331,10 @@ export default function IPAddressDetailPage() {
               <input type="hidden" name="ipAddress" value={data.ipHistory.ipAddress} />
 
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Endpoint</label>
+                <label className="block text-sm font-medium text-theme-secondary mb-2">Endpoint</label>
                 <select
                   name="endpoint"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="all">All Endpoints</option>
                   {data.ipHistory.summary.endpoints.map((endpoint: string) => (
@@ -346,13 +346,13 @@ export default function IPAddressDetailPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Block Scope</label>
+                <label className="block text-sm font-medium text-theme-secondary mb-2">Block Scope</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setScope("all")}
                     className={`px-4 py-2 rounded-lg transition ${
-                      scope === "all" ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                      scope === "all" ? "bg-blue-600 text-white" : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                     }`}
                   >
                     All Accounts
@@ -361,7 +361,7 @@ export default function IPAddressDetailPage() {
                     type="button"
                     onClick={() => setScope("account")}
                     className={`px-4 py-2 rounded-lg transition ${
-                      scope === "account" ? "bg-blue-600 text-white" : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                      scope === "account" ? "bg-blue-600 text-white" : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                     }`}
                   >
                     Specific Accounts
@@ -384,18 +384,18 @@ export default function IPAddressDetailPage() {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Reason</label>
+                <label className="block text-sm font-medium text-theme-secondary mb-2">Reason</label>
                 <textarea
                   name="reason"
                   rows={3}
                   placeholder="Reason for blocking..."
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="flex items-center gap-2">
                 <input type="checkbox" name="permanent" value="true" id="permanent-block" className="w-4 h-4" />
-                <label htmlFor="permanent-block" className="text-sm text-gray-400">
+                <label htmlFor="permanent-block" className="text-sm text-theme-secondary">
                   Permanent Block
                 </label>
               </div>
@@ -410,7 +410,7 @@ export default function IPAddressDetailPage() {
                 <button
                   type="button"
                   onClick={() => setShowBlockForm(false)}
-                  className="px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition"
+                  className="px-6 py-3 bg-theme-tertiary text-theme-primary rounded-lg hover:bg-theme-secondary transition"
                 >
                   Cancel
                 </button>
@@ -420,16 +420,16 @@ export default function IPAddressDetailPage() {
         )}
 
         {/* Violation History Table */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700">
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-theme">
             <h3 className="text-xl font-semibold">
               Violation History ({data.ipHistory.violations.length} records)
             </h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700">
-                <tr className="text-left text-sm text-gray-300">
+            <table className="table-theme">
+              <thead>
+                <tr className="text-left text-sm text-theme-primary">
                   <th className="px-6 py-3">Endpoint</th>
                   <th className="px-6 py-3">Account/Subdomain</th>
                   <th className="px-6 py-3">Count</th>
@@ -438,15 +438,15 @@ export default function IPAddressDetailPage() {
                   <th className="px-6 py-3">Last Violation</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700">
+              <tbody>
                 {data.ipHistory.violations.map((violation: any) => (
-                  <tr key={violation.id} className="hover:bg-gray-750">
+                  <tr key={violation.id} className="hover:bg-theme-hover">
                     <td className="px-6 py-4 font-mono text-sm">{violation.endpoint}</td>
                     <td className="px-6 py-4">
                       {violation.lobby?.account ? (
-                        <span className="text-blue-400">{violation.lobby.account.slug}</span>
+                        <span className="link-primary">{violation.lobby.account.slug}</span>
                       ) : (
-                        <span className="text-gray-500">All Domains</span>
+                        <span className="text-theme-muted">All Domains</span>
                       )}
                     </td>
                     <td className="px-6 py-4">{violation.violationCount}</td>
@@ -459,7 +459,7 @@ export default function IPAddressDetailPage() {
                             ? "bg-yellow-900/30 text-yellow-300"
                             : violation.status === "RESOLVED"
                             ? "bg-green-900/30 text-green-300"
-                            : "bg-gray-600 text-gray-300"
+                            : "bg-theme-tertiary text-theme-primary"
                         }`}
                       >
                         {violation.status}
@@ -474,13 +474,13 @@ export default function IPAddressDetailPage() {
                             ? "bg-orange-900/30 text-orange-300"
                             : violation.violationCount === 4
                             ? "bg-yellow-900/30 text-yellow-300"
-                            : "bg-gray-600 text-gray-300"
+                            : "bg-theme-tertiary text-theme-primary"
                         }`}
                       >
                         {getLockoutScheduleLabel(violation.violationCount)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-400 text-sm">
+                    <td className="px-6 py-4 text-theme-secondary text-sm">
                       {new Date(violation.lastViolation).toLocaleString()}
                     </td>
                   </tr>

@@ -54,39 +54,27 @@ export default function AccountLobbies() {
       </div>
 
       {lobbies.length > 0 ? (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-700">
+        <div className="card overflow-hidden">
+          <table className="table-theme">
+            <thead>
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Slug
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Tracks
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th>Name</th>
+                <th>Slug</th>
+                <th>Status</th>
+                <th>Tracks</th>
+                <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-700">
+            <tbody>
               {lobbies.map((lobby) => {
                 const lobbyUrl = lobby.isDefault
                   ? `${protocol}://${accountSlug}.${baseDomain}`
                   : `${protocol}://${accountSlug}.${baseDomain}/${lobby.slug}`;
 
                 return (
-                  <tr key={lobby.id} className="hover:bg-gray-750">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                  <tr key={lobby.id}>
+                    <td>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{lobby.name}</span>
                         {lobby.isDefault && (
@@ -96,10 +84,10 @@ export default function AccountLobbies() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-sm">
+                    <td className="text-theme-secondary font-mono text-sm">
                       {lobby.slug}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td>
                       <span
                         className={`px-2 py-1 text-xs rounded-full ${
                           lobby.isPublished
@@ -110,18 +98,18 @@ export default function AccountLobbies() {
                         {lobby.isPublished ? "Published" : "Draft"}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-400">
+                    <td className="text-theme-secondary">
                       {lobby._count.tracks}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
+                    <td className="text-theme-secondary text-sm">
                       {new Date(lobby.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td>
                       <a
                         href={lobbyUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300 transition text-sm"
+                        className="link-primary transition text-sm"
                       >
                         View
                       </a>
@@ -133,8 +121,8 @@ export default function AccountLobbies() {
           </table>
         </div>
       ) : (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-12 text-center">
-          <p className="text-gray-400">No lobbies created yet.</p>
+        <div className="card p-12 text-center">
+          <p className="text-theme-secondary">No lobbies created yet.</p>
         </div>
       )}
     </div>
