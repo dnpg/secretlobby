@@ -214,6 +214,18 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/* Header bar when scrolled - theme aware (data-theme, not Tailwind dark:) */
+[data-theme="light"] .header-scrolled {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  border-color: rgb(0 0 0 / 0.1);
+  background-color: rgb(255 255 255 / 0.7);
+}
+[data-theme="dark"] .header-scrolled {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+  border-color: rgb(255 255 255 / 0.1);
+  background-color: rgb(0 0 0 / 0.7);
+}
+
 /* Smooth transitions for theme switching */
 * {
   transition-property: background-color, border-color, color;

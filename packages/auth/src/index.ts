@@ -31,6 +31,7 @@ export {
   addUserToAccount,
   type AuthenticatedUser,
   type AuthResult,
+  type CreateUserOptions,
 } from "./password.server.js";
 
 // OAuth

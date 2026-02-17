@@ -41,35 +41,49 @@ export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Edit template: ${params.key} - Super Admin` }];
 }
 
+function escapeRegExp(key: string): string {
+  return key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function substitute(str: string, variables: Record<string, string | number>) {
   let out = str;
   for (const [key, value] of Object.entries(variables)) {
-    out = out.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), String(value ?? ""));
+    const escaped = escapeRegExp(key);
+    out = out.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, "g"), String(value ?? ""));
   }
   return out;
 }
 
+const DEFAULT_USER_VARS = {
+  userName: "Diego",
+  "user.email": "diego@example.com",
+  "user.firstName": "Diego",
+  "user.lastName": "Pego",
+  "user.name": "Diego",
+} as Record<string, string | number>;
+
 function getDefaultPreviewVars(key: string): Record<string, string | number> {
+  const base = { ...DEFAULT_USER_VARS };
   if (key === "invitation") {
     return {
-      userName: "Diego",
+      ...base,
       inviteUrl: "https://console.secretlobby.co/signup?code=example",
       expiresInDays: 7,
     };
   }
   if (key === "email_verification") {
     return {
-      userName: "Diego",
+      ...base,
       verificationUrl: "https://console.secretlobby.co/verify?token=example",
     };
   }
   if (key === "password_reset") {
     return {
-      userName: "Diego",
+      ...base,
       resetUrl: "https://console.secretlobby.co/reset-password?token=example",
     };
   }
-  return { userName: "Diego" };
+  return base;
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
@@ -237,7 +251,7 @@ export default function EditTemplatePage() {
       <div className="mb-8">
         <h2 className="text-2xl font-bold">Edit template: {template.name}</h2>
         <p className="text-theme-secondary text-sm mt-1">
-          Key: <code className="bg-theme-card px-2 py-0.5 rounded">{template.key}</code>. Use placeholders: {"{{userName}}"}, {"{{inviteUrl}}"}, {"{{verificationUrl}}"}, {"{{resetUrl}}"}, {"{{expiresInDays}}"}.
+          Key: <code className="bg-theme-card px-2 py-0.5 rounded">{template.key}</code>. Placeholders: {"{{user.email}}"}, {"{{user.firstName}}"}, {"{{user.lastName}}"}, {"{{user.name}}"} (display), {"{{inviteUrl}}"}, {"{{verificationUrl}}"}, {"{{resetUrl}}"}, {"{{expiresInDays}}"}, {"{{year}}"}, {"{{consoleUrl}}"}.
         </p>
       </div>
 

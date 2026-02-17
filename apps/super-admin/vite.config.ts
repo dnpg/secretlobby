@@ -26,6 +26,7 @@ function serverOnlyModules(): Plugin {
 }
 
 export default defineConfig({
+  envDir: "../../",
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths(), serverOnlyModules()],
   ssr: {
     noExternal: ["@secretlobby/ui"],

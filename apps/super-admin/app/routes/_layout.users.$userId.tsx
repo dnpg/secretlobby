@@ -1,22 +1,16 @@
 import { useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import type { Route } from "./+types/_layout.users.$userId";
-import { prisma } from "@secretlobby/db";
 import type { UserRole } from "@secretlobby/db";
 import { PASSWORD_REQUIREMENTS, checkPasswordRequirements } from "@secretlobby/auth/requirements";
 import { cn } from "@secretlobby/ui";
-import {
-  updateUserAdmin,
-  updateAccountUserRole,
-  addUserToAccountAdmin,
-  removeUserFromAccount,
-} from "~/models/users/mutations.server";
 
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: data?.user ? `${data.user.email} - Edit User - Super Admin` : "Edit User - Super Admin" }];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
+  const { prisma } = await import("@secretlobby/db");
   const { userId } = params;
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -43,16 +37,23 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
+  const { updateUserAdmin, updateAccountUserRole, addUserToAccountAdmin, removeUserFromAccount } = await import(
+    "~/models/users/mutations.server"
+  );
   const { userId } = params;
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
 
   if (intent === "update-profile") {
+    const firstName = (formData.get("firstName") as string)?.trim() || null;
+    const lastName = (formData.get("lastName") as string)?.trim() || null;
     const name = (formData.get("name") as string)?.trim() || null;
     const email = (formData.get("email") as string)?.trim() ?? "";
     const emailVerified = formData.get("emailVerified") === "on";
     const newPassword = (formData.get("newPassword") as string) || null;
     const result = await updateUserAdmin(userId, {
+      firstName,
+      lastName,
       name,
       email,
       emailVerified,
@@ -160,15 +161,43 @@ export default function EditUserPage() {
               />
             </div>
             <div>
+              <label htmlFor="firstName" className="block text-sm font-medium text-theme-secondary mb-1">
+                First name
+              </label>
+              <input
+                id="firstName"
+                name="firstName"
+                type="text"
+                autoComplete="given-name"
+                defaultValue={user.firstName ?? ""}
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              />
+            </div>
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-medium text-theme-secondary mb-1">
+                Last name
+              </label>
+              <input
+                id="lastName"
+                name="lastName"
+                type="text"
+                autoComplete="family-name"
+                defaultValue={user.lastName ?? ""}
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              />
+            </div>
+            <div>
               <label htmlFor="name" className="block text-sm font-medium text-theme-secondary mb-1">
-                Name
+                Display name (optional)
               </label>
               <input
                 id="name"
                 name="name"
                 type="text"
+                autoComplete="nickname"
                 defaultValue={user.name ?? ""}
                 className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                placeholder="Defaults to first name"
               />
             </div>
             <div>

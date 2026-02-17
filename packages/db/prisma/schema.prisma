@@ -123,6 +123,9 @@ model User {
   id           String  @id @default(cuid())
   email        String  @unique
   passwordHash String
+  firstName    String?
+  lastName     String?
+  /// Display name (editable; can default to firstName)
   name         String?
   avatarUrl    String?
 

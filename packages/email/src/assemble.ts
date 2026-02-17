@@ -1,7 +1,7 @@
 /**
  * Assembles full email HTML from template + header + footer.
  * Uses optional repository (e.g. Prisma) for DB-backed templates; falls back to defaults.
- * Placeholders in templates: {{userName}}, {{inviteUrl}}, {{verificationUrl}}, {{resetUrl}}, {{expiresInDays}}, {{year}}, etc.
+ * Placeholders in templates: {{user.name}}, {{inviteUrl}}, {{verificationUrl}}, {{resetUrl}}, {{expiresInDays}}, {{year}}, etc.
  */
 
 import {
@@ -35,10 +35,16 @@ const DEFAULT_BODIES: Record<string, string> = {
   password_reset: DEFAULT_PASSWORD_RESET_BODY_HTML,
 };
 
+/** Escape special regex characters so placeholder keys like "user.name" match literally */
+function escapeRegExp(key: string): string {
+  return key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function substitute(str: string, variables: Record<string, string | number>): string {
   let out = str;
   for (const [key, value] of Object.entries(variables)) {
-    out = out.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), String(value ?? ""));
+    const escaped = escapeRegExp(key);
+    out = out.replace(new RegExp(`\\{\\{${escaped}\\}\\}`, "g"), String(value ?? ""));
   }
   return out;
 }

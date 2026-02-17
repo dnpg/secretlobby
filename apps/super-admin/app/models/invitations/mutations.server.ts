@@ -24,10 +24,11 @@ export interface CreateInvitationOptions {
 
 export async function createInvitation(options: CreateInvitationOptions) {
   const { email, sentBy, interestedPersonId, note, expiresInDays = 7 } = options;
+  const normalizedEmail = email.toLowerCase();
 
   // Check if invitation already exists for this email
   const existingInvitation = await prisma.invitation.findUnique({
-    where: { email: email.toLowerCase() },
+    where: { email: normalizedEmail },
   });
 
   if (existingInvitation) {
@@ -48,7 +49,7 @@ export async function createInvitation(options: CreateInvitationOptions) {
   // Create the invitation
   const invitation = await prisma.invitation.create({
     data: {
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       code,
       status: InvitationStatus.PENDING,
       sentAt: new Date(),
@@ -69,18 +70,40 @@ export async function createInvitation(options: CreateInvitationOptions) {
 
   // Send the email (use DB templates when available)
   try {
+    const interestedPerson = interestedPersonId
+      ? await prisma.interestedPerson.findUnique({
+          where: { id: interestedPersonId },
+          select: { name: true },
+        })
+      : null;
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { email: true, firstName: true, lastName: true, name: true },
+    });
+    const invitationVars: Record<string, string | number> = {
+      // Always provide user.email even for non-users (invites go to an email address)
+      "user.email": existingUser?.email ?? normalizedEmail,
+      "user.firstName": existingUser?.firstName ?? "",
+      "user.lastName": existingUser?.lastName ?? "",
+      // Prefer real user display name, else interestedPerson.name, else email prefix
+      "user.name":
+        existingUser?.name ??
+        existingUser?.firstName ??
+        interestedPerson?.name ??
+        normalizedEmail.split("@")[0] ??
+        "there",
+      inviteUrl,
+      expiresInDays,
+      consoleUrl: process.env.CONSOLE_URL || "https://console.secretlobby.co",
+    };
+
     const repo = {
       getTemplate: (key: string) =>
         prisma.emailTemplate.findUnique({ where: { key } }).then((t) => (t ? { subject: t.subject, bodyHtml: t.bodyHtml } : null)),
       getElement: (key: string) =>
         prisma.emailHtmlElement.findUnique({ where: { key } }).then((e) => (e ? { html: e.html } : null)),
     };
-    const consoleUrl = process.env.CONSOLE_URL || "https://console.secretlobby.co";
-    const content = await getAssembledEmail(
-      "invitation",
-      { userName: "there", inviteUrl, expiresInDays, consoleUrl },
-      repo
-    );
+    const content = await getAssembledEmail("invitation", invitationVars, repo);
     await sendInvitationEmail({
       to: email,
       inviteUrl,
@@ -91,7 +114,9 @@ export async function createInvitation(options: CreateInvitationOptions) {
     logger.info({ email, invitationId: invitation.id }, "Invitation email sent");
   } catch (error) {
     logger.error({ error, email }, "Failed to send invitation email");
-    // Don't throw - the invitation was created, we just couldn't send the email
+    const message = error instanceof Error ? error.message : "Failed to send invitation email";
+    const isDbError = /prisma|column|does not exist|migration/i.test(message);
+    throw new Error(isDbError ? message : message + " (check SMTP_HOST/Mailpit or RESEND_API_KEY)");
   }
 
   return { success: true, invitation, inviteUrl };
@@ -138,29 +163,43 @@ export async function resendInvitation(id: string, sentBy: string) {
 
   // Send the email (use DB templates when available)
   try {
-    const userName = invitation.interestedPerson?.name || "there";
+    const normalizedEmail = invitation.email.toLowerCase();
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { email: true, firstName: true, lastName: true, name: true },
+    });
+    const resendVars: Record<string, string | number> = {
+      "user.email": existingUser?.email ?? normalizedEmail,
+      "user.firstName": existingUser?.firstName ?? "",
+      "user.lastName": existingUser?.lastName ?? "",
+      "user.name":
+        existingUser?.name ??
+        existingUser?.firstName ??
+        invitation.interestedPerson?.name ??
+        "there",
+      inviteUrl,
+      expiresInDays: 7,
+      consoleUrl: process.env.CONSOLE_URL || "https://console.secretlobby.co",
+    };
     const repo = {
       getTemplate: (key: string) =>
         prisma.emailTemplate.findUnique({ where: { key } }).then((t) => (t ? { subject: t.subject, bodyHtml: t.bodyHtml } : null)),
       getElement: (key: string) =>
         prisma.emailHtmlElement.findUnique({ where: { key } }).then((e) => (e ? { html: e.html } : null)),
     };
-    const consoleUrl = process.env.CONSOLE_URL || "https://console.secretlobby.co";
-    const content = await getAssembledEmail(
-      "invitation",
-      { userName, inviteUrl, expiresInDays: 7, consoleUrl },
-      repo
-    );
+    const content = await getAssembledEmail("invitation", resendVars, repo);
     await sendInvitationEmail({
       to: invitation.email,
       inviteUrl,
-      userName,
+      userName: String(resendVars["user.name"] || "there"),
       subject: content.subject,
       html: content.html,
-    });
-    logger.info({ email: invitation.email, invitationId: id }, "Invitation resent");
+    });    
   } catch (error) {
     logger.error({ error, email: invitation.email }, "Failed to resend invitation email");
+    const message = error instanceof Error ? error.message : "Failed to resend invitation email";
+    const isDbError = /prisma|column|does not exist|migration/i.test(message);
+    throw new Error(isDbError ? message : message + " (check SMTP_HOST/Mailpit or RESEND_API_KEY)");
   }
 
   return { success: true, invitation: updatedInvitation, inviteUrl };

@@ -58,6 +58,18 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
+  if (intent === "resend-invite") {
+    const invitationId = formData.get("invitationId") as string;
+    if (!invitationId) return { error: "Missing invitation" };
+    const { resendInvitation } = await import("~/models/invitations/mutations.server");
+    try {
+      await resendInvitation(invitationId, session.userId!);
+      return { success: "New invitation sent" };
+    } catch (error: any) {
+      return { error: error.message || "Failed to resend invitation" };
+    }
+  }
+
   return { error: "Invalid action" };
 }
 
@@ -174,14 +186,29 @@ export default function InterestedPage() {
                             <button
                               type="submit"
                               disabled={isSubmitting}
-                              className="text-sm link-primary disabled:opacity-50"
+                              className="text-sm font-medium text-(--color-brand-red) hover:bg-(--color-brand-red) hover:text-white rounded px-2 py-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               Send Invite
                             </button>
                           </Form>
                         )}
                         {person.inviteSentAt && !person.convertedAt && person.invitation && (
-                          <span className="text-sm text-theme-muted">Invited</span>
+                          <span className="inline-flex items-center gap-2">
+                            <span className="text-sm text-theme-muted">Invited</span>
+                            {person.invitation.status === "PENDING" && (
+                              <Form method="post" className="inline">
+                                <input type="hidden" name="intent" value="resend-invite" />
+                                <input type="hidden" name="invitationId" value={person.invitation.id} />
+                                <button
+                                  type="submit"
+                                  disabled={isSubmitting}
+                                  className="text-sm font-medium text-(--color-brand-red) hover:bg-(--color-brand-red) hover:text-white rounded px-2 py-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Send new invite
+                                </button>
+                              </Form>
+                            )}
+                          </span>
                         )}
                         {person.convertedAt && (
                           <span className="text-sm text-green-400">Converted</span>

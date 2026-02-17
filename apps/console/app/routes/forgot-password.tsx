@@ -221,7 +221,7 @@ export async function action({ request }: Route.ActionArgs) {
       await sendPasswordResetEmail({
         to: result.user.email,
         resetUrl,
-        userName: result.user.name || undefined,
+        userName: result.user.name ?? result.user.firstName ?? undefined,
       });
     } catch (e) {
       logger.error(

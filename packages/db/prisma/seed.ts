@@ -498,7 +498,7 @@ async function main() {
   <tr>
     <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
       <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">You're Invited!</h2>
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{user.name}},</p>
       <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">You've been invited to join SecretLobby — the private music sharing platform for artists. Create your own password-protected lobby and share your unreleased tracks with your fans.</p>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
         <tr>
@@ -525,7 +525,7 @@ async function main() {
   <tr>
     <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
       <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Verify your email address</h2>
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{user.name}},</p>
       <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Thanks for signing up! Please verify your email address to get started with SecretLobby.</p>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
         <tr>
@@ -552,7 +552,7 @@ async function main() {
   <tr>
     <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
       <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Reset your password</h2>
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{user.name}},</p>
       <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">We received a request to reset your password. Click the button below to choose a new one:</p>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
         <tr>

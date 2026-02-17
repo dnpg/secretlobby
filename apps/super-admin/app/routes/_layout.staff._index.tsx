@@ -65,6 +65,8 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = formData.get("intent") as string;
 
   if (intent === "create") {
+    const firstName = (formData.get("firstName") as string)?.trim() || undefined;
+    const lastName = (formData.get("lastName") as string)?.trim() || undefined;
     const name = (formData.get("name") as string)?.trim() || undefined;
     const email = (formData.get("email") as string)?.trim()?.toLowerCase();
     const password = formData.get("password") as string;
@@ -82,7 +84,7 @@ export async function action({ request }: Route.ActionArgs) {
     const { createUser } = await import("@secretlobby/auth");
     let user: { id: string };
     try {
-      user = await createUser(email, password, name);
+      user = await createUser(email, password, { firstName, lastName, name });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to create user";
       if (message.includes("Unique constraint") || message.includes("unique")) {
@@ -328,8 +330,16 @@ export default function StaffIndexPage() {
           <Form method="post" className="mt-4 pt-4 border-t border-theme grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <input type="hidden" name="intent" value="create" />
             <div>
-              <label htmlFor="create-name" className="block text-xs font-medium text-theme-muted mb-1">Name</label>
-              <input id="create-name" name="name" type="text" placeholder="Jane Doe" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
+              <label htmlFor="create-firstName" className="block text-xs font-medium text-theme-muted mb-1">First name</label>
+              <input id="create-firstName" name="firstName" type="text" placeholder="Jane" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
+            </div>
+            <div>
+              <label htmlFor="create-lastName" className="block text-xs font-medium text-theme-muted mb-1">Last name</label>
+              <input id="create-lastName" name="lastName" type="text" placeholder="Doe" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
+            </div>
+            <div>
+              <label htmlFor="create-name" className="block text-xs font-medium text-theme-muted mb-1">Display name (optional)</label>
+              <input id="create-name" name="name" type="text" placeholder="Defaults to first name" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
             </div>
             <div>
               <label htmlFor="create-email" className="block text-xs font-medium text-theme-muted mb-1">Email *</label>

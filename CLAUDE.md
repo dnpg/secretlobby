@@ -9,6 +9,9 @@
   - Primary domain is `secretlobby.co` (not `.io`) — use `.co` in links and defaults.
   See MCP memory for full details about architecture, tech stack, and features.
 
+  ## UI / Styling
+  - **Buttons and links:** Every `<button>` and every `<a>` tag must include `cursor-pointer` (so they are clearly clickable).
+
   ## Marketing Site Hero Canvas
 
   ### LogoDistortionBackground Component

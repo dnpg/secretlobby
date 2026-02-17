@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, Form, Outlet, useLoaderData, redirect, Link } from "react-router";
 import type { Route } from "./+types/_layout";
 import { getSession, requireUserAuth, isAdmin, isStaffOwner } from "@secretlobby/auth";
@@ -182,7 +182,12 @@ export default function Layout() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
-  const mainRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const [mainEl, setMainEl] = useState<HTMLElement | null>(null);
+  const setMainRef = useCallback((el: HTMLElement | null) => {
+    mainRef.current = el;
+    setMainEl(el);
+  }, []);
 
   const toggleSidebar = () => {
     const newState = !isCollapsed;
@@ -202,17 +207,24 @@ export default function Layout() {
     }
   }, [isUserMenuOpen]);
 
-  // Backdrop effect when scrolling (match console header); main has overflow-auto so listen to it
+  // Backdrop effect when scrolling (match console header). Listen to both main (overflow-auto) and window so header style updates in all cases.
   useEffect(() => {
-    const el = mainRef.current;
-    if (!el) return;
-    function handleScroll() {
-      setScrolled(el.scrollTop > 0);
+    function updateScrolled() {
+      const mainScroll = mainRef.current?.scrollTop ?? 0;
+      const windowScroll = typeof window !== "undefined" ? window.scrollY : 0;
+      setScrolled(mainScroll > 0 || windowScroll > 0);
     }
-    handleScroll();
-    el.addEventListener("scroll", handleScroll);
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, []);
+    updateScrolled();
+    const main = mainEl;
+    if (main) {
+      main.addEventListener("scroll", updateScrolled, { passive: true });
+    }
+    window.addEventListener("scroll", updateScrolled, { passive: true });
+    return () => {
+      if (main) main.removeEventListener("scroll", updateScrolled);
+      window.removeEventListener("scroll", updateScrolled);
+    };
+  }, [mainEl]);
 
   const staffRoleLabel = user.staffRole === "OWNER" ? "Owner" : user.staffRole === "ADMIN" ? "Admin" : null;
 
@@ -274,9 +286,7 @@ export default function Layout() {
           <div
             className={cn(
               "rounded-xl border transition-all duration-300 backdrop-blur-xl",
-              scrolled
-                ? "shadow-lg border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70"
-                : "border-transparent bg-transparent"
+              scrolled ? "header-scrolled" : "border-transparent bg-transparent"
             )}
           >
             <div className="flex items-center justify-between px-4 lg:px-6 py-[13px]">
@@ -359,7 +369,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <main ref={mainRef} className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main ref={setMainRef} className="flex-1 p-4 lg:p-6 overflow-auto">
           <div className="max-w-6xl mx-auto">
             <Outlet />
           </div>

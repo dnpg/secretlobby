@@ -16,12 +16,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { prisma } = await import("@secretlobby/db");
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, name: true, email: true },
+    select: { id: true, name: true, firstName: true, lastName: true, email: true },
   });
   if (!user) throw redirect("/login");
 
   return {
-    user: { id: user.id, name: user.name, email: user.email },
+    user: { id: user.id, name: user.name, firstName: user.firstName, lastName: user.lastName, email: user.email },
   };
 }
 
@@ -37,10 +37,13 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = formData.get("intent");
 
   if (intent === "update_name") {
+    const firstName = (formData.get("firstName") as string)?.trim() || null;
+    const lastName = (formData.get("lastName") as string)?.trim() || null;
     const name = (formData.get("name") as string)?.trim() || null;
-    const result = await updateUserAdmin(userId, { name });
+    const result = await updateUserAdmin(userId, { firstName, lastName, name });
     if (!result.success) return { error: (result as { error: string }).error };
-    const { response } = await updateSession(request, { userName: name || undefined });
+    const displayName = name ?? firstName ?? undefined;
+    const { response } = await updateSession(request, { userName: displayName || undefined });
     const setCookie = response.headers.get("Set-Cookie");
     return redirect("/profile", {
       headers: setCookie ? { "Set-Cookie": setCookie } : undefined,
@@ -144,21 +147,50 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Display name */}
+      {/* Identity: first name, last name, display name */}
       <div className="bg-theme-secondary rounded-xl border border-theme p-6">
-        <h3 className="text-lg font-semibold mb-4 text-theme-primary">Display name</h3>
+        <h3 className="text-lg font-semibold mb-4 text-theme-primary">Name & display name</h3>
         <Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="update_name" />
           <div>
+            <label htmlFor="firstName" className="block text-sm font-medium text-theme-secondary mb-2">
+              First name
+            </label>
+            <input
+              type="text"
+              id="firstName"
+              name="firstName"
+              autoComplete="given-name"
+              defaultValue={user.firstName ?? ""}
+              placeholder="Jane"
+              className="w-full max-w-md px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
+            />
+          </div>
+          <div>
+            <label htmlFor="lastName" className="block text-sm font-medium text-theme-secondary mb-2">
+              Last name
+            </label>
+            <input
+              type="text"
+              id="lastName"
+              name="lastName"
+              autoComplete="family-name"
+              defaultValue={user.lastName ?? ""}
+              placeholder="Doe"
+              className="w-full max-w-md px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
+            />
+          </div>
+          <div>
             <label htmlFor="name" className="block text-sm font-medium text-theme-secondary mb-2">
-              Name
+              Display name (optional)
             </label>
             <input
               type="text"
               id="name"
               name="name"
+              autoComplete="nickname"
               defaultValue={user.name ?? ""}
-              placeholder="Your name"
+              placeholder="Defaults to first name"
               className="w-full max-w-md px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
             />
           </div>

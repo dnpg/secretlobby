@@ -1,7 +1,5 @@
 import { Form, useLoaderData, useActionData, useNavigation, redirect, Link } from "react-router";
 import type { Route } from "./+types/_layout.users.new";
-import { prisma } from "@secretlobby/db";
-import { createUserAdmin } from "~/models/users/mutations.server";
 import type { UserRole } from "@secretlobby/db";
 
 export function meta() {
@@ -9,6 +7,7 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  const { prisma } = await import("@secretlobby/db");
   const accounts = await prisma.account.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true, slug: true },
@@ -17,12 +16,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { createUserAdmin } = await import("~/models/users/mutations.server");
   const formData = await request.formData();
   const intent = formData.get("intent");
   if (intent !== "create") return null;
 
   const email = (formData.get("email") as string)?.trim() ?? "";
   const password = (formData.get("password") as string) ?? "";
+  const firstName = (formData.get("firstName") as string)?.trim() || null;
+  const lastName = (formData.get("lastName") as string)?.trim() || null;
   const name = (formData.get("name") as string)?.trim() || null;
   const emailVerified = formData.get("emailVerified") === "on";
   const accountId = (formData.get("accountId") as string)?.trim() || null;
@@ -31,6 +33,8 @@ export async function action({ request }: Route.ActionArgs) {
   const result = await createUserAdmin({
     email,
     password,
+    firstName,
+    lastName,
     name,
     emailVerified,
     accountId: accountId || undefined,
@@ -101,16 +105,42 @@ export default function NewUserPage() {
           </div>
 
           <div>
+            <label htmlFor="firstName" className="block text-sm font-medium text-theme-secondary mb-1">
+              First name
+            </label>
+            <input
+              id="firstName"
+              name="firstName"
+              type="text"
+              autoComplete="given-name"
+              className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              placeholder="Jane"
+            />
+          </div>
+          <div>
+            <label htmlFor="lastName" className="block text-sm font-medium text-theme-secondary mb-1">
+              Last name
+            </label>
+            <input
+              id="lastName"
+              name="lastName"
+              type="text"
+              autoComplete="family-name"
+              className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              placeholder="Doe"
+            />
+          </div>
+          <div>
             <label htmlFor="name" className="block text-sm font-medium text-theme-secondary mb-1">
-              Name
+              Display name (optional)
             </label>
             <input
               id="name"
               name="name"
               type="text"
-              autoComplete="name"
+              autoComplete="nickname"
               className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
-              placeholder="Display name"
+              placeholder="Defaults to first name"
             />
           </div>
 

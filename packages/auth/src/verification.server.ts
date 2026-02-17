@@ -153,7 +153,7 @@ export async function sendVerificationEmail(
 ): Promise<string> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { email: true, name: true, emailVerified: true },
+    select: { email: true, name: true, firstName: true, emailVerified: true },
   });
 
   if (!user) {
@@ -174,7 +174,7 @@ export async function sendVerificationEmail(
   await sendEmailVerification({
     to: user.email,
     verificationUrl,
-    userName: user.name || undefined,
+    userName: user.name ?? user.firstName ?? undefined,
   });
 
   return token;
@@ -208,6 +208,7 @@ export async function requestEmailChange(
     },
     select: {
       name: true,
+      firstName: true,
       pendingEmail: true,
       emailVerifyToken: true,
     },
@@ -219,7 +220,7 @@ export async function requestEmailChange(
   await sendEmailVerification({
     to: user.pendingEmail || email,
     verificationUrl,
-    userName: user.name || undefined,
+    userName: user.name ?? user.firstName ?? undefined,
   });
 
   return effectiveToken;

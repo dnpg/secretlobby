@@ -139,8 +139,9 @@ export default function InvitationsPage() {
             </p>
           </div>
           <button
+            type="button"
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="px-4 py-2 btn-primary rounded-lg"
+            className="px-4 py-2 btn-primary rounded-lg cursor-pointer"
           >
             {showCreateForm ? "Close" : "Create Invitation"}
           </button>
@@ -197,7 +198,7 @@ export default function InvitationsPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 btn-primary rounded-lg disabled:opacity-50"
+                className="px-6 py-2 btn-primary rounded-lg disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
               >
                 {isSubmitting ? "Creating..." : "Create & Send Invitation"}
               </button>
@@ -223,7 +224,7 @@ export default function InvitationsPage() {
                 <a
                   key={f.value}
                   href={`?filter=${f.value}`}
-                  className={`px-3 py-1.5 text-sm font-medium rounded transition ${
+                  className={`px-3 py-1.5 text-sm font-medium rounded transition cursor-pointer ${
                     filter === f.value
                       ? "bg-(--color-brand-red) text-white"
                       : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
@@ -284,7 +285,7 @@ export default function InvitationsPage() {
                               <>
                                 <button
                                   onClick={() => copyInviteLink(invitation.code, invitation.id)}
-                                  className="text-sm link-primary"
+                                  className="text-sm link-primary cursor-pointer"
                                 >
                                   {copiedId === invitation.id ? "Copied!" : "Copy Link"}
                                 </button>
@@ -294,7 +295,7 @@ export default function InvitationsPage() {
                                   <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="text-sm text-yellow-400 hover:text-yellow-300 transition disabled:opacity-50"
+                                    className="text-sm text-yellow-400 hover:text-yellow-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     Resend
                                   </button>
@@ -305,7 +306,7 @@ export default function InvitationsPage() {
                                   <button
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className="text-sm text-red-400 hover:text-red-300 transition disabled:opacity-50"
+                                    className="text-sm text-red-400 hover:text-red-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
                                     Revoke
                                   </button>
@@ -322,7 +323,7 @@ export default function InvitationsPage() {
                                 <button
                                   type="submit"
                                   disabled={isSubmitting}
-                                  className="text-sm link-primary disabled:opacity-50"
+                                  className="text-sm link-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                   Re-invite
                                 </button>

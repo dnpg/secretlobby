@@ -34,6 +34,8 @@ export async function createUserAdmin(options: {
   email: string;
   password: string;
   name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
   emailVerified?: boolean;
   accountId?: string | null;
   role?: UserRole;
@@ -49,7 +51,11 @@ export async function createUserAdmin(options: {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return { error: "A user with this email already exists" };
 
-  const user = await createUser(email, options.password, options.name ?? undefined);
+  const user = await createUser(email, options.password, {
+    name: options.name ?? undefined,
+    firstName: options.firstName ?? undefined,
+    lastName: options.lastName ?? undefined,
+  });
 
   if (options.emailVerified) {
     await prisma.user.update({
@@ -69,6 +75,8 @@ export async function updateUserAdmin(
   userId: string,
   data: {
     name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     email?: string;
     emailVerified?: boolean;
     newPassword?: string | null;
@@ -81,6 +89,12 @@ export async function updateUserAdmin(
 
   if (data.name !== undefined) {
     updates.name = data.name?.trim() || null;
+  }
+  if (data.firstName !== undefined) {
+    updates.firstName = data.firstName?.trim() || null;
+  }
+  if (data.lastName !== undefined) {
+    updates.lastName = data.lastName?.trim() || null;
   }
 
   if (data.email !== undefined) {

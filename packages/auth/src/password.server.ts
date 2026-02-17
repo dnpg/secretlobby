@@ -113,19 +113,32 @@ export async function authenticateWithPassword(
   };
 }
 
+export interface CreateUserOptions {
+  /** Display name (editable by user); defaults to firstName if not set */
+  name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}
+
 export async function createUser(
   email: string,
   password: string,
-  name?: string
+  options?: CreateUserOptions | string
 ): Promise<User> {
   const passwordHash = await hashPassword(password);
+  const opts = typeof options === "string" ? { name: options || null } : options;
+  const firstName = opts?.firstName?.trim() || null;
+  const lastName = opts?.lastName?.trim() || null;
+  const displayName = opts?.name?.trim() || firstName || null;
 
   return prisma.user.create({
     data: {
       email: email.toLowerCase(),
       passwordHash,
-      name: name || null,
-      emailVerified: false, // Explicitly set to false for password signups
+      firstName,
+      lastName,
+      name: displayName,
+      emailVerified: false,
     },
   });
 }
@@ -142,10 +155,9 @@ export async function createUserWithVerification(
   email: string,
   password: string,
   baseUrl: string,
-  name?: string
+  options?: CreateUserOptions | string
 ): Promise<{ user: User; verificationToken: string }> {
-  // Create user
-  const user = await createUser(email, password, name);
+  const user = await createUser(email, password, options);
 
   // Send verification email
   const verificationToken = await sendVerificationEmail(user.id, baseUrl);

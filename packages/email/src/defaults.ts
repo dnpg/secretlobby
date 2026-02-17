@@ -1,7 +1,7 @@
 /**
  * Default email HTML: table-based, inline styles only, works in all major email clients.
  * Brand: white background, black text, accent #ed1b2f.
- * Placeholders: {{userName}}, {{inviteUrl}}, {{verificationUrl}}, {{resetUrl}}, {{expiresInDays}}, {{year}}, {{consoleUrl}}
+ * Placeholders: {{user.name}}, {{inviteUrl}}, {{verificationUrl}}, {{resetUrl}}, {{expiresInDays}}, {{year}}, {{consoleUrl}}
  */
 
 /** Brand red used for CTAs and links */
@@ -74,13 +74,13 @@ export const DEFAULT_EMAIL_WRAPPER_END = `</table>
 </body>
 </html>`;
 
-/** Body content for invitation email. Placeholders: {{userName}}, {{inviteUrl}}, {{expiresInDays}} */
+/** Body content for invitation email. Placeholders: {{user.name}}, {{inviteUrl}}, {{expiresInDays}} */
 export const DEFAULT_INVITATION_BODY_HTML = `<!-- Body: Invitation (contained like header/footer) -->
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
   <tr>
     <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
       <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">You're Invited!</h2>
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{user.name}},</p>
       <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">You've been invited to join SecretLobby — the private music sharing platform for artists. Create your own password-protected lobby and share your unreleased tracks with your fans.</p>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
         <tr>
@@ -102,13 +102,13 @@ export const DEFAULT_INVITATION_BODY_HTML = `<!-- Body: Invitation (contained li
   </tr>
 </table>`;
 
-/** Body content for email verification. Placeholders: {{userName}}, {{verificationUrl}} */
+/** Body content for email verification. Placeholders: {{user.name}}, {{verificationUrl}} */
 export const DEFAULT_EMAIL_VERIFICATION_BODY_HTML = `<!-- Body: Email verification (contained like header/footer) -->
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
   <tr>
     <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
       <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Verify your email address</h2>
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{user.name}},</p>
       <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Thanks for signing up! Please verify your email address to get started with SecretLobby.</p>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
         <tr>
@@ -130,13 +130,13 @@ export const DEFAULT_EMAIL_VERIFICATION_BODY_HTML = `<!-- Body: Email verificati
   </tr>
 </table>`;
 
-/** Body content for password reset. Placeholders: {{userName}}, {{resetUrl}} */
+/** Body content for password reset. Placeholders: {{user.name}}, {{resetUrl}} */
 export const DEFAULT_PASSWORD_RESET_BODY_HTML = `<!-- Body: Password reset (contained like header/footer) -->
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
   <tr>
     <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
       <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">Reset your password</h2>
-      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{userName}},</p>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">Hi {{user.name}},</p>
       <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">We received a request to reset your password. Click the button below to choose a new one:</p>
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:32px 0;">
         <tr>

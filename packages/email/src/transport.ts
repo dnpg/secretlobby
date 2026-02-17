@@ -26,6 +26,7 @@ export async function sendMail({
   const smtpPort = Number(process.env.SMTP_PORT) || 1025;
 
   if (smtpHost) {
+    console.log("Sending email via SMTP", { smtpHost, smtpPort });
     const transport = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
