@@ -51,68 +51,68 @@ export default function AccountDetails() {
     <div className="space-y-6">
       {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div className="card p-4">
           <div className="text-2xl font-bold">{account._count.users}</div>
-          <div className="text-sm text-gray-400">Users</div>
+          <div className="text-sm text-theme-secondary">Users</div>
         </div>
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div className="card p-4">
           <div className="text-2xl font-bold">{account._count.lobbies}</div>
-          <div className="text-sm text-gray-400">Lobbies</div>
+          <div className="text-sm text-theme-secondary">Lobbies</div>
         </div>
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div className="card p-4">
           <div className="text-2xl font-bold">{account._count.media}</div>
-          <div className="text-sm text-gray-400">Media Files</div>
+          <div className="text-sm text-theme-secondary">Media Files</div>
         </div>
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+        <div className="card p-4">
           <div className="text-2xl font-bold">{account.domains.length}</div>
-          <div className="text-sm text-gray-400">Domains</div>
+          <div className="text-sm text-theme-secondary">Domains</div>
         </div>
       </div>
 
       {/* Account Information */}
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+      <div className="card p-6">
         <h3 className="text-lg font-semibold mb-4">Account Information</h3>
         <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <dt className="text-sm text-gray-400">Account ID</dt>
+            <dt className="text-sm text-theme-secondary">Account ID</dt>
             <dd className="font-mono text-sm">{account.id}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">Name</dt>
+            <dt className="text-sm text-theme-secondary">Name</dt>
             <dd>{account.name}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">Slug</dt>
+            <dt className="text-sm text-theme-secondary">Slug</dt>
             <dd className="font-mono">{account.slug}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">Subscription Tier</dt>
+            <dt className="text-sm text-theme-secondary">Subscription Tier</dt>
             <dd>
-              <span className="px-2 py-1 text-xs rounded-full bg-gray-700">
+              <span className="px-2 py-1 text-xs rounded-full bg-theme-tertiary">
                 {account.subscriptionTier}
               </span>
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">Primary Domain</dt>
+            <dt className="text-sm text-theme-secondary">Primary Domain</dt>
             <dd>
               <a
                 href={`${protocol}://${primaryDomain}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-400 hover:text-blue-300 transition"
+                className="link-primary transition"
               >
                 {primaryDomain}
               </a>
             </dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-400">Created</dt>
+            <dt className="text-sm text-theme-secondary">Created</dt>
             <dd>{new Date(account.createdAt).toLocaleString()}</dd>
           </div>
           {account.stripeCustomerId && (
             <div>
-              <dt className="text-sm text-gray-400">Stripe Customer ID</dt>
+              <dt className="text-sm text-theme-secondary">Stripe Customer ID</dt>
               <dd className="font-mono text-sm">{account.stripeCustomerId}</dd>
             </div>
           )}
@@ -120,14 +120,14 @@ export default function AccountDetails() {
       </div>
 
       {/* Domains */}
-      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+      <div className="card p-6">
         <h3 className="text-lg font-semibold mb-4">Domains</h3>
         {account.domains.length > 0 ? (
           <div className="space-y-3">
             {account.domains.map((domain) => (
               <div
                 key={domain.id}
-                className="flex items-center justify-between p-3 bg-gray-750 rounded-lg"
+                className="flex items-center justify-between p-3 bg-theme-tertiary rounded-lg"
               >
                 <div className="flex items-center gap-3">
                   <span className="font-mono">{domain.domain}</span>
@@ -143,7 +143,7 @@ export default function AccountDetails() {
                     {domain.status}
                   </span>
                 </div>
-                <div className="text-sm text-gray-400">
+                <div className="text-sm text-theme-secondary">
                   {domain.verifiedAt
                     ? `Verified ${new Date(domain.verifiedAt).toLocaleDateString()}`
                     : "Not verified"}
@@ -152,7 +152,7 @@ export default function AccountDetails() {
             ))}
           </div>
         ) : (
-          <p className="text-gray-400 text-sm">No custom domains configured.</p>
+          <p className="text-theme-secondary text-sm">No custom domains configured.</p>
         )}
       </div>
     </div>

@@ -174,7 +174,7 @@ export default function PlansPage() {
         <h2 className="text-2xl font-bold">Subscription Plans</h2>
         <button
           onClick={() => setShowCreateForm(true)}
-          className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition"
+          className="px-4 py-2 btn-primary rounded-lg"
         >
           Create Plan
         </button>
@@ -185,18 +185,18 @@ export default function PlansPage() {
         {plans.map((plan) => (
           <div
             key={plan.id}
-            className={`bg-gray-800 rounded-xl border p-6 ${
+            className={`card p-6 ${
               plan.highlighted
                 ? "border-red-500"
                 : plan.isActive
-                ? "border-gray-700"
-                : "border-gray-800 opacity-60"
+                ? "border-theme"
+                : "border-theme opacity-60"
             }`}
           >
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h3 className="text-lg font-semibold">{plan.name}</h3>
-                <p className="text-xs text-gray-500 font-mono">{plan.slug}</p>
+                <p className="text-xs text-theme-muted font-mono">{plan.slug}</p>
               </div>
               <div className="flex gap-1">
                 {plan.highlighted && (
@@ -205,26 +205,26 @@ export default function PlansPage() {
                   </span>
                 )}
                 {!plan.isActive && (
-                  <span className="px-2 py-0.5 text-xs bg-gray-500/20 text-gray-400 rounded-full">
+                  <span className="px-2 py-0.5 text-xs bg-theme-tertiary/50 text-theme-secondary rounded-full">
                     Inactive
                   </span>
                 )}
               </div>
             </div>
 
-            <p className="text-sm text-gray-400 mb-4">{plan.description}</p>
+            <p className="text-sm text-theme-secondary mb-4">{plan.description}</p>
 
             <div className="mb-4">
               <div className="text-2xl font-bold">
                 {formatCurrency(plan.priceMonthly)}
-                <span className="text-sm font-normal text-gray-400">/mo</span>
+                <span className="text-sm font-normal text-theme-secondary">/mo</span>
               </div>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-theme-muted">
                 or {formatCurrency(plan.priceYearly)}/year
               </div>
             </div>
 
-            <div className="text-sm text-gray-400 space-y-1 mb-4">
+            <div className="text-sm text-theme-secondary space-y-1 mb-4">
               <div>{plan.maxSongs === -1 ? "Unlimited" : plan.maxSongs} songs</div>
               <div>{plan.maxLobbies === -1 ? "Unlimited" : plan.maxLobbies} lobbies</div>
               <div>{plan.maxStorage === -1 ? "Unlimited" : plan.maxStorage}MB storage</div>
@@ -235,7 +235,7 @@ export default function PlansPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setEditingPlan(plan as Plan)}
-                className="flex-1 px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                className="flex-1 px-3 py-2 text-sm bg-theme-tertiary hover:bg-theme-secondary rounded-lg transition"
               >
                 Edit
               </button>
@@ -260,11 +260,11 @@ export default function PlansPage() {
       </div>
 
       {plans.length === 0 && (
-        <div className="bg-gray-800 rounded-xl border border-gray-700 p-12 text-center">
-          <p className="text-gray-400 mb-4">No subscription plans yet</p>
+        <div className="card border-theme p-12 text-center">
+          <p className="text-theme-secondary mb-4">No subscription plans yet</p>
           <button
             onClick={() => setShowCreateForm(true)}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition"
+            className="px-4 py-2 btn-primary rounded-lg"
           >
             Create Your First Plan
           </button>
@@ -274,7 +274,7 @@ export default function PlansPage() {
       {/* Create Plan Modal */}
       {showCreateForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="card border-theme p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-6">Create Subscription Plan</h3>
 
             <fetcher.Form
@@ -287,7 +287,7 @@ export default function PlansPage() {
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Plan Name
                   </label>
                   <input
@@ -295,11 +295,11 @@ export default function PlansPage() {
                     name="name"
                     required
                     placeholder="e.g., Starter"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Slug (Internal ID)
                   </label>
                   <input
@@ -307,26 +307,26 @@ export default function PlansPage() {
                     name="slug"
                     required
                     placeholder="e.g., STARTER"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 uppercase"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] uppercase"
                   />
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <label className="block text-sm font-medium text-theme-secondary mb-1">
                   Description
                 </label>
                 <input
                   type="text"
                   name="description"
                   placeholder="Short description for the plan"
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Monthly Price (cents)
                   </label>
                   <input
@@ -334,11 +334,11 @@ export default function PlansPage() {
                     name="priceMonthly"
                     defaultValue="0"
                     min="0"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Yearly Price (cents)
                   </label>
                   <input
@@ -346,68 +346,68 @@ export default function PlansPage() {
                     name="priceYearly"
                     defaultValue="0"
                     min="0"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Stripe Monthly Price ID
                   </label>
                   <input
                     type="text"
                     name="stripePriceMonthly"
                     placeholder="price_..."
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Stripe Yearly Price ID
                   </label>
                   <input
                     type="text"
                     name="stripePriceYearly"
                     placeholder="price_..."
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono text-sm"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Max Songs (-1 = unlimited)
                   </label>
                   <input
                     type="number"
                     name="maxSongs"
                     defaultValue="5"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Max Lobbies
                   </label>
                   <input
                     type="number"
                     name="maxLobbies"
                     defaultValue="1"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Max Storage (MB)
                   </label>
                   <input
                     type="number"
                     name="maxStorage"
                     defaultValue="100"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
               </div>
@@ -418,7 +418,7 @@ export default function PlansPage() {
                     type="checkbox"
                     name="customDomain"
                     value="true"
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">Custom Domain</span>
                 </label>
@@ -427,7 +427,7 @@ export default function PlansPage() {
                     type="checkbox"
                     name="apiAccess"
                     value="true"
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">API Access</span>
                 </label>
@@ -436,21 +436,21 @@ export default function PlansPage() {
                     type="checkbox"
                     name="highlighted"
                     value="true"
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">Highlighted (Most Popular)</span>
                 </label>
               </div>
 
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <label className="block text-sm font-medium text-theme-secondary mb-1">
                   Features (one per line)
                 </label>
                 <textarea
                   name="features"
                   rows={4}
                   placeholder="Upload up to 5 songs&#10;Basic analytics&#10;Email support"
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 />
               </div>
 
@@ -458,14 +458,14 @@ export default function PlansPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateForm(false)}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                  className="px-4 py-2 bg-theme-tertiary hover:bg-theme-secondary rounded-lg transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition disabled:opacity-50"
+                  className="px-4 py-2 btn-primary rounded-lg disabled:opacity-50"
                 >
                   {isSubmitting ? "Creating..." : "Create Plan"}
                 </button>
@@ -478,7 +478,7 @@ export default function PlansPage() {
       {/* Edit Plan Modal */}
       {editingPlan && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="card border-theme p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold mb-6">Edit Plan: {editingPlan.name}</h3>
 
             <fetcher.Form
@@ -492,7 +492,7 @@ export default function PlansPage() {
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Plan Name
                   </label>
                   <input
@@ -500,37 +500,37 @@ export default function PlansPage() {
                     name="name"
                     required
                     defaultValue={editingPlan.name}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Slug (read-only)
                   </label>
                   <input
                     type="text"
                     value={editingPlan.slug}
                     disabled
-                    className="w-full px-3 py-2 bg-gray-950 border border-gray-700 rounded-lg text-gray-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg text-theme-muted"
                   />
                 </div>
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <label className="block text-sm font-medium text-theme-secondary mb-1">
                   Description
                 </label>
                 <input
                   type="text"
                   name="description"
                   defaultValue={editingPlan.description || ""}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Monthly Price (cents)
                   </label>
                   <input
@@ -538,11 +538,11 @@ export default function PlansPage() {
                     name="priceMonthly"
                     defaultValue={editingPlan.priceMonthly}
                     min="0"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Yearly Price (cents)
                   </label>
                   <input
@@ -550,14 +550,14 @@ export default function PlansPage() {
                     name="priceYearly"
                     defaultValue={editingPlan.priceYearly}
                     min="0"
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Stripe Monthly Price ID
                   </label>
                   <input
@@ -565,11 +565,11 @@ export default function PlansPage() {
                     name="stripePriceMonthly"
                     defaultValue={editingPlan.stripePriceMonthly || ""}
                     placeholder="price_..."
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Stripe Yearly Price ID
                   </label>
                   <input
@@ -577,43 +577,43 @@ export default function PlansPage() {
                     name="stripePriceYearly"
                     defaultValue={editingPlan.stripePriceYearly || ""}
                     placeholder="price_..."
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 font-mono text-sm"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] font-mono text-sm"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Max Songs (-1 = unlimited)
                   </label>
                   <input
                     type="number"
                     name="maxSongs"
                     defaultValue={editingPlan.maxSongs}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Max Lobbies
                   </label>
                   <input
                     type="number"
                     name="maxLobbies"
                     defaultValue={editingPlan.maxLobbies}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">
+                  <label className="block text-sm font-medium text-theme-secondary mb-1">
                     Max Storage (MB)
                   </label>
                   <input
                     type="number"
                     name="maxStorage"
                     defaultValue={editingPlan.maxStorage}
-                    className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
               </div>
@@ -625,7 +625,7 @@ export default function PlansPage() {
                     name="customDomain"
                     value="true"
                     defaultChecked={editingPlan.customDomain}
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">Custom Domain</span>
                 </label>
@@ -635,7 +635,7 @@ export default function PlansPage() {
                     name="apiAccess"
                     value="true"
                     defaultChecked={editingPlan.apiAccess}
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">API Access</span>
                 </label>
@@ -645,7 +645,7 @@ export default function PlansPage() {
                     name="highlighted"
                     value="true"
                     defaultChecked={editingPlan.highlighted}
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">Highlighted</span>
                 </label>
@@ -655,21 +655,21 @@ export default function PlansPage() {
                     name="isActive"
                     value="true"
                     defaultChecked={editingPlan.isActive}
-                    className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-red-500 focus:ring-red-500"
+                    className="h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
                   />
                   <span className="text-sm">Active</span>
                 </label>
               </div>
 
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-400 mb-1">
+                <label className="block text-sm font-medium text-theme-secondary mb-1">
                   Features (one per line)
                 </label>
                 <textarea
                   name="features"
                   rows={4}
                   defaultValue={Array.isArray(editingPlan.features) ? (editingPlan.features as string[]).join("\n") : ""}
-                  className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                 />
               </div>
 
@@ -677,14 +677,14 @@ export default function PlansPage() {
                 <button
                   type="button"
                   onClick={() => setEditingPlan(null)}
-                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+                  className="px-4 py-2 bg-theme-tertiary hover:bg-theme-secondary rounded-lg transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg transition disabled:opacity-50"
+                  className="px-4 py-2 btn-primary rounded-lg disabled:opacity-50"
                 >
                   {isSubmitting ? "Saving..." : "Save Changes"}
                 </button>

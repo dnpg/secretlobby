@@ -49,34 +49,20 @@ export default function AccountsPage() {
     <div className="container mx-auto px-4 py-8">
       <h2 className="text-2xl font-bold mb-8">Accounts</h2>
 
-      <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-700">
+      <div className="card overflow-hidden">
+        <table className="table-theme">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Name
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Primary Domain
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Tier
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Users
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Lobbies
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Created
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Actions
-              </th>
+              <th>Name</th>
+              <th>Primary Domain</th>
+              <th>Tier</th>
+              <th>Users</th>
+              <th>Lobbies</th>
+              <th>Created</th>
+              <th>Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700">
+          <tbody>
             {accounts.map((account) => {
               const customDomain = account.domains[0]?.domain;
               const primaryDomain = customDomain || `${account.slug}.${baseDomain}`;
@@ -84,22 +70,22 @@ export default function AccountsPage() {
               const consoleUrl = `${protocol}://${consoleDomain}`;
 
               return (
-                <tr key={account.id} className="hover:bg-gray-750">
-                  <td className="px-6 py-4 whitespace-nowrap font-medium">
+                <tr key={account.id}>
+                  <td className="font-medium">
                     <Link
                       to={`/accounts/${account.id}`}
-                      className="text-blue-400 hover:text-blue-300 transition"
+                      className="link-primary"
                     >
                       {account.name}
                     </Link>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td>
                     <div className="flex items-center gap-2">
                       <a
                         href={lobbyUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300 transition"
+                        className="link-primary"
                       >
                         {primaryDomain}
                       </a>
@@ -108,32 +94,32 @@ export default function AccountsPage() {
                           Custom
                         </span>
                       ) : (
-                        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-600 text-gray-400">
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-theme-tertiary text-theme-secondary">
                           Subdomain
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs rounded-full bg-gray-700">
+                  <td>
+                    <span className="px-2 py-1 text-xs rounded-full bg-theme-tertiary">
                       {account.subscriptionTier}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-400">
+                  <td className="text-theme-secondary">
                     {account._count.users}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-400">
+                  <td className="text-theme-secondary">
                     {account._count.lobbies}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
+                  <td className="text-theme-secondary text-sm">
                     {new Date(account.createdAt).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td>
                     <a
                       href={consoleUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-gray-400 hover:text-white transition"
+                      className="text-sm text-theme-secondary hover:text-theme-primary transition"
                       title="Open Console"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

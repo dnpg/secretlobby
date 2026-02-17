@@ -159,8 +159,8 @@ export default function StaffPage() {
       </div>
 
       <div className="bg-theme-secondary rounded-xl border border-theme overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-theme-tertiary">
+        <table className="table-theme">
+          <thead>
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-theme-muted uppercase tracking-wider">
                 User
@@ -176,7 +176,7 @@ export default function StaffPage() {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-theme">
+          <tbody>
             {staffList.map((staff) => (
               <tr key={staff.id} className="hover:bg-theme-tertiary">
                 <td className="px-6 py-4 whitespace-nowrap">

@@ -134,13 +134,13 @@ export default function InvitationsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold mb-2">Invitations</h2>
-            <p className="text-gray-400 text-sm">
+            <p className="text-theme-secondary text-sm">
               Manage invite links for prelaunch access
             </p>
           </div>
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+            className="px-4 py-2 btn-primary rounded-lg"
           >
             {showCreateForm ? "Close" : "Create Invitation"}
           </button>
@@ -151,8 +151,8 @@ export default function InvitationsPage() {
             {actionData.success}
             {actionData.inviteUrl && (
               <div className="mt-2">
-                <span className="text-gray-400 text-sm">Link: </span>
-                <code className="text-xs bg-gray-700 px-2 py-1 rounded">{actionData.inviteUrl}</code>
+                <span className="text-theme-secondary text-sm">Link: </span>
+                <code className="text-xs bg-theme-tertiary px-2 py-1 rounded">{actionData.inviteUrl}</code>
               </div>
             )}
           </div>
@@ -165,13 +165,13 @@ export default function InvitationsPage() {
 
         {/* Create Form */}
         {showCreateForm && (
-          <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
+          <div className="card p-6">
             <h3 className="text-xl font-semibold mb-4">Create New Invitation</h3>
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="create" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
+                  <label className="block text-sm font-medium text-theme-secondary mb-2">
                     Email *
                   </label>
                   <input
@@ -179,25 +179,25 @@ export default function InvitationsPage() {
                     name="email"
                     required
                     placeholder="user@example.com"
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
+                  <label className="block text-sm font-medium text-theme-secondary mb-2">
                     Note (optional)
                   </label>
                   <input
                     type="text"
                     name="note"
                     placeholder="VIP user, early supporter, etc."
-                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                   />
                 </div>
               </div>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                className="px-6 py-2 btn-primary rounded-lg disabled:opacity-50"
               >
                 {isSubmitting ? "Creating..." : "Create & Send Invitation"}
               </button>
@@ -215,8 +215,8 @@ export default function InvitationsPage() {
         </div>
 
         {/* Filter and Table */}
-        <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-700 flex items-center justify-between">
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-theme flex items-center justify-between">
             <h3 className="text-xl font-semibold">Invitations</h3>
             <div className="flex gap-2">
               {filters.map((f) => (
@@ -226,7 +226,7 @@ export default function InvitationsPage() {
                   className={`px-3 py-1.5 text-sm font-medium rounded transition ${
                     filter === f.value
                       ? "bg-blue-600 text-white"
-                      : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                      : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
                   }`}
                 >
                   {f.label} ({f.count})
@@ -236,22 +236,22 @@ export default function InvitationsPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-700">
+            <table className="table-theme">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Sent</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Expires</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Used</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Note</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Email</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Sent</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Expires</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Used</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Note</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-theme-secondary uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-700">
+              <tbody>
                 {invitations.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-gray-400">
+                    <td colSpan={7} className="px-6 py-8 text-center text-theme-secondary">
                       No invitations found
                     </td>
                   </tr>
@@ -261,21 +261,21 @@ export default function InvitationsPage() {
                     const effectiveStatus = isExpired ? "EXPIRED" : invitation.status;
 
                     return (
-                      <tr key={invitation.id} className="hover:bg-gray-750">
+                      <tr key={invitation.id} className="hover:bg-theme-hover">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{invitation.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <StatusBadge status={effectiveStatus} />
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-theme-secondary">
                           {invitation.sentAt ? new Date(invitation.sentAt).toLocaleDateString() : "-"}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-theme-secondary">
                           {new Date(invitation.expiresAt).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-theme-secondary">
                           {invitation.usedAt ? new Date(invitation.usedAt).toLocaleDateString() : "-"}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-theme-secondary">
                           {invitation.note || "-"}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -284,7 +284,7 @@ export default function InvitationsPage() {
                               <>
                                 <button
                                   onClick={() => copyInviteLink(invitation.code, invitation.id)}
-                                  className="text-sm text-blue-400 hover:text-blue-300 transition"
+                                  className="text-sm link-primary"
                                 >
                                   {copiedId === invitation.id ? "Copied!" : "Copy Link"}
                                 </button>
@@ -313,7 +313,7 @@ export default function InvitationsPage() {
                               </>
                             )}
                             {effectiveStatus === "USED" && (
-                              <span className="text-sm text-gray-500">-</span>
+                              <span className="text-sm text-theme-muted">-</span>
                             )}
                             {effectiveStatus === "REVOKED" && (
                               <Form method="post" className="inline">
@@ -322,7 +322,7 @@ export default function InvitationsPage() {
                                 <button
                                   type="submit"
                                   disabled={isSubmitting}
-                                  className="text-sm text-blue-400 hover:text-blue-300 transition disabled:opacity-50"
+                                  className="text-sm link-primary disabled:opacity-50"
                                 >
                                   Re-invite
                                 </button>
@@ -355,14 +355,14 @@ function StatCard({
   variant?: "default" | "warning" | "success";
 }) {
   const colors = {
-    default: "bg-gray-800 border-gray-700",
+    default: "bg-theme-card border-theme",
     warning: "bg-yellow-900/20 border-yellow-700",
     success: "bg-green-900/20 border-green-700",
   };
 
   return (
     <div className={`rounded-xl p-6 border ${colors[variant]}`}>
-      <h3 className="text-gray-400 text-sm font-medium uppercase tracking-wider">{title}</h3>
+      <h3 className="text-theme-secondary text-sm font-medium uppercase tracking-wider">{title}</h3>
       <p className="text-4xl font-bold mt-2">{value.toLocaleString()}</p>
     </div>
   );
@@ -372,8 +372,8 @@ function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     PENDING: "bg-yellow-900/30 text-yellow-400 border-yellow-800",
     USED: "bg-green-900/30 text-green-400 border-green-800",
-    EXPIRED: "bg-gray-700 text-gray-300 border-gray-600",
-    REVOKED: "bg-gray-700 text-gray-300 border-gray-600",
+    EXPIRED: "bg-theme-tertiary text-theme-primary border-theme",
+    REVOKED: "bg-theme-tertiary text-theme-primary border-theme",
   };
 
   return (
@@ -403,8 +403,8 @@ function Pagination({ pagination, filter }: { pagination: any; filter: string })
   }
 
   return (
-    <div className="px-6 py-4 border-t border-gray-700 flex items-center justify-between">
-      <div className="text-sm text-gray-400">
+    <div className="px-6 py-4 border-t border-theme flex items-center justify-between">
+      <div className="text-sm text-theme-secondary">
         Showing {((currentPage - 1) * pagination.pageSize) + 1} to{" "}
         {Math.min(currentPage * pagination.pageSize, pagination.total)} of{" "}
         {pagination.total} results
@@ -412,11 +412,11 @@ function Pagination({ pagination, filter }: { pagination: any; filter: string })
 
       <div className="flex gap-1">
         {currentPage > 1 ? (
-          <a href={`?filter=${filter}&page=${currentPage - 1}`} className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition">
+          <a href={`?filter=${filter}&page=${currentPage - 1}`} className="px-3 py-1 text-sm bg-theme-tertiary text-theme-primary rounded hover:bg-theme-secondary transition">
             Previous
           </a>
         ) : (
-          <span className="px-3 py-1 text-sm bg-gray-800 text-gray-500 rounded cursor-not-allowed">Previous</span>
+          <span className="px-3 py-1 text-sm bg-theme-card text-theme-muted rounded cursor-not-allowed">Previous</span>
         )}
 
         {pages.map((page, index) =>
@@ -427,22 +427,22 @@ function Pagination({ pagination, filter }: { pagination: any; filter: string })
               className={`px-3 py-1 text-sm rounded transition ${
                 currentPage === page
                   ? "bg-blue-600 text-white"
-                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                  : "bg-theme-tertiary text-theme-primary hover:bg-theme-secondary"
               }`}
             >
               {page}
             </a>
           ) : (
-            <span key={index} className="px-3 py-1 text-sm text-gray-500">{page}</span>
+            <span key={index} className="px-3 py-1 text-sm text-theme-muted">{page}</span>
           )
         )}
 
         {currentPage < totalPages ? (
-          <a href={`?filter=${filter}&page=${currentPage + 1}`} className="px-3 py-1 text-sm bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition">
+          <a href={`?filter=${filter}&page=${currentPage + 1}`} className="px-3 py-1 text-sm bg-theme-tertiary text-theme-primary rounded hover:bg-theme-secondary transition">
             Next
           </a>
         ) : (
-          <span className="px-3 py-1 text-sm bg-gray-800 text-gray-500 rounded cursor-not-allowed">Next</span>
+          <span className="px-3 py-1 text-sm bg-theme-card text-theme-muted rounded cursor-not-allowed">Next</span>
         )}
       </div>
     </div>

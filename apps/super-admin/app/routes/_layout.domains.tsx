@@ -26,37 +26,23 @@ export default function DomainsPage() {
     <div className="container mx-auto px-4 py-8">
       <h2 className="text-2xl font-bold mb-8">Custom Domains</h2>
 
-      <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-700">
+      <div className="card overflow-hidden">
+        <table className="table-theme">
+          <thead>
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Domain
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Account
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                SSL
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Verified At
-              </th>
+              <th>Domain</th>
+              <th>Account</th>
+              <th>Status</th>
+              <th>SSL</th>
+              <th>Verified At</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-700">
+          <tbody>
             {domains.map((domain) => (
-              <tr key={domain.id} className="hover:bg-gray-750">
-                <td className="px-6 py-4 whitespace-nowrap font-medium">
-                  {domain.domain}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-400">
-                  {domain.account.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+              <tr key={domain.id}>
+                <td className="font-medium">{domain.domain}</td>
+                <td className="text-theme-secondary">{domain.account.name}</td>
+                <td>
                   <span
                     className={`px-2 py-1 text-xs rounded-full ${
                       domain.status === "VERIFIED"
@@ -69,14 +55,14 @@ export default function DomainsPage() {
                     {domain.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap">
+                <td>
                   {domain.sslEnabled ? (
                     <span className="text-green-400">Enabled</span>
                   ) : (
-                    <span className="text-gray-500">Disabled</span>
+                    <span className="text-theme-muted">Disabled</span>
                   )}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-400 text-sm">
+                <td className="text-theme-secondary text-sm">
                   {domain.verifiedAt
                     ? new Date(domain.verifiedAt).toLocaleDateString()
                     : "-"}
