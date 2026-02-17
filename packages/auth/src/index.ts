@@ -6,6 +6,7 @@ export {
   destroySession,
   isLoggedIn,
   isAdmin,
+  isStaff,
   isStaffOwner,
   hasAccountAccess,
   requireAuth,

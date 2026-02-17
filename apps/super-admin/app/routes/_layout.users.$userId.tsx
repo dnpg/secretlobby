@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import type { Route } from "./+types/_layout.users.$userId";
 import { prisma } from "@secretlobby/db";
 import type { UserRole } from "@secretlobby/db";
+import { PASSWORD_REQUIREMENTS, checkPasswordRequirements } from "@secretlobby/auth/requirements";
+import { cn } from "@secretlobby/ui";
 import {
   updateUserAdmin,
   updateAccountUserRole,
@@ -55,7 +58,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       emailVerified,
       newPassword: newPassword === "" ? null : newPassword,
     });
-    if (result.error) return { error: result.error, intent: "update-profile" };
+    if ("error" in result) return { error: result.error, intent: "update-profile" };
     return { success: "Profile updated.", intent: "update-profile" };
   }
 
@@ -63,7 +66,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     const accountUserId = formData.get("accountUserId") as string;
     const role = formData.get("role") as UserRole;
     const result = await updateAccountUserRole(accountUserId, role);
-    if (result.error) return { error: result.error, intent: "update-role" };
+    if ("error" in result) return { error: result.error, intent: "update-role" };
     return { success: "Role updated.", intent: "update-role" };
   }
 
@@ -72,18 +75,39 @@ export async function action({ request, params }: Route.ActionArgs) {
     const role = (formData.get("role") as UserRole) || "VIEWER";
     if (!accountId) return { error: "Select an account", intent: "add-account" };
     const result = await addUserToAccountAdmin(userId, accountId, role);
-    if (result.error) return { error: result.error, intent: "add-account" };
+    if ("error" in result) return { error: result.error, intent: "add-account" };
     return { success: "Added to account.", intent: "add-account" };
   }
 
   if (intent === "remove-account") {
     const accountUserId = formData.get("accountUserId") as string;
     const result = await removeUserFromAccount(accountUserId);
-    if (result.error) return { error: result.error, intent: "remove-account" };
+    if ("error" in result) return { error: result.error, intent: "remove-account" };
     return { success: "Removed from account.", intent: "remove-account" };
   }
 
   return null;
+}
+
+function PasswordRequirementsList({ password }: { password: string }) {
+  const results = checkPasswordRequirements(password);
+  const hasInput = password.length > 0;
+
+  return (
+    <ul className="mt-2 space-y-1 text-sm">
+      {PASSWORD_REQUIREMENTS.map((req) => {
+        const met = hasInput && results[req.key];
+        return (
+          <li key={req.key} className="flex items-center gap-2">
+            <span className={cn("w-4 text-center", met ? "text-green-500" : "text-theme-muted")}>
+              {hasInput ? (met ? "\u2713" : "\u2717") : "\u2022"}
+            </span>
+            <span className={met ? "text-theme-primary" : "text-theme-secondary"}>{req.label}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 const ROLES: { value: UserRole; label: string }[] = [
@@ -98,8 +122,11 @@ export default function EditUserPage() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
+  const [newPassword, setNewPassword] = useState("");
 
   const accountIdsInUse = new Set(user.accounts.map((au) => au.accountId));
+  const newPasswordReqsMet =
+    newPassword.length === 0 || PASSWORD_REQUIREMENTS.every((r) => checkPasswordRequirements(newPassword)[r.key]);
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -108,12 +135,12 @@ export default function EditUserPage() {
         <h3 className="text-lg font-semibold mb-4 text-theme-primary">Profile</h3>
         <Form method="post">
           <input type="hidden" name="intent" value="update-profile" />
-          {actionData?.intent === "update-profile" && (
-            <div className="mb-4 rounded-lg px-4 py-2 text-sm border bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)]/30 text-[var(--color-brand-red)]">
+          {actionData?.intent === "update-profile" && actionData?.error && (
+            <div className="mb-4 rounded-lg px-4 py-2 text-sm border bg-(--color-brand-red-muted) border-(--color-brand-red)/30 text-(--color-brand-red)">
               {actionData.error}
             </div>
           )}
-          {actionData?.intent === "update-profile" && actionData.success && (
+          {actionData?.intent === "update-profile" && actionData?.success && (
             <div className="mb-4 rounded-lg px-4 py-2 text-sm border bg-green-500/10 border-green-500/30 text-green-500">
               {actionData.success}
             </div>
@@ -152,10 +179,13 @@ export default function EditUserPage() {
                 id="newPassword"
                 name="newPassword"
                 type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 autoComplete="new-password"
-                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
                 placeholder="••••••••"
               />
+              {newPassword.length > 0 && <PasswordRequirementsList password={newPassword} />}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -173,7 +203,7 @@ export default function EditUserPage() {
           <div className="mt-4">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !newPasswordReqsMet}
               className="px-4 py-2 btn-primary disabled:opacity-50 rounded-lg text-sm font-medium transition"
             >
               {isSubmitting ? "Saving…" : "Save profile"}

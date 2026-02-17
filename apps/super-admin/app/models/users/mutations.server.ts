@@ -1,7 +1,34 @@
 import { prisma } from "@secretlobby/db";
-import { createUser, addUserToAccount, hashPassword } from "@secretlobby/auth";
+import { createUser, addUserToAccount, hashPassword, verifyPassword } from "@secretlobby/auth";
 import { passwordSchema } from "@secretlobby/auth/validation";
 import type { UserRole } from "@secretlobby/db";
+
+/** Staff changing their own password (requires current password). */
+export async function updateOwnPassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<{ success: true } | { error: string }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+  if (!user) return { error: "User not found" };
+
+  const valid = await verifyPassword(currentPassword, user.passwordHash);
+  if (!valid) return { error: "Current password is incorrect" };
+
+  const parsed = passwordSchema.safeParse(newPassword);
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Password does not meet requirements" };
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+  return { success: true };
+}
 
 export async function createUserAdmin(options: {
   email: string;

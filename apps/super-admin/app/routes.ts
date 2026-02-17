@@ -32,9 +32,13 @@ export default [
       route("elements/:key", "routes/_layout.emails.elements.$key.tsx"),
     ]),
     route("plans", "routes/_layout.plans.tsx"),
-    route("staff", "routes/_layout.staff.tsx"),
+    route("staff", "routes/_layout.staff.tsx", [
+      index("routes/_layout.staff._index.tsx"),
+      route("search-users", "routes/_layout.staff.search-users.tsx"),
+    ]),
     route("security", "routes/_layout.security.tsx"),
     route("security/:ipAddress", "routes/_layout.security.$ipAddress.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
+    route("profile", "routes/_layout.profile.tsx"),
   ]),
 ] satisfies RouteConfig;

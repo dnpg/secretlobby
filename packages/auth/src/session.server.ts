@@ -196,6 +196,11 @@ export function isAdmin(session: SessionData): boolean {
   return role === "OWNER" || role === "ADMIN";
 }
 
+/** True if session has a staff role (super-admin access). */
+export function isStaff(session: SessionData): boolean {
+  return session.staffRole === "OWNER" || session.staffRole === "ADMIN";
+}
+
 /** True if session is staff with OWNER role (can manage staff). */
 export function isStaffOwner(session: SessionData): boolean {
   return session.staffRole === "OWNER";
