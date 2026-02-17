@@ -2,6 +2,11 @@ import { useLoaderData, Link } from "react-router";
 import type { Route } from "./+types/_layout.users._index";
 import { prisma } from "@secretlobby/db";
 
+function formatDateYYYYMMDD(d: Date): string {
+  // Deterministic across server/client (avoids hydration mismatch from locale formatting)
+  return d.toISOString().slice(0, 10);
+}
+
 export function meta() {
   return [{ title: "Users - Super Admin" }];
 }
@@ -74,13 +79,13 @@ export default function UsersIndex() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-theme-secondary text-sm">
                   {user.lastLoginAt
-                    ? new Date(user.lastLoginAt).toLocaleDateString()
+                    ? formatDateYYYYMMDD(new Date(user.lastLoginAt))
                     : "Never"}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <Link
                     to={`/users/${user.id}`}
-                    className="text-sm text-(--color-brand-red) hover:text-(--color-brand-red-hover) transition"
+                    className="text-sm text-(--color-brand-red) hover:text-(--color-brand-red-hover) transition cursor-pointer"
                   >
                     Edit
                   </Link>

@@ -3,6 +3,7 @@ import { Form, redirect, useActionData, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.profile";
 import { cn } from "@secretlobby/ui";
 import { PASSWORD_REQUIREMENTS, checkPasswordRequirements } from "@secretlobby/auth/requirements";
+import { toast } from "sonner";
 import { updateOwnPassword } from "~/models/users/mutations.server";
 import { updateUserAdmin } from "~/models/users/mutations.server";
 
@@ -41,7 +42,7 @@ export async function action({ request }: Route.ActionArgs) {
     const lastName = (formData.get("lastName") as string)?.trim() || null;
     const name = (formData.get("name") as string)?.trim() || null;
     const result = await updateUserAdmin(userId, { firstName, lastName, name });
-    if (!result.success) return { error: (result as { error: string }).error };
+    if ("error" in result) return { error: result.error };
     const displayName = name ?? firstName ?? undefined;
     const { response } = await updateSession(request, { userName: displayName || undefined });
     const setCookie = response.headers.get("Set-Cookie");
@@ -57,8 +58,8 @@ export async function action({ request }: Route.ActionArgs) {
     if (!currentPassword) return { error: "Current password is required" };
     if (newPassword !== confirmPassword) return { error: "New passwords do not match" };
     const result = await updateOwnPassword(userId, currentPassword, newPassword);
-    if (result.success) return { success: "password", message: "Password updated successfully" };
-    return { error: (result as { error: string }).error, intent: "update_password" };
+    if ("success" in result) return { success: "password", message: "Password updated successfully" };
+    return { error: result.error, intent: "update_password" };
   }
 
   return { error: "Invalid action" };
@@ -119,10 +120,44 @@ export default function Profile() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
 
+  const copyNewPassword = async () => {
+    if (!newPassword) return;
+    try {
+      await navigator.clipboard.writeText(newPassword);
+      toast.success("Password copied");
+    } catch {
+      // Fallback for browsers/environments that block clipboard API
+      const textArea = document.createElement("textarea");
+      textArea.value = newPassword;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        toast.success("Password copied");
+      } catch {
+        toast.error("Failed to copy password. Please copy it manually.");
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
   useEffect(() => {
     if (actionData?.success) {
       setNewPassword("");
       setConfirmPassword("");
+    }
+  }, [actionData]);
+
+  useEffect(() => {
+    if (!actionData) return;
+    if (actionData?.success === "password" && (actionData as { message?: string }).message) {
+      toast.success((actionData as { message?: string }).message);
+      return;
+    }
+    if ((actionData as { error?: string }).error) {
+      toast.error((actionData as { error?: string }).error);
     }
   }, [actionData]);
 
@@ -136,16 +171,7 @@ export default function Profile() {
         <h2 className="text-2xl font-bold mb-2 text-theme-primary">Profile</h2>
         <p className="text-theme-secondary">Manage your display name and password. Email cannot be changed here.</p>
       </div>
-      {actionData?.success === "password" && actionData?.message && (
-        <div className="rounded-lg bg-green-500/10 border border-green-500/30 text-green-500 px-4 py-2 text-sm">
-          {actionData.message}
-        </div>
-      )}
-      {actionData?.error && (actionData as { intent?: string }).intent !== "update_password" && (
-        <div className="rounded-lg bg-(--color-brand-red-muted) border border-(--color-brand-red)/30 text-(--color-brand-red) px-4 py-2 text-sm">
-          {(actionData as { error?: string }).error}
-        </div>
-      )}
+      {/* Saved/error messages are shown via Sonner toasts */}
 
       {/* Identity: first name, last name, display name */}
       <div className="bg-theme-secondary rounded-xl border border-theme p-6">
@@ -213,11 +239,7 @@ export default function Profile() {
         <p className="text-sm text-theme-secondary mb-4">
           Use a strong password with a mix of letters, numbers, and symbols.
         </p>
-        {actionData?.error && (actionData as { intent?: string }).intent === "update_password" && (
-          <div className="mb-4 rounded-lg bg-(--color-brand-red-muted) border border-(--color-brand-red)/30 text-(--color-brand-red) px-4 py-2 text-sm">
-            {(actionData as { error?: string }).error}
-          </div>
-        )}
+        {/* Saved/error messages are shown via Sonner toasts */}
         <Form method="post" className="space-y-4">
           <input type="hidden" name="intent" value="update_password" />
           <div>
@@ -245,7 +267,7 @@ export default function Profile() {
                   setNewPassword(p);
                   setConfirmPassword(p);
                 }}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-(--color-brand-red-muted) text-(--color-brand-red) text-xs font-medium hover:bg-(--color-brand-red) hover:text-white transition"
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-(--color-brand-red-muted) text-(--color-brand-red) text-xs font-medium hover:bg-(--color-brand-red) hover:text-white transition cursor-pointer"
               >
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
                 Generate secure password
@@ -266,10 +288,20 @@ export default function Profile() {
                 <button
                   type="button"
                   onClick={() => setShowNewPassword((v) => !v)}
-                  className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition"
+                  className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
                   title={showNewPassword ? "Hide password" : "Show password"}
                 >
                   {showNewPassword ? "Hide" : "Show"}
+                </button>
+              )}
+              {newPassword.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copyNewPassword}
+                  className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                  title="Copy password"
+                >
+                  Copy
                 </button>
               )}
             </div>

@@ -1,9 +1,27 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, redirect } from "react-router";
 import type { Route } from "./+types/_layout.users.$userId";
 import type { UserRole } from "@secretlobby/db";
 import { PASSWORD_REQUIREMENTS, checkPasswordRequirements } from "@secretlobby/auth/requirements";
 import { cn } from "@secretlobby/ui";
+import { toast } from "sonner";
+
+function generateSecurePassword(): string {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const numbers = "23456789";
+  const special = "!@#$%&*";
+  const pick = (s: string, n: number) =>
+    Array.from({ length: n }, () => s[Math.floor(Math.random() * s.length)]);
+  const chars = [
+    ...pick(upper, 1),
+    ...pick(lower, 1),
+    ...pick(numbers, 1),
+    ...pick(special, 1),
+    ...pick(upper + lower + numbers + special, 12),
+  ];
+  return chars.sort(() => Math.random() - 0.5).join("");
+}
 
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: data?.user ? `${data.user.email} - Edit User - Super Admin` : "Edit User - Super Admin" }];
@@ -12,6 +30,9 @@ export function meta({ data }: Route.MetaArgs) {
 export async function loader({ params, request }: Route.LoaderArgs) {
   const { prisma } = await import("@secretlobby/db");
   const { userId } = params;
+  if (!userId) {
+    throw new Response("Missing userId", { status: 400 });
+  }
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -25,7 +46,19 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     },
   });
   if (!user) {
-    throw redirect("/users");
+    // Don't silently redirect; this usually means the route is pointing at a different DB
+    // than the users list, or the ID doesn't exist.
+    let dbHint = "";
+    try {
+      const raw = process.env.DATABASE_URL;
+      if (raw) {
+        const url = new URL(raw);
+        dbHint = ` (db: ${url.hostname}${url.port ? `:${url.port}` : ""}/${url.pathname.replace("/", "")})`;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Response(`User not found: ${userId}${dbHint}`, { status: 404 });
   }
 
   const accounts = await prisma.account.findMany({
@@ -51,6 +84,10 @@ export async function action({ request, params }: Route.ActionArgs) {
     const email = (formData.get("email") as string)?.trim() ?? "";
     const emailVerified = formData.get("emailVerified") === "on";
     const newPassword = (formData.get("newPassword") as string) || null;
+    const confirmNewPassword = (formData.get("confirmNewPassword") as string) || null;
+    if (newPassword && confirmNewPassword != null && newPassword !== confirmNewPassword) {
+      return { error: "New passwords do not match", intent: "update-profile" };
+    }
     const result = await updateUserAdmin(userId, {
       firstName,
       lastName,
@@ -124,10 +161,43 @@ export default function EditUserPage() {
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const [newPassword, setNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   const accountIdsInUse = new Set(user.accounts.map((au) => au.accountId));
-  const newPasswordReqsMet =
-    newPassword.length === 0 || PASSWORD_REQUIREMENTS.every((r) => checkPasswordRequirements(newPassword)[r.key]);
+  const allReqsMet = PASSWORD_REQUIREMENTS.every((r) => checkPasswordRequirements(newPassword)[r.key]);
+  const passwordsMatch = newPassword === confirmNewPassword && confirmNewPassword.length > 0;
+  const canSubmitProfile =
+    newPassword.length === 0 || (allReqsMet && passwordsMatch);
+
+  const copyNewPassword = async () => {
+    if (!newPassword) return;
+    try {
+      await navigator.clipboard.writeText(newPassword);
+      toast.success("Password copied");
+    } catch {
+      // Fallback for browsers/environments that block clipboard API
+      const textArea = document.createElement("textarea");
+      textArea.value = newPassword;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        toast.success("Password copied");
+      } catch {
+        toast.error("Failed to copy password. Please copy it manually.");
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  useEffect(() => {
+    if (!actionData) return;
+    if ("error" in actionData && actionData.error) toast.error(actionData.error);
+    if ("success" in actionData && actionData.success) toast.success(actionData.success);
+  }, [actionData]);
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -136,16 +206,6 @@ export default function EditUserPage() {
         <h3 className="text-lg font-semibold mb-4 text-theme-primary">Profile</h3>
         <Form method="post">
           <input type="hidden" name="intent" value="update-profile" />
-          {actionData?.intent === "update-profile" && actionData?.error && (
-            <div className="mb-4 rounded-lg px-4 py-2 text-sm border bg-(--color-brand-red-muted) border-(--color-brand-red)/30 text-(--color-brand-red)">
-              {actionData.error}
-            </div>
-          )}
-          {actionData?.intent === "update-profile" && actionData?.success && (
-            <div className="mb-4 rounded-lg px-4 py-2 text-sm border bg-green-500/10 border-green-500/30 text-green-500">
-              {actionData.success}
-            </div>
-          )}
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-theme-secondary mb-1">
@@ -157,7 +217,7 @@ export default function EditUserPage() {
                 type="email"
                 required
                 defaultValue={user.email}
-                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
               />
             </div>
             <div>
@@ -170,7 +230,7 @@ export default function EditUserPage() {
                 type="text"
                 autoComplete="given-name"
                 defaultValue={user.firstName ?? ""}
-                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
               />
             </div>
             <div>
@@ -183,7 +243,7 @@ export default function EditUserPage() {
                 type="text"
                 autoComplete="family-name"
                 defaultValue={user.lastName ?? ""}
-                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
               />
             </div>
             <div>
@@ -196,25 +256,81 @@ export default function EditUserPage() {
                 type="text"
                 autoComplete="nickname"
                 defaultValue={user.name ?? ""}
-                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
                 placeholder="Defaults to first name"
               />
             </div>
             <div>
-              <label htmlFor="newPassword" className="block text-sm font-medium text-theme-secondary mb-1">
-                New password (leave blank to keep current)
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <label htmlFor="newPassword" className="block text-sm font-medium text-theme-secondary">
+                  New password (leave blank to keep current)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = generateSecurePassword();
+                    setNewPassword(p);
+                    setConfirmNewPassword(p);
+                  }}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-(--color-brand-red-muted) text-(--color-brand-red) text-xs font-medium hover:bg-(--color-brand-red) hover:text-white transition cursor-pointer"
+                >
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                  Generate secure password
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  id="newPassword"
+                  name="newPassword"
+                  type={showNewPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="flex-1 min-w-0 px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
+                  placeholder="••••••••"
+                />
+                {newPassword.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                      title={showNewPassword ? "Hide password" : "Show password"}
+                    >
+                      {showNewPassword ? "Hide" : "Show"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={copyNewPassword}
+                      className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                      title="Copy password"
+                    >
+                      Copy
+                    </button>
+                  </>
+                )}
+              </div>
+              {newPassword.length > 0 && <PasswordRequirementsList password={newPassword} />}
+            </div>
+            <div>
+              <label htmlFor="confirmNewPassword" className="block text-sm font-medium text-theme-secondary mb-1">
+                Confirm new password
               </label>
               <input
-                id="newPassword"
-                name="newPassword"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
+                id="confirmNewPassword"
+                name="confirmNewPassword"
+                type={showNewPassword ? "text" : "password"}
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
                 autoComplete="new-password"
                 className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
                 placeholder="••••••••"
               />
-              {newPassword.length > 0 && <PasswordRequirementsList password={newPassword} />}
+              {confirmNewPassword.length > 0 && (
+                <p className={cn("mt-1 text-sm", passwordsMatch ? "text-green-500" : "text-red-400")}>
+                  {passwordsMatch ? "\u2713 Passwords match" : "\u2717 Passwords do not match"}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -222,7 +338,7 @@ export default function EditUserPage() {
                 name="emailVerified"
                 type="checkbox"
                 defaultChecked={user.emailVerified}
-                className="rounded border-theme bg-theme-tertiary text-[var(--color-brand-red)] focus:ring-[var(--color-brand-red)]"
+                className="rounded border-theme bg-theme-tertiary text-(--color-brand-red) focus:ring-(--color-brand-red)"
               />
               <label htmlFor="emailVerified" className="text-sm text-theme-secondary">
                 Email verified
@@ -232,8 +348,8 @@ export default function EditUserPage() {
           <div className="mt-4">
             <button
               type="submit"
-              disabled={isSubmitting || !newPasswordReqsMet}
-              className="px-4 py-2 btn-primary disabled:opacity-50 rounded-lg text-sm font-medium transition"
+              disabled={isSubmitting || !canSubmitProfile}
+              className="px-4 py-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition cursor-pointer"
             >
               {isSubmitting ? "Saving…" : "Save profile"}
             </button>
@@ -264,7 +380,7 @@ export default function EditUserPage() {
                       name="role"
                       defaultValue={au.role}
                       onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                      className="px-2 py-1 bg-theme-tertiary border border-theme rounded text-sm text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-red)]"
+                      className="px-2 py-1 bg-theme-tertiary border border-theme rounded text-sm text-theme-primary focus:outline-none focus:ring-1 focus:ring-(--color-brand-red)"
                     >
                       {ROLES.map((r) => (
                         <option key={r.value} value={r.value}>
@@ -279,7 +395,7 @@ export default function EditUserPage() {
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="text-sm text-[var(--color-brand-red)] hover:text-[var(--color-brand-red-hover)] disabled:opacity-50"
+                      className="text-sm text-(--color-brand-red) hover:text-(--color-brand-red-hover) disabled:opacity-50 cursor-pointer"
                     >
                       Remove
                     </button>
@@ -292,17 +408,6 @@ export default function EditUserPage() {
           <p className="text-theme-muted text-sm mb-4">Not a member of any account.</p>
         )}
 
-        {actionData?.intent === "add-account" && actionData.error && (
-          <div className="mb-4 rounded-lg px-4 py-2 text-sm bg-[var(--color-brand-red-muted)] border border-[var(--color-brand-red)]/30 text-[var(--color-brand-red)]">
-            {actionData.error}
-          </div>
-        )}
-        {actionData?.intent === "add-account" && actionData.success && (
-          <div className="mb-4 rounded-lg px-4 py-2 text-sm bg-green-500/10 border border-green-500/30 text-green-500">
-            {actionData.success}
-          </div>
-        )}
-
         <Form method="post" className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="intent" value="add-account" />
           <div>
@@ -312,7 +417,7 @@ export default function EditUserPage() {
             <select
               id="add-accountId"
               name="accountId"
-              className="px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              className="px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
             >
               <option value="">Select account…</option>
               {accounts
@@ -331,7 +436,7 @@ export default function EditUserPage() {
             <select
               id="add-role"
               name="role"
-              className="px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              className="px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
             >
               {ROLES.map((r) => (
                 <option key={r.value} value={r.value}>

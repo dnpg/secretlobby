@@ -2,18 +2,68 @@ import { Form, useLoaderData, useActionData, useNavigation, useFetcher } from "r
 import type { Route } from "./+types/_layout.staff._index";
 import { useState, useEffect, useRef } from "react";
 import type { StaffRole } from "@secretlobby/db";
-import { getSession, requireUserAuth, isStaffOwner } from "@secretlobby/auth";
-import { prisma } from "@secretlobby/db";
-import {
-  addStaff,
-  removeStaff,
-  updateStaffRole,
-} from "~/models/staff/mutations.server";
+import { PASSWORD_REQUIREMENTS, checkPasswordRequirements } from "@secretlobby/auth/requirements";
+import { cn } from "@secretlobby/ui";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 25;
 const SEARCH_DEBOUNCE_MS = 300;
 
+function formatDateYYYYMMDD(d: Date): string {
+  // Deterministic across server/client (avoids hydration mismatch from locale formatting)
+  return d.toISOString().slice(0, 10);
+}
+
+function passwordStrength(password: string): { score: number; label: string } {
+  if (!password) return { score: 0, label: "" };
+  const results = checkPasswordRequirements(password);
+  const met = PASSWORD_REQUIREMENTS.filter((r) => results[r.key]).length;
+  const lengthBonus = password.length >= 12 ? 1 : 0;
+  const score = Math.min(4, met + lengthBonus);
+  const labels = ["Weak", "Fair", "Good", "Strong"];
+  return { score, label: labels[score - 1] ?? "Weak" };
+}
+
+function generateSecurePassword(): string {
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const numbers = "23456789";
+  const special = "!@#$%&*";
+  const pick = (s: string, n: number) =>
+    Array.from({ length: n }, () => s[Math.floor(Math.random() * s.length)]);
+  const chars = [
+    ...pick(upper, 1),
+    ...pick(lower, 1),
+    ...pick(numbers, 1),
+    ...pick(special, 1),
+    ...pick(upper + lower + numbers + special, 12),
+  ];
+  return chars.sort(() => Math.random() - 0.5).join("");
+}
+
+function PasswordRequirementsList({ password }: { password: string }) {
+  const results = checkPasswordRequirements(password);
+  const hasInput = password.length > 0;
+
+  return (
+    <ul className="mt-2 space-y-1 text-sm">
+      {PASSWORD_REQUIREMENTS.map((req) => {
+        const met = hasInput && results[req.key];
+        return (
+          <li key={req.key} className="flex items-center gap-2">
+            <span className={cn("w-4 text-center", met ? "text-green-500" : "text-theme-muted")}>
+              {hasInput ? (met ? "\u2713" : "\u2717") : "\u2022"}
+            </span>
+            <span className={met ? "text-theme-primary" : "text-theme-secondary"}>{req.label}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
+  const { getSession, requireUserAuth, isStaffOwner } = await import("@secretlobby/auth");
   const { session } = await getSession(request);
   requireUserAuth(session, "/login");
 
@@ -55,6 +105,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  const { getSession, requireUserAuth, isStaffOwner } = await import("@secretlobby/auth");
+  const { prisma } = await import("@secretlobby/db");
+  const { addStaff, removeStaff, updateStaffRole } = await import("~/models/staff/mutations.server");
   const { session } = await getSession(request);
   requireUserAuth(session, "/login");
   if (!isStaffOwner(session)) {
@@ -70,11 +123,12 @@ export async function action({ request }: Route.ActionArgs) {
     const name = (formData.get("name") as string)?.trim() || undefined;
     const email = (formData.get("email") as string)?.trim()?.toLowerCase();
     const password = formData.get("password") as string;
+    const confirmPassword = (formData.get("confirmPassword") as string) ?? "";
     const role = (formData.get("role") as StaffRole) || "ADMIN";
     if (!email) return { error: "Email is required" };
     if (!password) return { error: "Password is required" };
+    if (password !== confirmPassword) return { error: "Passwords do not match" };
 
-    const { checkPasswordRequirements, PASSWORD_REQUIREMENTS } = await import("@secretlobby/auth");
     const checks = checkPasswordRequirements(password);
     const failed = PASSWORD_REQUIREMENTS.filter((r) => !checks[r.key]);
     if (failed.length) {
@@ -169,6 +223,9 @@ export default function StaffIndexPage() {
   const [assignRole, setAssignRole] = useState<StaffRole>("ADMIN");
   const [showAssignDropdown, setShowAssignDropdown] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createPassword, setCreatePassword] = useState("");
+  const [createConfirmPassword, setCreateConfirmPassword] = useState("");
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
   const assignInputRef = useRef<HTMLInputElement>(null);
   const assignDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -210,6 +267,45 @@ export default function StaffIndexPage() {
   const start = (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, totalCount);
 
+  useEffect(() => {
+    if (actionData?.error) toast.error(actionData.error);
+    if (actionData?.success) toast.success(actionData.success);
+  }, [actionData?.error, actionData?.success]);
+
+  const closeCreateModal = () => {
+    setShowCreateForm(false);
+    setCreatePassword("");
+    setCreateConfirmPassword("");
+    setShowCreatePassword(false);
+  };
+
+  const createAllReqsMet = PASSWORD_REQUIREMENTS.every((r) => checkPasswordRequirements(createPassword)[r.key]);
+  const createPasswordsMatch = createPassword === createConfirmPassword && createConfirmPassword.length > 0;
+  const createStrength = passwordStrength(createPassword);
+
+  const copyCreatePassword = async () => {
+    if (!createPassword) return;
+    try {
+      await navigator.clipboard.writeText(createPassword);
+      toast.success("Password copied");
+    } catch {
+      // Fallback for browsers/environments that block clipboard API
+      const textArea = document.createElement("textarea");
+      textArea.value = createPassword;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-999999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        toast.success("Password copied");
+      } catch {
+        toast.error("Failed to copy password. Please copy it manually.");
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h2 className="text-2xl font-bold mb-2 text-theme-primary">Staff</h2>
@@ -217,16 +313,7 @@ export default function StaffIndexPage() {
         Users listed here can sign in to Super Admin. Owners can manage staff; Admins have full access but cannot add or remove staff.
       </p>
 
-      {actionData?.error && (
-        <div className="mb-4 rounded-lg bg-[var(--color-brand-red-muted)] border border-[var(--color-brand-red)]/30 text-[var(--color-brand-red)] px-4 py-2 text-sm">
-          {actionData.error}
-        </div>
-      )}
-      {actionData?.success && (
-        <div className="mb-4 rounded-lg bg-green-500/10 border border-green-500/30 text-green-500 px-4 py-2 text-sm">
-          {actionData.success}
-        </div>
-      )}
+      {/* success/error messages shown via Sonner toasts */}
 
       {/* Compact Add staff row: assign (search + select) or create new — Owners only */}
       {canManageStaff && (
@@ -248,7 +335,7 @@ export default function StaffIndexPage() {
                 }}
                 onFocus={() => assignQuery.length >= 2 && setShowAssignDropdown(true)}
                 placeholder="Type to search by name or email (min 2 chars)"
-                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+                className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-theme-muted focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
               />
               {selectedUser && (
                 <button
@@ -258,7 +345,7 @@ export default function StaffIndexPage() {
                     setAssignQuery("");
                     assignInputRef.current?.focus();
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-primary"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-primary cursor-pointer"
                   aria-label="Clear selection"
                 >
                   ×
@@ -270,7 +357,7 @@ export default function StaffIndexPage() {
                     <li key={u.id}>
                       <button
                         type="button"
-                        className="w-full px-4 py-2 text-left text-theme-primary hover:bg-theme focus:bg-theme focus:outline-none"
+                        className="w-full px-4 py-2 text-left text-theme-primary hover:bg-theme focus:bg-theme focus:outline-none cursor-pointer"
                         onClick={() => {
                           setSelectedUser(u);
                           setAssignResults([]);
@@ -295,7 +382,7 @@ export default function StaffIndexPage() {
               name="role"
               value={assignRole}
               onChange={(e) => setAssignRole(e.target.value as StaffRole)}
-              className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
             >
               {ROLES.map((r) => (
                 <option key={r.value} value={r.value}>
@@ -311,7 +398,7 @@ export default function StaffIndexPage() {
             <button
               type="submit"
               disabled={isSubmitting || !selectedUser}
-              className="px-4 py-2 btn-primary rounded-lg text-sm font-medium disabled:opacity-50"
+              className="px-4 py-2 btn-primary rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Adding…" : "Add as staff"}
             </button>
@@ -319,50 +406,231 @@ export default function StaffIndexPage() {
           <span className="text-theme-muted text-sm">or</span>
           <button
             type="button"
-            onClick={() => setShowCreateForm((v) => !v)}
-            className="px-4 py-2 rounded-lg border border-theme text-theme-primary hover:bg-theme-tertiary text-sm font-medium"
+            onClick={() => (showCreateForm ? closeCreateModal() : setShowCreateForm(true))}
+            className="px-4 py-2 rounded-lg border border-theme text-theme-primary hover:bg-theme-tertiary text-sm font-medium cursor-pointer"
           >
             {showCreateForm ? "Cancel" : "Create new user"}
           </button>
         </div>
 
         {showCreateForm && (
-          <Form method="post" className="mt-4 pt-4 border-t border-theme grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <input type="hidden" name="intent" value="create" />
-            <div>
-              <label htmlFor="create-firstName" className="block text-xs font-medium text-theme-muted mb-1">First name</label>
-              <input id="create-firstName" name="firstName" type="text" placeholder="Jane" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
-            </div>
-            <div>
-              <label htmlFor="create-lastName" className="block text-xs font-medium text-theme-muted mb-1">Last name</label>
-              <input id="create-lastName" name="lastName" type="text" placeholder="Doe" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
-            </div>
-            <div>
-              <label htmlFor="create-name" className="block text-xs font-medium text-theme-muted mb-1">Display name (optional)</label>
-              <input id="create-name" name="name" type="text" placeholder="Defaults to first name" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
-            </div>
-            <div>
-              <label htmlFor="create-email" className="block text-xs font-medium text-theme-muted mb-1">Email *</label>
-              <input id="create-email" name="email" type="email" required placeholder="jane@company.com" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
-            </div>
-            <div>
-              <label htmlFor="create-password" className="block text-xs font-medium text-theme-muted mb-1">Password *</label>
-              <input id="create-password" name="password" type="password" required autoComplete="new-password" placeholder="••••••••" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm" />
-            </div>
-            <div className="flex items-end gap-2">
-              <div className="flex-1">
-                <label htmlFor="create-role" className="block text-xs font-medium text-theme-muted mb-1">Role</label>
-                <select id="create-role" name="role" className="w-full px-3 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm">
-                  {ROLES.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/50"
+              aria-hidden
+              onClick={closeCreateModal}
+            />
+            <div className="relative w-full max-w-3xl bg-theme-secondary rounded-xl border border-theme shadow-xl">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-theme">
+                <div>
+                  <h3 className="text-lg font-semibold text-theme-primary">Create new staff user</h3>
+                  <p className="text-sm text-theme-secondary">Creates a user and grants Super Admin access.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  className="px-3 py-2 rounded-lg border border-theme text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                  aria-label="Close"
+                >
+                  Close
+                </button>
               </div>
-              <button type="submit" disabled={isSubmitting} className="px-3 py-2 btn-primary rounded-lg text-sm font-medium disabled:opacity-50">
-                Create & add
-              </button>
+
+              <Form
+                method="post"
+                className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4"
+                onSubmit={() => {
+                  // keep values; actionData will toast
+                }}
+              >
+                <input type="hidden" name="intent" value="create" />
+                <div>
+                  <label htmlFor="create-firstName" className="block text-sm font-medium text-theme-secondary mb-1">
+                    First name
+                  </label>
+                  <input
+                    id="create-firstName"
+                    name="firstName"
+                    type="text"
+                    placeholder="Jane"
+                    className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="create-lastName" className="block text-sm font-medium text-theme-secondary mb-1">
+                    Last name
+                  </label>
+                  <input
+                    id="create-lastName"
+                    name="lastName"
+                    type="text"
+                    placeholder="Doe"
+                    className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="create-name" className="block text-sm font-medium text-theme-secondary mb-1">
+                    Display name (optional)
+                  </label>
+                  <input
+                    id="create-name"
+                    name="name"
+                    type="text"
+                    placeholder="Defaults to first name"
+                    className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="create-email" className="block text-sm font-medium text-theme-secondary mb-1">
+                    Email *
+                  </label>
+                  <input
+                    id="create-email"
+                    name="email"
+                    type="email"
+                    required
+                    placeholder="jane@company.com"
+                    className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label htmlFor="create-password" className="block text-sm font-medium text-theme-secondary">
+                      Password *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const p = generateSecurePassword();
+                        setCreatePassword(p);
+                        setCreateConfirmPassword(p);
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-(--color-brand-red-muted) text-(--color-brand-red) text-xs font-medium hover:bg-(--color-brand-red) hover:text-white transition cursor-pointer"
+                    >
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />
+                      Generate secure password
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="create-password"
+                      name="password"
+                      type={showCreatePassword ? "text" : "password"}
+                      required
+                      autoComplete="new-password"
+                      value={createPassword}
+                      onChange={(e) => setCreatePassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="flex-1 min-w-0 px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
+                    />
+                    {createPassword.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setShowCreatePassword((v) => !v)}
+                          className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                          title={showCreatePassword ? "Hide password" : "Show password"}
+                        >
+                          {showCreatePassword ? "Hide" : "Show"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={copyCreatePassword}
+                          className="shrink-0 px-3 py-2 rounded-lg border border-theme text-xs font-medium text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary transition cursor-pointer"
+                          title="Copy password"
+                        >
+                          Copy
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {createPassword.length > 0 && (
+                    <>
+                      <div className="mt-2 flex gap-1 mb-1">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "h-1.5 flex-1 rounded-full transition-colors",
+                              i <= createStrength.score
+                                ? createStrength.score <= 1
+                                  ? "bg-red-500"
+                                  : createStrength.score <= 2
+                                    ? "bg-amber-500"
+                                    : createStrength.score <= 3
+                                      ? "bg-yellow-500"
+                                      : "bg-green-500"
+                                : "bg-theme-tertiary"
+                            )}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-theme-secondary mb-2">Strength: {createStrength.label || "—"}</p>
+                      <PasswordRequirementsList password={createPassword} />
+                    </>
+                  )}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label htmlFor="create-confirmPassword" className="block text-sm font-medium text-theme-secondary mb-1">
+                    Confirm password *
+                  </label>
+                  <input
+                    id="create-confirmPassword"
+                    name="confirmPassword"
+                    type={showCreatePassword ? "text" : "password"}
+                    required
+                    autoComplete="new-password"
+                    value={createConfirmPassword}
+                    onChange={(e) => setCreateConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm focus:outline-none focus:ring-2 focus:ring-(--color-brand-red)"
+                  />
+                  {createConfirmPassword.length > 0 && (
+                    <p className={cn("mt-1 text-sm", createPasswordsMatch ? "text-green-500" : "text-red-400")}>
+                      {createPasswordsMatch ? "\u2713 Passwords match" : "\u2717 Passwords do not match"}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="create-role" className="block text-sm font-medium text-theme-secondary mb-1">
+                    Role
+                  </label>
+                  <select
+                    id="create-role"
+                    name="role"
+                    className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary text-sm"
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-end justify-end gap-3 sm:col-span-2">
+                  <button
+                    type="button"
+                    onClick={closeCreateModal}
+                    className="px-4 py-2 btn-secondary rounded-lg text-sm font-medium transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !createAllReqsMet || !createPasswordsMatch}
+                    className="px-4 py-2 btn-primary rounded-lg text-sm font-medium transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? "Creating…" : "Create & add"}
+                  </button>
+                </div>
+              </Form>
             </div>
-          </Form>
+          </div>
         )}
       </div>
       )}
@@ -377,7 +645,7 @@ export default function StaffIndexPage() {
             <div className="flex gap-2">
               <Form method="get" action="/staff">
                 <input type="hidden" name="page" value={String(Math.max(1, page - 1))} />
-                <button type="submit" disabled={page <= 1} className="px-2 py-1 text-sm disabled:opacity-50 text-theme-primary">
+                <button type="submit" disabled={page <= 1} className="px-2 py-1 text-sm text-theme-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                   Previous
                 </button>
               </Form>
@@ -386,15 +654,15 @@ export default function StaffIndexPage() {
               </span>
               <Form method="get" action="/staff">
                 <input type="hidden" name="page" value={String(page + 1)} />
-                <button type="submit" disabled={page >= totalPages} className="px-2 py-1 text-sm disabled:opacity-50 text-theme-primary">
+                <button type="submit" disabled={page >= totalPages} className="px-2 py-1 text-sm text-theme-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                   Next
                 </button>
               </Form>
             </div>
           )}
         </div>
-        <table className="w-full">
-          <thead className="bg-theme-tertiary">
+        <table className="table-theme">
+          <thead>
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-theme-muted uppercase tracking-wider">User</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-theme-muted uppercase tracking-wider">Role</th>
@@ -402,7 +670,7 @@ export default function StaffIndexPage() {
               <th className="px-6 py-3 text-left text-xs font-medium text-theme-muted uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-theme">
+          <tbody>
             {staffList.map((staff) => (
               <tr key={staff.id} className="hover:bg-theme-tertiary">
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -420,7 +688,7 @@ export default function StaffIndexPage() {
                         name="role"
                         defaultValue={staff.role}
                         onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                        className="px-2 py-1 bg-theme-tertiary border border-theme rounded text-sm text-theme-primary focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-red)]"
+                        className="px-2 py-1 bg-theme-tertiary border border-theme rounded text-sm text-theme-primary focus:outline-none focus:ring-1 focus:ring-(--color-brand-red)"
                       >
                         {ROLES.map((r) => (
                           <option key={r.value} value={r.value}>{r.label}</option>
@@ -434,7 +702,7 @@ export default function StaffIndexPage() {
                   )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-theme-secondary text-sm">
-                  {staff.user.lastLoginAt ? new Date(staff.user.lastLoginAt).toLocaleString() : "Never"}
+                  {staff.user.lastLoginAt ? formatDateYYYYMMDD(new Date(staff.user.lastLoginAt)) : "Never"}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {canManageStaff ? (
@@ -445,7 +713,7 @@ export default function StaffIndexPage() {
                         type="submit"
                         disabled={isSubmitting || totalCount <= 1}
                         title={totalCount <= 1 ? "At least one super admin is required" : undefined}
-                        className="text-sm text-[var(--color-brand-red)] hover:text-[var(--color-brand-red-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-sm text-(--color-brand-red) hover:text-(--color-brand-red-hover) cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Remove access
                       </button>
