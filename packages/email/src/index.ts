@@ -3,6 +3,7 @@ export { sendMail, type SendMailParams } from "./transport.js";
 export { sendPasswordResetEmail } from "./password-reset.js";
 export { sendEmailVerification } from "./email-verification.js";
 export { sendInvitationEmail } from "./invitation.js";
+export { sendFeedbackNotificationEmail } from "./feedback-notification.js";
 export {
   getAssembledEmail,
   type EmailRepository,
@@ -17,5 +18,6 @@ export {
   DEFAULT_INVITATION_BODY_HTML,
   DEFAULT_EMAIL_VERIFICATION_BODY_HTML,
   DEFAULT_PASSWORD_RESET_BODY_HTML,
+  DEFAULT_FEEDBACK_NOTIFICATION_BODY_HTML,
   DEFAULT_EMAIL_SUBJECTS,
 } from "./defaults.js";

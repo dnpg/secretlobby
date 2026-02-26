@@ -111,6 +111,11 @@ const Icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
     </svg>
   ),
+  feedback: (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+    </svg>
+  ),
   menu: (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
@@ -268,6 +273,7 @@ const mainNavItems = [
   { to: "lobbies", label: "Lobbies", icon: "lobbies" as const },
   { to: "media", label: "Media", icon: "media" as const },
   { to: "settings", label: "Settings", icon: "settings" as const },
+  { to: "feedback", label: "Feedback", icon: "feedback" as const },
 ];
 
 // Lobby-specific navigation items (shown when editing a lobby)
@@ -577,9 +583,9 @@ export default function AdminLayout() {
         <header className="sticky top-0 z-30 pl-[8px] pr-[2px] pt-[2px]">
           <div
             className={cn(
-              "rounded-xl border transition-all duration-300 backdrop-blur-xl",
+              "rounded-xl border transition-all duration-300",
               scrolled
-                ? "shadow-lg border-black/10 dark:border-white/10 bg-white/70 dark:bg-black/70"
+                ? "border-theme header-glass"
                 : "border-transparent bg-transparent"
             )}
           >

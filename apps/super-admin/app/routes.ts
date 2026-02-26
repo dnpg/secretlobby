@@ -38,6 +38,8 @@ export default [
     ]),
     route("security", "routes/_layout.security.tsx"),
     route("security/:ipAddress", "routes/_layout.security.$ipAddress.tsx"),
+    route("feedback", "routes/_layout.feedback.tsx"),
+    route("feedback/:feedbackId", "routes/_layout.feedback.$feedbackId.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
     route("profile", "routes/_layout.profile.tsx"),
   ]),

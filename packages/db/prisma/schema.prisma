@@ -76,6 +76,18 @@ enum InvitationStatus {
   REVOKED   // Admin revoked
 }
 
+enum FeedbackType {
+  BUG_REPORT
+  FEATURE_REQUEST
+  GENERAL
+}
+
+enum FeedbackStatus {
+  PENDING
+  READ
+  ARCHIVED
+}
+
 /// Staff can access super-admin. Independent of Account; same User can be staff and/or in band accounts.
 enum StaffRole {
   OWNER  // Can manage staff and full super-admin access
@@ -110,6 +122,7 @@ model Account {
   subscriptions  Subscription[]
   paymentMethods PaymentMethod[]
   paymentHistory PaymentHistory[]
+  feedback       Feedback[]
   defaultLobbyId String? // Reference to the default lobby
 
   @@index([slug])
@@ -152,6 +165,7 @@ model User {
   accounts AccountUser[]
   sessions Session[]
   staff    Staff?
+  feedback Feedback[]
 
   @@index([email])
 }
@@ -540,6 +554,9 @@ model SystemSettings {
   maintenanceMode  Boolean  @default(false)
   prelaunchMode    Boolean  @default(false)
 
+  // Feedback Notifications
+  feedbackNotificationEmail String?
+
   // Favicon & Web Manifest Configuration (JSON)
   // Contains: sourceKey, generatedAt, manifestName, manifestShortName, themeColor, bgColor, display
   faviconConfig    Json     @default("{}")
@@ -706,4 +723,48 @@ model EmailTemplate {
   updatedAt DateTime @updatedAt
 
   @@index([key])
+}
+
+// ============================================================================
+// FEEDBACK (User feedback submissions)
+// ============================================================================
+
+model Feedback {
+  id        String         @id @default(cuid())
+  accountId String
+  userId    String
+  type      FeedbackType
+  subject   String
+  message   String         @db.Text
+  status    FeedbackStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  // Relations
+  account     Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments FeedbackAttachment[]
+
+  @@index([accountId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// FEEDBACK ATTACHMENT (Files attached to feedback)
+// ============================================================================
+
+model FeedbackAttachment {
+  id         String   @id @default(cuid())
+  feedbackId String
+  filename   String   // Original filename
+  key        String   // R2 object key
+  mimeType   String
+  size       Int      // File size in bytes
+  createdAt  DateTime @default(now())
+
+  // Relations
+  feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+
+  @@index([feedbackId])
 }

@@ -53,5 +53,6 @@ export default [
     route("billing/methods", "routes/_layout.billing.methods.tsx"),
     route("billing/checkout", "routes/_layout.billing.checkout.tsx"),
     route("billing/success", "routes/_layout.billing.success.tsx"),
+    route("feedback", "routes/_layout.feedback.tsx"),
   ]),
 ] satisfies RouteConfig;

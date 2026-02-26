@@ -158,8 +158,45 @@ export const DEFAULT_PASSWORD_RESET_BODY_HTML = `<!-- Body: Password reset (cont
   </tr>
 </table>`;
 
+/** Body content for feedback notification. Placeholders: {{user.name}}, {{user.email}}, {{account.name}}, {{feedback.type}}, {{feedback.subject}}, {{feedback.message}} */
+export const DEFAULT_FEEDBACK_NOTIFICATION_BODY_HTML = `<!-- Body: Feedback notification (contained like header/footer) -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%; max-width:600px; margin:0 auto; background-color:#ffffff;">
+  <tr>
+    <td style="padding:32px 24px; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color:#ffffff;">
+      <h2 style="margin:0 0 16px 0; font-size:24px; font-weight:700; color:#111111;">New Feedback Received</h2>
+      <p style="margin:0 0 16px 0; font-size:16px; line-height:1.6; color:#111111;">A user has submitted feedback on SecretLobby.</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0; background-color:#f9fafb; border-radius:8px;">
+        <tr>
+          <td style="padding:16px;">
+            <p style="margin:0 0 8px 0; font-size:14px; color:#6b7280;"><strong style="color:#111111;">From:</strong> {{user.name}} ({{user.email}})</p>
+            <p style="margin:0 0 8px 0; font-size:14px; color:#6b7280;"><strong style="color:#111111;">Account:</strong> {{account.name}}</p>
+            <p style="margin:0 0 8px 0; font-size:14px; color:#6b7280;"><strong style="color:#111111;">Type:</strong> {{feedback.type}}</p>
+            <p style="margin:0; font-size:14px; color:#6b7280;"><strong style="color:#111111;">Subject:</strong> {{feedback.subject}}</p>
+          </td>
+        </tr>
+      </table>
+      <h3 style="margin:24px 0 12px 0; font-size:16px; font-weight:600; color:#111111;">Message</h3>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px 0; background-color:#f9fafb; border-radius:8px;">
+        <tr>
+          <td style="padding:16px;">
+            <p style="margin:0; font-size:14px; line-height:1.6; color:#111111; white-space:pre-wrap;">{{feedback.message}}</p>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0;">
+        <tr>
+          <td align="center">
+            <a href="{{superAdminUrl}}/feedback" style="display:inline-block; background-color:#ed1b2f; color:#ffffff !important; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:600; font-size:16px;">View in Super Admin</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
+
 export const DEFAULT_EMAIL_SUBJECTS = {
   invitation: "You're invited to SecretLobby!",
   email_verification: "Verify your email address",
   password_reset: "Reset your password",
+  feedback_notification: "[SecretLobby] New Feedback: {{feedback.subject}}",
 } as const;

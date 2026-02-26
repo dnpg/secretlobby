@@ -96,6 +96,7 @@ export async function loader({}: Route.LoaderArgs) {
       allowSignups: settings.allowSignups,
       maintenanceMode: settings.maintenanceMode,
       prelaunchMode: settings.prelaunchMode,
+      feedbackNotificationEmail: settings.feedbackNotificationEmail,
     },
     favicon: {
       sourceKey: faviconConfig.sourceKey || null,
@@ -152,6 +153,19 @@ export async function action({ request }: Route.ActionArgs) {
     });
 
     return { success: true, message: "Platform settings updated" };
+  }
+
+  if (intent === "updateFeedbackNotifications") {
+    const feedbackNotificationEmail = formData.get("feedbackNotificationEmail") as string;
+
+    await prisma.systemSettings.update({
+      where: { id: "default" },
+      data: {
+        feedbackNotificationEmail: feedbackNotificationEmail || null,
+      },
+    });
+
+    return { success: true, message: "Feedback notification settings updated" };
   }
 
   return { success: false, message: "Unknown action" };
@@ -750,6 +764,46 @@ export default function SettingsPage() {
                 className="px-4 py-2 btn-primary rounded-lg transition disabled:opacity-50"
               >
                 {isSubmitting ? "Saving..." : "Save Platform Settings"}
+              </button>
+            </div>
+          </fetcher.Form>
+        </div>
+
+        {/* Feedback Notifications */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-4">Feedback Notifications</h3>
+          <p className="text-theme-secondary text-sm mb-6">
+            Configure where feedback submissions from console users are sent.
+          </p>
+
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="updateFeedbackNotifications" />
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-theme-secondary mb-1">
+                  Notification Email
+                </label>
+                <input
+                  type="email"
+                  name="feedbackNotificationEmail"
+                  defaultValue={settings.feedbackNotificationEmail || ""}
+                  placeholder="admin@example.com"
+                  className="w-full px-3 py-2 bg-theme-primary border border-theme rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                />
+                <p className="text-xs text-theme-muted mt-1">
+                  Leave empty to disable email notifications for feedback submissions.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="cursor-pointer px-4 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+              >
+                {isSubmitting ? "Saving..." : "Save Notification Settings"}
               </button>
             </div>
           </fetcher.Form>

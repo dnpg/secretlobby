@@ -381,6 +381,17 @@ textarea:focus-visible {
   border-radius: 9999px;
 }
 
+/* Glass header effect */
+@utility header-glass {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .header-glass {
+  background-color: rgba(15, 15, 15, 0.8);
+}
+
 /* Logo animation */
 @keyframes logo-pulse {
   0%, 100% {

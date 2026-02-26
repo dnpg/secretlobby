@@ -23,6 +23,8 @@ export type {
   Invitation,
   EmailHtmlElement,
   EmailTemplate,
+  Feedback,
+  FeedbackAttachment,
 } from "./generated/client/client.js";
 
 // Re-export enums
@@ -37,6 +39,8 @@ export {
   EmbedProvider,
   ViolationStatus,
   InvitationStatus,
+  FeedbackType,
+  FeedbackStatus,
 } from "./generated/client/enums.js";
 
 // Re-export Prisma types for advanced queries

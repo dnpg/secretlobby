@@ -12,6 +12,7 @@ import {
   DEFAULT_INVITATION_BODY_HTML,
   DEFAULT_EMAIL_VERIFICATION_BODY_HTML,
   DEFAULT_PASSWORD_RESET_BODY_HTML,
+  DEFAULT_FEEDBACK_NOTIFICATION_BODY_HTML,
   DEFAULT_EMAIL_SUBJECTS,
 } from "./defaults.js";
 
@@ -33,6 +34,7 @@ const DEFAULT_BODIES: Record<string, string> = {
   invitation: DEFAULT_INVITATION_BODY_HTML,
   email_verification: DEFAULT_EMAIL_VERIFICATION_BODY_HTML,
   password_reset: DEFAULT_PASSWORD_RESET_BODY_HTML,
+  feedback_notification: DEFAULT_FEEDBACK_NOTIFICATION_BODY_HTML,
 };
 
 /** Escape special regex characters so placeholder keys like "user.name" match literally */

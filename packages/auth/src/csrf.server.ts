@@ -88,15 +88,18 @@ export function validateCsrfToken(token: string | null | undefined): boolean {
 /**
  * Extract CSRF token from request
  * Checks in this order:
- * 1. Form data (_csrf field)
+ * 1. Form data (_csrf field) - supports both urlencoded and multipart
  * 2. X-CSRF-Token header
  * 3. X-XSRF-Token header (for compatibility)
  */
 export async function extractCsrfToken(request: Request): Promise<string | null> {
-  // Try form data first (for traditional form submissions)
+  const contentType = request.headers.get("content-type") || "";
+
+  // Try form data first (for traditional form submissions and file uploads)
   if (
     request.method === "POST" &&
-    request.headers.get("content-type")?.includes("application/x-www-form-urlencoded")
+    (contentType.includes("application/x-www-form-urlencoded") ||
+      contentType.includes("multipart/form-data"))
   ) {
     try {
       const formData = await request.clone().formData();
@@ -110,10 +113,7 @@ export async function extractCsrfToken(request: Request): Promise<string | null>
   }
 
   // Try JSON body (for API requests)
-  if (
-    request.method === "POST" &&
-    request.headers.get("content-type")?.includes("application/json")
-  ) {
+  if (request.method === "POST" && contentType.includes("application/json")) {
     try {
       const body = await request.clone().json();
       if (body && typeof body === "object" && "_csrf" in body && typeof body._csrf === "string") {
