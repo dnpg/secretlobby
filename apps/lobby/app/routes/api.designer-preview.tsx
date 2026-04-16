@@ -365,6 +365,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     if (lobbySettings.socialLinks && typeof lobbySettings.socialLinks === "object") {
       socialLinksSettings = lobbySettings.socialLinks as SocialLinksSettings;
     }
+    // Fallback: if lobby doesn't have social links, check account-level settings
+    if (!socialLinksSettings && lobby.account.settings && typeof lobby.account.settings === "object") {
+      const accountSettings = lobby.account.settings as Record<string, unknown>;
+      if (accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
+        socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
+      }
+    }
     if (lobbySettings.technicalInfo && typeof lobbySettings.technicalInfo === "object") {
       const ti = lobbySettings.technicalInfo as { title?: string; content?: string };
       if (ti.title || ti.content) {

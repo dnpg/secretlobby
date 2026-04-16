@@ -403,9 +403,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
-  // Read global settings from account.settings (Google Analytics)
+  // Read global settings from account.settings (Google Analytics, and fallback for social links)
   if (account.settings && typeof account.settings === "object") {
     const accountSettings = account.settings as Record<string, unknown>;
+    // Fallback: if lobby doesn't have social links, check account-level settings
+    if (!socialLinksSettings && accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
+      socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
+    }
     if (accountSettings.googleAnalytics && typeof accountSettings.googleAnalytics === "object") {
       const ga = accountSettings.googleAnalytics as { trackingId?: string; gtmContainerId?: string };
       if (ga.trackingId) {
