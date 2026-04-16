@@ -4,6 +4,9 @@ export default [
   // Designer mode (full-screen, no layout)
   route("designer/:lobbyId", "routes/designer.$lobbyId.tsx"),
 
+  // Page Builder (full-screen, no layout)
+  route("page-builder/:lobbyId", "routes/page-builder.$lobbyId.tsx"),
+
   // API (no layout)
   route("api/media", "routes/api.media.ts"),
   route("api/webhooks/stripe", "routes/api.webhooks.stripe.ts"),
