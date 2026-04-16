@@ -281,9 +281,9 @@ const lobbyNavItems = [
   { to: "", label: "Content", end: true, icon: "content" as const },
   { to: "playlist", label: "Playlist", icon: "playlist" as const },
   { to: "theme", label: "Theme", icon: "theme" as const },
-  { to: "login-page", label: "Login Page", icon: "login" as const },
   { to: "social", label: "Social Links", icon: "social" as const },
   { to: "technical-info", label: "Tech Info", icon: "techInfo" as const },
+  { to: "login-page", label: "Login Page", icon: "login" as const },
   { to: "password", label: "Password", icon: "password" as const },
 ];
 

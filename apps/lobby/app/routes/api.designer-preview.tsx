@@ -5,6 +5,7 @@ import { prisma } from "@secretlobby/db";
 import { validateDesignerToken, type DesignerPage } from "@secretlobby/auth";
 import { getPublicUrl } from "@secretlobby/storage";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
+import { ResponsiveImage } from "@secretlobby/ui";
 import type { SocialLinksSettings } from "~/components/SocialLinks";
 import { useHlsAudio } from "~/hooks/useHlsAudio";
 import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
@@ -15,6 +16,7 @@ interface LoginPageSettings {
   logoType: "svg" | "image" | null;
   logoSvg: string;
   logoImage: string;
+  logoMaxWidth: number;
   bgColor: string;
   panelBgColor: string;
   panelBorderColor: string;
@@ -28,6 +30,7 @@ const defaultLoginPageSettings: LoginPageSettings = {
   logoType: null,
   logoSvg: "",
   logoImage: "",
+  logoMaxWidth: 50,
   bgColor: "#111827",
   panelBgColor: "#1f2937",
   panelBorderColor: "#374151",
@@ -354,6 +357,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let socialLinksSettings: SocialLinksSettings | null = null;
   let technicalInfo: { title: string; content: string } | null = null;
 
+  // Read per-lobby settings from lobby.settings
   if (lobby.settings && typeof lobby.settings === "object") {
     const lobbySettings = lobby.settings as Record<string, unknown>;
     if (lobbySettings.loginPage && typeof lobbySettings.loginPage === "object") {
@@ -365,15 +369,32 @@ export async function loader({ request }: Route.LoaderArgs) {
     if (lobbySettings.socialLinks && typeof lobbySettings.socialLinks === "object") {
       socialLinksSettings = lobbySettings.socialLinks as SocialLinksSettings;
     }
-    // Fallback: if lobby doesn't have social links, check account-level settings
-    if (!socialLinksSettings && lobby.account.settings && typeof lobby.account.settings === "object") {
-      const accountSettings = lobby.account.settings as Record<string, unknown>;
-      if (accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
-        socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
-      }
-    }
     if (lobbySettings.technicalInfo && typeof lobbySettings.technicalInfo === "object") {
       const ti = lobbySettings.technicalInfo as { title?: string; content?: string };
+      if (ti.title || ti.content) {
+        technicalInfo = { title: ti.title || "", content: ti.content || "" };
+      }
+    }
+  }
+
+  // Fallback: check account-level settings for legacy data
+  if (lobby.account.settings && typeof lobby.account.settings === "object") {
+    const accountSettings = lobby.account.settings as Record<string, unknown>;
+    // Fallback: if lobby doesn't have loginPage, check account-level settings (legacy)
+    if (loginPageSettings === defaultLoginPageSettings && accountSettings.loginPage && typeof accountSettings.loginPage === "object") {
+      loginPageSettings = { ...defaultLoginPageSettings, ...(accountSettings.loginPage as Partial<LoginPageSettings>) };
+    }
+    // Fallback: if lobby doesn't have theme, check account-level settings (legacy)
+    if (themeSettings === defaultTheme && accountSettings.theme && typeof accountSettings.theme === "object") {
+      themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    }
+    // Fallback: if lobby doesn't have social links, check account-level settings (legacy)
+    if (!socialLinksSettings && accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
+      socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
+    }
+    // Fallback: if lobby doesn't have technicalInfo, check account-level settings (legacy)
+    if (!technicalInfo && accountSettings.technicalInfo && typeof accountSettings.technicalInfo === "object") {
+      const ti = accountSettings.technicalInfo as { title?: string; content?: string };
       if (ti.title || ti.content) {
         technicalInfo = { title: ti.title || "", content: ti.content || "" };
       }
@@ -517,8 +538,15 @@ export default function DesignerPreview() {
           >
             <div className="text-center mb-8">
               {lp.logoType === "image" && loginLogoImageUrl && (
-                <div className="flex justify-center mb-4">
-                  <img src={loginLogoImageUrl} alt={lp.title || "Logo"} className="max-w-[180px] max-h-[60px] object-contain" />
+                <div className="flex justify-center mb-4 w-full">
+                  <ResponsiveImage
+                    src={loginLogoImageUrl}
+                    alt={lp.title || "Logo"}
+                    widths={[200, 400, 600, 800]}
+                    sizes={`(min-width: 448px) ${Math.round(384 * (lp.logoMaxWidth || 50) / 100)}px, calc((100vw - 64px) * ${(lp.logoMaxWidth || 50) / 100})`}
+                    className="object-contain"
+                    style={{ maxWidth: `${lp.logoMaxWidth || 50}%` }}
+                  />
                 </div>
               )}
               {lp.title && (

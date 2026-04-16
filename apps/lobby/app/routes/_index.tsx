@@ -8,6 +8,7 @@ import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
+import { ResponsiveImage } from "@secretlobby/ui";
 import type { SocialLinksSettings } from "~/components/SocialLinks";
 import { PreviewBar } from "~/components/PreviewBar";
 import { useHlsAudio } from "~/hooks/useHlsAudio";
@@ -37,6 +38,7 @@ interface LoginPageSettings {
   logoType: "svg" | "image" | null;
   logoSvg: string;
   logoImage: string;
+  logoMaxWidth: number;
   bgColor: string;
   panelBgColor: string;
   panelBorderColor: string;
@@ -50,6 +52,7 @@ const defaultLoginPageSettings: LoginPageSettings = {
   logoType: null,
   logoSvg: "",
   logoImage: "",
+  logoMaxWidth: 50,
   bgColor: "#111827",
   panelBgColor: "#1f2937",
   panelBorderColor: "#374151",
@@ -403,12 +406,27 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
-  // Read global settings from account.settings (Google Analytics, and fallback for social links)
+  // Read global settings from account.settings (Google Analytics, and fallback for legacy settings)
   if (account.settings && typeof account.settings === "object") {
     const accountSettings = account.settings as Record<string, unknown>;
-    // Fallback: if lobby doesn't have social links, check account-level settings
+    // Fallback: if lobby doesn't have loginPage, check account-level settings (legacy)
+    if (loginPageSettings === defaultLoginPageSettings && accountSettings.loginPage && typeof accountSettings.loginPage === "object") {
+      loginPageSettings = { ...defaultLoginPageSettings, ...(accountSettings.loginPage as Partial<LoginPageSettings>) };
+    }
+    // Fallback: if lobby doesn't have theme, check account-level settings (legacy)
+    if (themeSettings === defaultTheme && accountSettings.theme && typeof accountSettings.theme === "object") {
+      themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    }
+    // Fallback: if lobby doesn't have social links, check account-level settings (legacy)
     if (!socialLinksSettings && accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
       socialLinksSettings = accountSettings.socialLinks as SocialLinksSettings;
+    }
+    // Fallback: if lobby doesn't have technicalInfo, check account-level settings (legacy)
+    if (!technicalInfo && accountSettings.technicalInfo && typeof accountSettings.technicalInfo === "object") {
+      const ti = accountSettings.technicalInfo as { title?: string; content?: string };
+      if (ti.title || ti.content) {
+        technicalInfo = { title: ti.title || "", content: ti.content || "" };
+      }
     }
     if (accountSettings.googleAnalytics && typeof accountSettings.googleAnalytics === "object") {
       const ga = accountSettings.googleAnalytics as { trackingId?: string; gtmContainerId?: string };
@@ -944,8 +962,15 @@ export default function LobbyIndex() {
             >
               <div className="text-center mb-8">
                 {lp.logoType === "image" && loginLogoImageUrl && (
-                  <div className="flex justify-center mb-4">
-                    <img src={loginLogoImageUrl} alt={loginTitle || "Logo"} className="max-w-[180px] max-h-[60px] object-contain" />
+                  <div className="flex justify-center mb-4 w-full">
+                    <ResponsiveImage
+                      src={loginLogoImageUrl}
+                      alt={loginTitle || "Logo"}
+                      widths={[200, 400, 600, 800]}
+                      sizes={`(min-width: 448px) ${Math.round(384 * (lp.logoMaxWidth || 50) / 100)}px, calc((100vw - 64px) * ${(lp.logoMaxWidth || 50) / 100})`}
+                      className="object-contain"
+                      style={{ maxWidth: `${lp.logoMaxWidth || 50}%` }}
+                    />
                   </div>
                 )}
                 {loginTitle && (

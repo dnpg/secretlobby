@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import type { Route } from "./+types/_layout.login";
 import { cn, MediaPicker, type MediaItem, useImageTransform } from "@secretlobby/ui";
@@ -75,6 +75,8 @@ export async function action({ request }: Route.ActionArgs) {
         const panelBorderColor = (formData.get("panelBorderColor") as string) || "#374151";
         const textColor = (formData.get("textColor") as string) || "#ffffff";
         const buttonLabel = (formData.get("buttonLabel") as string) || "Enter Lobby";
+        const logoMaxWidthStr = formData.get("logoMaxWidth") as string;
+        const logoMaxWidth = logoMaxWidthStr ? parseInt(logoMaxWidthStr, 10) : 50;
 
         await updateLoginPageSettings(accountId, {
           title,
@@ -84,6 +86,7 @@ export async function action({ request }: Route.ActionArgs) {
           panelBorderColor,
           textColor,
           buttonLabel,
+          logoMaxWidth: logoMaxWidth >= 10 && logoMaxWidth <= 100 ? logoMaxWidth : 50,
         });
 
         return { success: "Login page appearance updated" };
@@ -194,6 +197,7 @@ export default function AdminLogin() {
   const isSubmitting = navigation.state === "submitting";
   const submit = useSubmit();
   const { transformUrl, generateSrcSet } = useImageTransform();
+  const [logoMaxWidth, setLogoMaxWidth] = useState(loginSettings.logoMaxWidth || 50);
 
   const handleLogoSelect = (media: MediaItem) => {
     submit(
@@ -269,6 +273,27 @@ export default function AdminLogin() {
             </button>
           </MediaPicker>
         )}
+
+        {/* Logo Max Width - only show if logo is set */}
+        {loginSettings.logoType === "image" && logoImageUrl && (
+          <div className="mt-6 pt-6 border-t border-theme">
+            <label className="block text-sm font-medium mb-2">
+              Logo Max Width: {logoMaxWidth}%
+            </label>
+            <input
+              type="range"
+              min="10"
+              max="100"
+              step="5"
+              value={logoMaxWidth}
+              onChange={(e) => setLogoMaxWidth(parseInt(e.target.value, 10))}
+              className="w-full cursor-pointer"
+            />
+            <p className="text-xs text-theme-muted mt-1">
+              Controls the maximum width of the logo relative to the login panel.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Title, Description & Colors Section */}
@@ -281,6 +306,7 @@ export default function AdminLogin() {
         <Form method="post" className="space-y-6">
           <input type="hidden" name="intent" value="update-login-appearance" />
           <input type="hidden" name="_csrf" value={csrfToken} />
+          <input type="hidden" name="logoMaxWidth" value={logoMaxWidth} />
 
           {/* Title & Description */}
           <div className="grid grid-cols-1 gap-4">

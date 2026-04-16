@@ -240,6 +240,7 @@ export interface LoginPageSettings {
   logoType: "svg" | "image" | null;
   logoSvg: string;
   logoImage: string;
+  logoMaxWidth: number; // percentage 10-100
   bgColor: string;
   panelBgColor: string;
   panelBorderColor: string;
@@ -253,6 +254,7 @@ export const defaultLoginPageSettings: LoginPageSettings = {
   logoType: null,
   logoSvg: "",
   logoImage: "",
+  logoMaxWidth: 50,
   bgColor: "#111827",
   panelBgColor: "#1f2937",
   panelBorderColor: "#374151",
@@ -499,12 +501,70 @@ export async function updateGoogleAnalyticsSettings(accountId: string, googleAna
 }
 
 // =============================================================================
-// Lobby-Specific Settings Functions (Per-Lobby)
+// Lobby-Specific Settings Functions (Per-Lobby with Account Fallback)
 // =============================================================================
 
+/**
+ * Helper to get lobby with account for fallback settings.
+ * Returns lobby settings, account settings, and accountId for legacy cleanup.
+ */
+async function getLobbyWithAccountSettings(lobbyId: string): Promise<{
+  lobbySettings: LobbySettings;
+  accountSettings: AccountSettings;
+  accountId: string | null;
+}> {
+  const lobby = await prisma.lobby.findUnique({
+    where: { id: lobbyId },
+    select: {
+      settings: true,
+      accountId: true,
+      account: {
+        select: { settings: true },
+      },
+    },
+  });
+
+  const lobbySettings = (lobby?.settings && typeof lobby.settings === "object"
+    ? lobby.settings
+    : {}) as LobbySettings;
+
+  const accountSettings = (lobby?.account?.settings && typeof lobby.account.settings === "object"
+    ? lobby.account.settings
+    : {}) as AccountSettings;
+
+  return { lobbySettings, accountSettings, accountId: lobby?.accountId ?? null };
+}
+
+/**
+ * Remove a legacy setting key from account.settings after it's been migrated to lobby.
+ */
+async function removeLegacyAccountSetting(accountId: string, key: keyof AccountSettings): Promise<void> {
+  const account = await prisma.account.findUnique({
+    where: { id: accountId },
+    select: { settings: true },
+  });
+
+  if (!account?.settings || typeof account.settings !== "object") return;
+
+  const settings = account.settings as Record<string, unknown>;
+  if (!(key in settings)) return;
+
+  // Remove the legacy key
+  const { [key]: _, ...cleanedSettings } = settings;
+
+  await prisma.account.update({
+    where: { id: accountId },
+    data: { settings: JSON.parse(JSON.stringify(cleanedSettings)) },
+  });
+}
+
 export async function getLobbyThemeSettings(lobbyId: string): Promise<ThemeSettings> {
-  const settings = await getLobbySettingsById(lobbyId);
-  const theme = { ...defaultTheme, ...settings.theme };
+  const { lobbySettings, accountSettings } = await getLobbyWithAccountSettings(lobbyId);
+
+  // Use lobby settings if available, otherwise fall back to account settings (legacy)
+  const themeSource = lobbySettings.theme || accountSettings.theme;
+  const theme = { ...defaultTheme, ...themeSource };
+
   if (!theme.colorMode) {
     theme.colorMode = "dark";
   }
@@ -512,38 +572,63 @@ export async function getLobbyThemeSettings(lobbyId: string): Promise<ThemeSetti
 }
 
 export async function updateLobbyThemeSettings(lobbyId: string, theme: Partial<ThemeSettings>): Promise<void> {
+  const { accountId } = await getLobbyWithAccountSettings(lobbyId);
   const currentTheme = await getLobbyThemeSettings(lobbyId);
   await updateLobbySettingsById(lobbyId, { theme: { ...currentTheme, ...theme } });
+  // Clean up legacy account setting after migration to lobby
+  if (accountId) await removeLegacyAccountSetting(accountId, "theme");
 }
 
 export async function resetLobbyThemeSettings(lobbyId: string): Promise<void> {
+  const { accountId } = await getLobbyWithAccountSettings(lobbyId);
   await updateLobbySettingsById(lobbyId, { theme: defaultTheme });
+  // Clean up legacy account setting after migration to lobby
+  if (accountId) await removeLegacyAccountSetting(accountId, "theme");
 }
 
 export async function getLobbyLoginPageSettings(lobbyId: string): Promise<LoginPageSettings> {
-  const settings = await getLobbySettingsById(lobbyId);
-  return { ...defaultLoginPageSettings, ...settings.loginPage };
+  const { lobbySettings, accountSettings } = await getLobbyWithAccountSettings(lobbyId);
+
+  // Use lobby settings if available, otherwise fall back to account settings (legacy)
+  const loginPageSource = lobbySettings.loginPage || accountSettings.loginPage;
+  return { ...defaultLoginPageSettings, ...loginPageSource };
 }
 
 export async function updateLobbyLoginPageSettings(lobbyId: string, updates: Partial<LoginPageSettings>): Promise<void> {
+  const { accountId } = await getLobbyWithAccountSettings(lobbyId);
   const current = await getLobbyLoginPageSettings(lobbyId);
   await updateLobbySettingsById(lobbyId, { loginPage: { ...current, ...updates } });
+  // Clean up legacy account setting after migration to lobby
+  if (accountId) await removeLegacyAccountSetting(accountId, "loginPage");
 }
 
 export async function getLobbySocialLinksSettings(lobbyId: string): Promise<SocialLinksSettings> {
-  const settings = await getLobbySettingsById(lobbyId);
-  return { ...defaultSocialLinksSettings, ...settings.socialLinks };
+  const { lobbySettings, accountSettings } = await getLobbyWithAccountSettings(lobbyId);
+
+  // Use lobby settings if available, otherwise fall back to account settings (legacy)
+  const socialLinksSource = lobbySettings.socialLinks || accountSettings.socialLinks;
+  return { ...defaultSocialLinksSettings, ...socialLinksSource };
 }
 
-export async function updateLobbySocialLinksSettings(lobbyId: string, socialLinks: SocialLinksSettings): Promise<void> {
-  await updateLobbySettingsById(lobbyId, { socialLinks });
+export async function updateLobbySocialLinksSettings(lobbyId: string, updates: Partial<SocialLinksSettings>): Promise<void> {
+  const { accountId } = await getLobbyWithAccountSettings(lobbyId);
+  const current = await getLobbySocialLinksSettings(lobbyId);
+  await updateLobbySettingsById(lobbyId, { socialLinks: { ...current, ...updates } });
+  // Clean up legacy account setting after migration to lobby
+  if (accountId) await removeLegacyAccountSetting(accountId, "socialLinks");
 }
 
 export async function getLobbyTechnicalInfoSettings(lobbyId: string): Promise<TechnicalInfoSettings> {
-  const settings = await getLobbySettingsById(lobbyId);
-  return { ...defaultTechnicalInfoSettings, ...settings.technicalInfo };
+  const { lobbySettings, accountSettings } = await getLobbyWithAccountSettings(lobbyId);
+
+  // Use lobby settings if available, otherwise fall back to account settings (legacy)
+  const technicalInfoSource = lobbySettings.technicalInfo || accountSettings.technicalInfo;
+  return { ...defaultTechnicalInfoSettings, ...technicalInfoSource };
 }
 
 export async function updateLobbyTechnicalInfoSettings(lobbyId: string, technicalInfo: TechnicalInfoSettings): Promise<void> {
+  const { accountId } = await getLobbyWithAccountSettings(lobbyId);
   await updateLobbySettingsById(lobbyId, { technicalInfo });
+  // Clean up legacy account setting after migration to lobby
+  if (accountId) await removeLegacyAccountSetting(accountId, "technicalInfo");
 }
