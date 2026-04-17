@@ -166,7 +166,7 @@ export function RichTextEditor({
   if (!editor) return null;
 
   return (
-    <div className={cn("rich-text-editor rounded-lg border border-theme overflow-hidden bg-theme-tertiary", className)}>
+    <div className={cn("rich-text-editor rounded-lg border border-theme overflow-hidden bg-theme-tertiary text-theme-primary", className)}>
       {/* Toolbar */}
       <div className="flex flex-wrap gap-0.5 p-1.5 border-b border-theme bg-theme-secondary/50">
         {featureSet.has("bold") && (
@@ -435,6 +435,7 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       title={title}
+      tabIndex={-1}
       className={cn(
         "p-1.5 rounded transition-colors cursor-pointer",
         active

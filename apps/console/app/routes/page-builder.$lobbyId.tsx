@@ -1,15 +1,20 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { redirect, useLoaderData, Link } from "react-router";
 import type { Route } from "./+types/page-builder.$lobbyId";
-import { cn } from "@secretlobby/ui";
+import { cn, RichTextEditor, MediaPicker, type MediaItem } from "@secretlobby/ui";
 import {
   DndContext,
   closestCenter,
+  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
+  DragOverlay,
   type DragEndEvent,
+  type DragStartEvent,
+  type DragOverEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -39,6 +44,7 @@ function createColumns(count: number, gap = "16px"): Column[] {
   return Array.from({ length: count }, () => ({
     id: generateId("col"),
     width,
+    blocks: [],
   }));
 }
 
@@ -57,12 +63,55 @@ function createSection(columnCount = 1): Section {
 type ViewportSize = "desktop" | "tablet" | "mobile";
 type EditorTab = "layout" | "design";
 type MobileLayout = "stack" | "keep" | "slider";
+type BlockType = "image" | "player" | "card";
+
+// Block content types
+interface ImageBlockContent {
+  mediaId?: string;
+  mediaUrl?: string;
+  alt?: string;
+  objectFit: "cover" | "contain";
+  aspectRatio?: string;
+  borderRadius?: number;
+  linkUrl?: string;
+  // Responsive image overrides
+  tabletMediaId?: string;
+  tabletMediaUrl?: string;
+  mobileMediaId?: string;
+  mobileMediaUrl?: string;
+}
+
+interface PlayerBlockContent {
+  variant: "full" | "compact" | "minimal";
+  showVisualizer: boolean;
+  showPlaylist: boolean;
+  autoplay: boolean;
+}
+
+interface CardBlockContent {
+  title: string;
+  content: string; // HTML content from WYSIWYG editor
+  showBorder: boolean;
+  backgroundColor?: string;
+}
+
+type BlockContent =
+  | ImageBlockContent
+  | PlayerBlockContent
+  | CardBlockContent;
+
+interface Block {
+  id: string;
+  type: BlockType;
+  content: BlockContent;
+  mobileHidden?: boolean;
+}
 
 interface Column {
   id: string;
   width: string; // Desktop width e.g., "50%", "33.33%"
   tabletWidth?: string; // Tablet override (optional)
-  // componentIds will be added in Design mode steps
+  blocks: Block[]; // Blocks inside this column
 }
 
 interface Section {
@@ -72,6 +121,27 @@ interface Section {
   columnGap: string;
   mobileLayout: MobileLayout;
   mobileColumns?: 1 | 2; // Only used when mobileLayout is "keep"
+}
+
+// Default content for each block type
+function getDefaultBlockContent(type: BlockType): BlockContent {
+  switch (type) {
+    case "image":
+      return { objectFit: "cover" } as ImageBlockContent;
+    case "player":
+      return { variant: "full", showVisualizer: true, showPlaylist: true, autoplay: false } as PlayerBlockContent;
+    case "card":
+      return { title: "", content: "", showBorder: true } as CardBlockContent;
+  }
+}
+
+// Create a new block
+function createBlock(type: BlockType): Block {
+  return {
+    id: generateId("block"),
+    type,
+    content: getDefaultBlockContent(type),
+  };
 }
 
 const VIEWPORT_WIDTHS: Record<ViewportSize, number> = {
@@ -242,6 +312,38 @@ function DragHandleIcon() {
   );
 }
 
+// Block Icons
+function ImageIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+    </svg>
+  );
+}
+
+function PlayerIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+    </svg>
+  );
+}
+
+function CardIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6zM3.75 9h16.5M6.75 15h4.5m-4.5 2.25h7.5" />
+    </svg>
+  );
+}
+
+// Block type definitions for toolbar
+const BLOCK_TYPES: { type: BlockType; label: string; icon: React.FC<{ className?: string }> }[] = [
+  { type: "image", label: "Image", icon: ImageIcon },
+  { type: "player", label: "Player", icon: PlayerIcon },
+  { type: "card", label: "Card", icon: CardIcon },
+];
+
 // Floating Settings Panel Component
 interface SettingsPanelProps {
   section: Section;
@@ -326,6 +428,7 @@ function SectionSettingsPanel({ section, onUpdate, onUpdateColumn, onDelete, onC
       const newColumns = Array.from({ length: newCount }, (_, i) => ({
         id: i < section.columns.length ? section.columns[i].id : generateId("col"),
         width: equalWidth,
+        blocks: i < section.columns.length ? section.columns[i].blocks : [],
       }));
       onUpdate({ columns: newColumns });
     } else if (newCount > columnCount) {
@@ -357,6 +460,7 @@ function SectionSettingsPanel({ section, onUpdate, onUpdateColumn, onDelete, onC
       const newColumns = Array.from({ length: columnsToAdd }, () => ({
         id: generateId("col"),
         width: `${newColumnPercent.toFixed(2)}%`,
+        blocks: [],
       }));
 
       onUpdate({ columns: [...updatedColumns, ...newColumns] });
@@ -600,6 +704,401 @@ function SectionSettingsPanel({ section, onUpdate, onUpdateColumn, onDelete, onC
   );
 }
 
+// Block Settings Panel Component
+interface BlockSettingsPanelProps {
+  block: Block;
+  onUpdate: (content: Partial<BlockContent>) => void;
+  onDelete: () => void;
+  onClose: () => void;
+}
+
+function BlockSettingsPanel({ block, onUpdate, onDelete, onClose }: BlockSettingsPanelProps) {
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 100 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; initialX: number; initialY: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Position panel on the right side initially
+  useEffect(() => {
+    if (panelRef.current) {
+      const panelWidth = panelRef.current.offsetWidth;
+      setPosition({ x: window.innerWidth - panelWidth - 32, y: 100 });
+    }
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
+    setIsDragging(true);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: position.x,
+      initialY: position.y,
+    };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !dragRef.current) return;
+      const deltaX = e.clientX - dragRef.current.startX;
+      const deltaY = e.clientY - dragRef.current.startY;
+      setPosition({
+        x: dragRef.current.initialX + deltaX,
+        y: dragRef.current.initialY + deltaY,
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      dragRef.current = null;
+    };
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const blockTypeLabel = BLOCK_TYPES.find((t) => t.type === block.type)?.label || block.type;
+  const BlockIcon = BLOCK_TYPES.find((t) => t.type === block.type)?.icon || LayoutIcon;
+
+  const renderSettings = () => {
+    switch (block.type) {
+      case "image": {
+        const content = block.content as ImageBlockContent;
+        return (
+          <>
+            {/* Desktop Image (required) */}
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">
+                <DesktopIcon /> Desktop Image
+              </label>
+              {content.mediaUrl ? (
+                <div className="space-y-2">
+                  <div className="relative aspect-video bg-theme-tertiary rounded-lg overflow-hidden">
+                    <img src={content.mediaUrl} alt={content.alt || ""} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex gap-2">
+                    <MediaPicker
+                      accept={["image/*"]}
+                      tabs={["library", "upload"]}
+                      onSelect={(media: MediaItem) => onUpdate({ mediaId: media.id, mediaUrl: media.url })}
+                    >
+                      <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-gray-300 hover:text-white hover:bg-theme-secondary transition-colors cursor-pointer">
+                        Change
+                      </button>
+                    </MediaPicker>
+                    <button
+                      onClick={() => onUpdate({ mediaId: undefined, mediaUrl: undefined })}
+                      className="px-3 py-2 text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <MediaPicker
+                  accept={["image/*"]}
+                  tabs={["library", "upload"]}
+                  onSelect={(media: MediaItem) => onUpdate({ mediaId: media.id, mediaUrl: media.url })}
+                >
+                  <button className="w-full py-8 border-2 border-dashed border-theme rounded-lg text-gray-400 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer flex flex-col items-center gap-2">
+                    <ImageIcon className="w-8 h-8" />
+                    <span className="text-xs">Select Image</span>
+                  </button>
+                </MediaPicker>
+              )}
+            </div>
+
+            {/* Tablet Image (optional override) */}
+            <div className="pt-3 border-t border-theme">
+              <label className="block text-sm font-medium text-white mb-2">
+                <TabletIcon /> Tablet Override <span className="text-xs text-gray-500 font-normal">(optional)</span>
+              </label>
+              {content.tabletMediaUrl ? (
+                <div className="space-y-2">
+                  <div className="relative aspect-video bg-theme-tertiary rounded-lg overflow-hidden">
+                    <img src={content.tabletMediaUrl} alt={content.alt || ""} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex gap-2">
+                    <MediaPicker
+                      accept={["image/*"]}
+                      tabs={["library", "upload"]}
+                      onSelect={(media: MediaItem) => onUpdate({ tabletMediaId: media.id, tabletMediaUrl: media.url })}
+                    >
+                      <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-gray-300 hover:text-white hover:bg-theme-secondary transition-colors cursor-pointer">
+                        Change
+                      </button>
+                    </MediaPicker>
+                    <button
+                      onClick={() => onUpdate({ tabletMediaId: undefined, tabletMediaUrl: undefined })}
+                      className="px-3 py-2 text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <MediaPicker
+                  accept={["image/*"]}
+                  tabs={["library", "upload"]}
+                  onSelect={(media: MediaItem) => onUpdate({ tabletMediaId: media.id, tabletMediaUrl: media.url })}
+                >
+                  <button className="w-full py-4 border border-dashed border-theme rounded-lg text-gray-500 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer text-xs">
+                    + Add tablet image
+                  </button>
+                </MediaPicker>
+              )}
+            </div>
+
+            {/* Mobile Image (optional override) */}
+            <div className="pt-3 border-t border-theme">
+              <label className="block text-sm font-medium text-white mb-2">
+                <MobileIcon /> Mobile Override <span className="text-xs text-gray-500 font-normal">(optional)</span>
+              </label>
+              {content.mobileMediaUrl ? (
+                <div className="space-y-2">
+                  <div className="relative aspect-video bg-theme-tertiary rounded-lg overflow-hidden">
+                    <img src={content.mobileMediaUrl} alt={content.alt || ""} className="w-full h-full object-cover" />
+                  </div>
+                  <div className="flex gap-2">
+                    <MediaPicker
+                      accept={["image/*"]}
+                      tabs={["library", "upload"]}
+                      onSelect={(media: MediaItem) => onUpdate({ mobileMediaId: media.id, mobileMediaUrl: media.url })}
+                    >
+                      <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-gray-300 hover:text-white hover:bg-theme-secondary transition-colors cursor-pointer">
+                        Change
+                      </button>
+                    </MediaPicker>
+                    <button
+                      onClick={() => onUpdate({ mobileMediaId: undefined, mobileMediaUrl: undefined })}
+                      className="px-3 py-2 text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <MediaPicker
+                  accept={["image/*"]}
+                  tabs={["library", "upload"]}
+                  onSelect={(media: MediaItem) => onUpdate({ mobileMediaId: media.id, mobileMediaUrl: media.url })}
+                >
+                  <button className="w-full py-4 border border-dashed border-theme rounded-lg text-gray-500 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer text-xs">
+                    + Add mobile image
+                  </button>
+                </MediaPicker>
+              )}
+            </div>
+
+            {/* Alt Text */}
+            <div className="pt-3 border-t border-theme">
+              <label className="block text-sm font-medium text-white mb-2">Alt Text</label>
+              <input
+                type="text"
+                value={content.alt || ""}
+                onChange={(e) => onUpdate({ alt: e.target.value })}
+                placeholder="Describe the image for accessibility"
+                className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              />
+              <p className="text-xs text-gray-500 mt-1">Important for SEO and accessibility</p>
+            </div>
+
+            {/* Object Fit */}
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Object Fit</label>
+              <div className="flex gap-2">
+                {(["cover", "contain"] as const).map((fit) => (
+                  <button
+                    key={fit}
+                    onClick={() => onUpdate({ objectFit: fit })}
+                    className={cn(
+                      "flex-1 px-3 py-2 text-sm rounded-lg border transition-colors cursor-pointer",
+                      content.objectFit === fit
+                        ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                        : "border-theme text-gray-300 hover:bg-theme-tertiary"
+                    )}
+                  >
+                    {fit}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Link URL */}
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Link URL <span className="text-xs text-gray-500 font-normal">(optional)</span></label>
+              <input
+                type="text"
+                value={content.linkUrl || ""}
+                onChange={(e) => onUpdate({ linkUrl: e.target.value })}
+                placeholder="https://..."
+                className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              />
+            </div>
+          </>
+        );
+      }
+      case "player": {
+        const content = block.content as PlayerBlockContent;
+        return (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Variant</label>
+              <div className="flex gap-2">
+                {(["full", "compact", "minimal"] as const).map((variant) => (
+                  <button
+                    key={variant}
+                    onClick={() => onUpdate({ variant })}
+                    className={cn(
+                      "flex-1 px-2 py-2 text-xs rounded-lg border transition-colors cursor-pointer capitalize",
+                      content.variant === variant
+                        ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                        : "border-theme text-gray-300 hover:bg-theme-tertiary"
+                    )}
+                  >
+                    {variant}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={content.showVisualizer}
+                  onChange={(e) => onUpdate({ showVisualizer: e.target.checked })}
+                  className="accent-[var(--color-brand-red)]"
+                />
+                <span className="text-sm text-gray-300">Show Visualizer</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={content.showPlaylist}
+                  onChange={(e) => onUpdate({ showPlaylist: e.target.checked })}
+                  className="accent-[var(--color-brand-red)]"
+                />
+                <span className="text-sm text-gray-300">Show Playlist</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={content.autoplay}
+                  onChange={(e) => onUpdate({ autoplay: e.target.checked })}
+                  className="accent-[var(--color-brand-red)]"
+                />
+                <span className="text-sm text-gray-300">Autoplay</span>
+              </label>
+            </div>
+          </>
+        );
+      }
+      case "card": {
+        const content = block.content as CardBlockContent;
+        return (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Title</label>
+              <input
+                type="text"
+                value={content.title}
+                onChange={(e) => onUpdate({ title: e.target.value })}
+                placeholder="Optional card title"
+                className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Content</label>
+              <RichTextEditor
+                defaultValue={content.content}
+                onChange={(html) => onUpdate({ content: html })}
+                placeholder="Card content..."
+                features={["bold", "italic", "underline", "link", "bulletList", "orderedList", "textAlign"]}
+              />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={content.showBorder}
+                onChange={(e) => onUpdate({ showBorder: e.target.checked })}
+                className="accent-[var(--color-brand-red)]"
+              />
+              <span className="text-sm text-gray-300">Show Border</span>
+            </label>
+          </>
+        );
+      }
+    }
+  };
+
+  // Wider panel for blocks with more settings (card with WYSIWYG, image with responsive options)
+  const panelWidth = isMinimized ? "auto" : (block.type === "card" || block.type === "image") ? 380 : 320;
+
+  return (
+    <div
+      ref={panelRef}
+      className={cn(
+        "fixed z-50 bg-theme-secondary border border-theme rounded-lg shadow-2xl transition-all",
+        isDragging ? "cursor-grabbing" : ""
+      )}
+      style={{ left: position.x, top: position.y, width: panelWidth }}
+    >
+      {/* Panel Header */}
+      <div
+        className="flex items-center justify-between px-3 py-2 border-b border-theme cursor-grab"
+        onMouseDown={handleMouseDown}
+      >
+        <div className="flex items-center gap-2 text-white">
+          <BlockIcon className="w-4 h-4" />
+          <span className="text-sm font-medium text-white">{blockTypeLabel} Settings</span>
+        </div>
+        <div className="flex items-center gap-1" data-no-drag>
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="p-1 rounded hover:bg-theme-tertiary text-theme-secondary hover:text-theme-primary transition-colors cursor-pointer"
+            title={isMinimized ? "Expand" : "Minimize"}
+          >
+            {isMinimized ? <ChevronDownIcon /> : <ChevronUpIcon />}
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-theme-tertiary text-theme-secondary hover:text-theme-primary transition-colors cursor-pointer"
+            title="Close"
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      </div>
+
+      {/* Panel Content */}
+      {!isMinimized && (
+        <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto" data-no-drag>
+          {renderSettings()}
+
+          {/* Delete Block */}
+          <div className="pt-2 border-t border-theme">
+            <button
+              onClick={onDelete}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer w-full"
+            >
+              <TrashIcon />
+              Delete Block
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Column Component (renders a single column placeholder)
 interface ColumnComponentProps {
   column: Column;
@@ -607,6 +1106,239 @@ interface ColumnComponentProps {
   isParentSelected: boolean;
   isMobile: boolean;
   isSlider: boolean;
+  isDesignMode: boolean;
+  selectedBlockId: string | null;
+  onSelectBlock: (blockId: string | null) => void;
+  onAddBlock: (blockType: BlockType) => void;
+  onDeleteBlock: (blockId: string) => void;
+  onUpdateBlock: (blockId: string, content: Partial<BlockContent>) => void;
+  onReorderBlocks: (blockIds: string[]) => void;
+}
+
+// Block renderer component
+function BlockRenderer({
+  block,
+  isSelected,
+  onSelect,
+  onDelete,
+}: {
+  block: Block;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  const renderBlockContent = () => {
+    switch (block.type) {
+      case "image": {
+        const content = block.content as ImageBlockContent;
+        const hasResponsiveImages = content.tabletMediaUrl || content.mobileMediaUrl;
+
+        // Render image with picture element for responsive images
+        const renderImage = () => {
+          if (!content.mediaUrl) {
+            return (
+              <div className="text-center text-gray-500">
+                <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                <span className="text-xs">Add Image</span>
+              </div>
+            );
+          }
+
+          const imgClass = cn(
+            "w-full h-full rounded",
+            content.objectFit === "contain" ? "object-contain" : "object-cover"
+          );
+
+          if (hasResponsiveImages) {
+            // Use picture element for responsive images (SEO & performance optimized)
+            return (
+              <picture>
+                {content.mobileMediaUrl && (
+                  <source
+                    media="(max-width: 767px)"
+                    srcSet={content.mobileMediaUrl}
+                  />
+                )}
+                {content.tabletMediaUrl && (
+                  <source
+                    media="(max-width: 1023px)"
+                    srcSet={content.tabletMediaUrl}
+                  />
+                )}
+                <img
+                  src={content.mediaUrl}
+                  alt={content.alt || ""}
+                  className={imgClass}
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+            );
+          }
+
+          return (
+            <img
+              src={content.mediaUrl}
+              alt={content.alt || ""}
+              className={imgClass}
+              loading="lazy"
+              decoding="async"
+            />
+          );
+        };
+
+        const imageContent = renderImage();
+
+        // Wrap with link if linkUrl is set
+        const wrappedContent = content.linkUrl ? (
+          <a href={content.linkUrl} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
+            {imageContent}
+          </a>
+        ) : imageContent;
+
+        return (
+          <div className="w-full aspect-video bg-theme-tertiary rounded flex items-center justify-center overflow-hidden relative">
+            {wrappedContent}
+            {/* Indicator for responsive images in editor */}
+            {hasResponsiveImages && content.mediaUrl && (
+              <div className="absolute bottom-1 right-1 flex gap-1">
+                {content.tabletMediaUrl && (
+                  <span className="px-1.5 py-0.5 text-[10px] bg-black/60 text-white rounded" title="Has tablet image">
+                    T
+                  </span>
+                )}
+                {content.mobileMediaUrl && (
+                  <span className="px-1.5 py-0.5 text-[10px] bg-black/60 text-white rounded" title="Has mobile image">
+                    M
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+      case "player": {
+        return (
+          <div className="w-full p-4 bg-theme-tertiary rounded flex items-center gap-3">
+            <PlayerIcon className="w-8 h-8 text-[var(--color-brand-red)]" />
+            <div>
+              <div className="text-sm font-medium text-white">Music Player</div>
+              <div className="text-xs text-gray-400">Player block</div>
+            </div>
+          </div>
+        );
+      }
+      case "card": {
+        const content = block.content as CardBlockContent;
+        const hasContent = content.title || content.content;
+        return (
+          <div className={cn("w-full p-4 bg-theme-tertiary rounded", content.showBorder && "border border-theme")}>
+            {hasContent ? (
+              <>
+                {content.title && (
+                  <div className="text-sm font-medium text-white mb-2">{content.title}</div>
+                )}
+                {content.content && (
+                  <div
+                    className="text-sm text-gray-300 prose prose-sm prose-invert max-w-none"
+                    dangerouslySetInnerHTML={{ __html: content.content }}
+                  />
+                )}
+              </>
+            ) : (
+              <div className="text-center text-gray-500">
+                <CardIcon className="w-6 h-6 mx-auto mb-1" />
+                <span className="text-xs">Add content</span>
+              </div>
+            )}
+          </div>
+        );
+      }
+    }
+  };
+
+  return (
+    <div
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className={cn(
+        "relative group rounded transition-all cursor-pointer",
+        isSelected
+          ? "ring-2 ring-[var(--color-brand-red)] ring-offset-2 ring-offset-[var(--color-bg-primary)]"
+          : "hover:ring-1 hover:ring-gray-500"
+      )}
+    >
+      {renderBlockContent()}
+
+      {/* Delete button */}
+      {isSelected && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute -top-2 -right-2 p-1 bg-red-500 rounded-full text-white hover:bg-red-600 transition-colors cursor-pointer"
+          title="Delete block"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Sortable wrapper for blocks (drag and drop)
+function SortableBlock({
+  block,
+  isSelected,
+  onSelect,
+  onDelete,
+}: {
+  block: Block;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: block.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/block">
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute -left-1 top-1/2 -translate-y-1/2 -translate-x-full opacity-0 group-hover/block:opacity-100 p-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-white transition-opacity z-10"
+        title="Drag to reorder"
+      >
+        <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
+        </svg>
+      </div>
+      <BlockRenderer
+        block={block}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        onDelete={onDelete}
+      />
+    </div>
+  );
 }
 
 function ColumnComponent({
@@ -615,21 +1347,108 @@ function ColumnComponent({
   isParentSelected,
   isMobile,
   isSlider,
+  isDesignMode,
+  selectedBlockId,
+  onSelectBlock,
+  onAddBlock,
+  onDeleteBlock,
+  onUpdateBlock,
+  onReorderBlocks,
 }: ColumnComponentProps) {
+  const [showBlockMenu, setShowBlockMenu] = useState(false);
+
+  // Make column a drop target for blocks
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+    data: { type: "column", columnId: column.id },
+  });
+
+  // Block IDs for sortable context
+  const blockIds = column.blocks.map((b) => b.id);
+
+  // In layout mode, show column info
+  if (!isDesignMode) {
+    return (
+      <div
+        className={cn(
+          "rounded border border-dashed flex flex-col items-center justify-center transition-all min-h-[80px]",
+          isSlider && isMobile ? "min-w-[150px] flex-shrink-0" : "",
+          isParentSelected ? "border-[var(--color-brand-red)]/50" : "border-theme"
+        )}
+        style={{
+          minWidth: isSlider && isMobile ? "150px" : undefined,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="text-xs text-gray-400">Col {index + 1}</span>
+        <span className="text-xs text-gray-500">{column.width}</span>
+      </div>
+    );
+  }
+
+  // In design mode, show blocks and add button
   return (
     <div
+      ref={setNodeRef}
       className={cn(
-        "rounded border border-dashed flex flex-col items-center justify-center transition-all min-h-[80px]",
+        "rounded border border-dashed transition-all min-h-[80px] p-2 pl-4",
         isSlider && isMobile ? "min-w-[150px] flex-shrink-0" : "",
-        isParentSelected ? "border-[var(--color-brand-red)]/50" : "border-theme"
+        isOver
+          ? "border-[var(--color-brand-red)] bg-[var(--color-brand-red)]/5"
+          : "border-theme hover:border-[var(--color-brand-red)]/50"
       )}
       style={{
         minWidth: isSlider && isMobile ? "150px" : undefined,
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <span className="text-xs text-gray-400">Col {index + 1}</span>
-      <span className="text-xs text-gray-500">{column.width}</span>
+      {/* Blocks with sortable context */}
+      <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
+        <div className="space-y-2">
+          {column.blocks.map((block) => (
+            <SortableBlock
+              key={block.id}
+              block={block}
+              isSelected={selectedBlockId === block.id}
+              onSelect={() => onSelectBlock(block.id)}
+              onDelete={() => onDeleteBlock(block.id)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+
+      {/* Add block button */}
+      <div className="relative mt-2">
+        <button
+          onClick={() => setShowBlockMenu(!showBlockMenu)}
+          className={cn(
+            "w-full py-2 border border-dashed border-theme rounded-lg text-gray-500 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer flex items-center justify-center gap-1",
+            column.blocks.length === 0 && "py-4"
+          )}
+        >
+          <PlusIcon className="w-4 h-4" />
+          <span className="text-xs">Add Block</span>
+        </button>
+
+        {/* Block type menu */}
+        {showBlockMenu && (
+          <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-theme-secondary border border-theme rounded-lg shadow-xl p-2 grid grid-cols-2 gap-1">
+            {BLOCK_TYPES.map(({ type, label, icon: Icon }) => (
+              <button
+                key={type}
+                onClick={() => {
+                  onAddBlock(type);
+                  setShowBlockMenu(false);
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded hover:bg-theme-tertiary text-gray-300 hover:text-white transition-colors cursor-pointer text-left"
+              >
+                <Icon className="w-4 h-4" />
+                <span className="text-xs">{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -734,6 +1553,13 @@ interface SectionComponentProps {
   isSelected: boolean;
   onClick: () => void;
   viewport: ViewportSize;
+  activeTab: EditorTab;
+  selectedBlockId: string | null;
+  onSelectBlock: (blockId: string | null) => void;
+  onAddBlock: (columnId: string, blockType: BlockType) => void;
+  onDeleteBlock: (columnId: string, blockId: string) => void;
+  onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) => void;
+  onReorderBlocks: (columnId: string, blockIds: string[]) => void;
   onResizeColumns?: (leftColumnId: string, rightColumnId: string, leftWidth: string, rightWidth: string, viewport: ViewportSize) => void;
 }
 
@@ -742,9 +1568,17 @@ function SectionComponent({
   isSelected,
   onClick,
   viewport,
+  activeTab,
+  selectedBlockId,
+  onSelectBlock,
+  onAddBlock,
+  onDeleteBlock,
+  onUpdateBlock,
+  onReorderBlocks,
   onResizeColumns,
 }: SectionComponentProps) {
   const isMobile = viewport === "mobile";
+  const isDesignMode = activeTab === "design";
   const isTablet = viewport === "tablet";
   const columnCount = section.columns.length;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -865,6 +1699,13 @@ function SectionComponent({
                 isParentSelected={isSelected}
                 isMobile={isMobileView}
                 isSlider={isSlider}
+                isDesignMode={isDesignMode}
+                selectedBlockId={selectedBlockId}
+                onSelectBlock={onSelectBlock}
+                onAddBlock={(blockType) => onAddBlock(column.id, blockType)}
+                onDeleteBlock={(blockId) => onDeleteBlock(column.id, blockId)}
+                onUpdateBlock={(blockId, content) => onUpdateBlock(column.id, blockId, content)}
+                onReorderBlocks={(blockIds) => onReorderBlocks(column.id, blockIds)}
               />
             </div>
           );
@@ -915,6 +1756,13 @@ interface SortableSectionProps {
   isSelected: boolean;
   onClick: () => void;
   viewport: ViewportSize;
+  activeTab: EditorTab;
+  selectedBlockId: string | null;
+  onSelectBlock: (blockId: string | null) => void;
+  onAddBlock: (columnId: string, blockType: BlockType) => void;
+  onDeleteBlock: (columnId: string, blockId: string) => void;
+  onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) => void;
+  onReorderBlocks: (columnId: string, blockIds: string[]) => void;
   onResizeColumns?: (leftColumnId: string, rightColumnId: string, leftWidth: string, rightWidth: string, viewport: ViewportSize) => void;
 }
 
@@ -923,6 +1771,13 @@ function SortableSection({
   isSelected,
   onClick,
   viewport,
+  activeTab,
+  selectedBlockId,
+  onSelectBlock,
+  onAddBlock,
+  onDeleteBlock,
+  onUpdateBlock,
+  onReorderBlocks,
   onResizeColumns,
 }: SortableSectionProps) {
   const {
@@ -991,6 +1846,13 @@ function SortableSection({
         isSelected={isSelected}
         onClick={onClick}
         viewport={viewport}
+        activeTab={activeTab}
+        selectedBlockId={selectedBlockId}
+        onSelectBlock={onSelectBlock}
+        onAddBlock={onAddBlock}
+        onDeleteBlock={onDeleteBlock}
+        onUpdateBlock={onUpdateBlock}
+        onReorderBlocks={onReorderBlocks}
         onResizeColumns={onResizeColumns}
       />
     </div>
@@ -1003,7 +1865,9 @@ export default function PageBuilderPage() {
   const [activeTab, setActiveTab] = useState<EditorTab>("layout");
   const [sections, setSections] = useState<Section[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
 
   // Track client-side mounting to avoid DndContext hydration mismatch
   useEffect(() => {
@@ -1018,6 +1882,13 @@ export default function PageBuilderPage() {
       setSelectedSectionId(defaultSection.id);
     }
   }, [isMounted]); // Only run after mount, intentionally excluding sections
+
+  // Clear block selection when switching tabs
+  useEffect(() => {
+    if (activeTab === "layout") {
+      setSelectedBlockId(null);
+    }
+  }, [activeTab]);
 
   const viewportWidth = VIEWPORT_WIDTHS[viewport];
 
@@ -1045,6 +1916,128 @@ export default function PageBuilderPage() {
       });
     }
   }, []);
+
+  // Handle block drag start
+  const handleBlockDragStart = useCallback((event: DragStartEvent) => {
+    setActiveBlockId(event.active.id as string);
+  }, []);
+
+  // Handle block drag end - reorder within column or move between columns
+  const handleBlockDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveBlockId(null);
+
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Find which column the dragged block is in
+    let sourceSection: Section | undefined;
+    let sourceColumn: Column | undefined;
+    let sourceBlockIndex = -1;
+
+    for (const section of sections) {
+      for (const column of section.columns) {
+        const blockIndex = column.blocks.findIndex((b) => b.id === activeId);
+        if (blockIndex !== -1) {
+          sourceSection = section;
+          sourceColumn = column;
+          sourceBlockIndex = blockIndex;
+          break;
+        }
+      }
+      if (sourceColumn) break;
+    }
+
+    if (!sourceSection || !sourceColumn || sourceBlockIndex === -1) return;
+
+    // Check if dropping on a column (empty drop zone)
+    const isColumnDrop = sections.some((s) =>
+      s.columns.some((c) => c.id === overId)
+    );
+
+    if (isColumnDrop) {
+      // Moving to a different column
+      const targetColumnId = overId;
+      if (sourceColumn.id === targetColumnId) return; // Same column, no action
+
+      setSections((prev) =>
+        prev.map((s) => ({
+          ...s,
+          columns: s.columns.map((col) => {
+            if (col.id === sourceColumn!.id) {
+              // Remove from source
+              return { ...col, blocks: col.blocks.filter((b) => b.id !== activeId) };
+            }
+            if (col.id === targetColumnId) {
+              // Add to target at the end
+              const block = sourceColumn!.blocks[sourceBlockIndex];
+              return { ...col, blocks: [...col.blocks, block] };
+            }
+            return col;
+          }),
+        }))
+      );
+    } else {
+      // Reordering within the same column or dropping onto another block
+      let targetSection: Section | undefined;
+      let targetColumn: Column | undefined;
+      let targetBlockIndex = -1;
+
+      for (const section of sections) {
+        for (const column of section.columns) {
+          const blockIndex = column.blocks.findIndex((b) => b.id === overId);
+          if (blockIndex !== -1) {
+            targetSection = section;
+            targetColumn = column;
+            targetBlockIndex = blockIndex;
+            break;
+          }
+        }
+        if (targetColumn) break;
+      }
+
+      if (!targetColumn || targetBlockIndex === -1) return;
+
+      if (sourceColumn.id === targetColumn.id) {
+        // Reordering within the same column
+        if (sourceBlockIndex !== targetBlockIndex) {
+          setSections((prev) =>
+            prev.map((s) => ({
+              ...s,
+              columns: s.columns.map((col) => {
+                if (col.id === sourceColumn!.id) {
+                  const newBlocks = arrayMove(col.blocks, sourceBlockIndex, targetBlockIndex);
+                  return { ...col, blocks: newBlocks };
+                }
+                return col;
+              }),
+            }))
+          );
+        }
+      } else {
+        // Moving between columns (dropping on a block)
+        const block = sourceColumn.blocks[sourceBlockIndex];
+        setSections((prev) =>
+          prev.map((s) => ({
+            ...s,
+            columns: s.columns.map((col) => {
+              if (col.id === sourceColumn!.id) {
+                return { ...col, blocks: col.blocks.filter((b) => b.id !== activeId) };
+              }
+              if (col.id === targetColumn!.id) {
+                const newBlocks = [...col.blocks];
+                newBlocks.splice(targetBlockIndex, 0, block);
+                return { ...col, blocks: newBlocks };
+              }
+              return col;
+            }),
+          }))
+        );
+      }
+    }
+  }, [sections]);
 
   // Section IDs for sortable context
   const sectionIds = sections.map((s) => s.id);
@@ -1121,6 +2114,114 @@ export default function PageBuilderPage() {
     setSections((prev) => prev.filter((s) => s.id !== id));
     setSelectedSectionId(null);
   }, []);
+
+  // Add a block to a column
+  const addBlockToColumn = useCallback((sectionId: string, columnId: string, blockType: BlockType) => {
+    const newBlock = createBlock(blockType);
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id === sectionId) {
+          const updatedColumns = s.columns.map((col) => {
+            if (col.id === columnId) {
+              return { ...col, blocks: [...col.blocks, newBlock] };
+            }
+            return col;
+          });
+          return { ...s, columns: updatedColumns };
+        }
+        return s;
+      })
+    );
+    setSelectedBlockId(newBlock.id);
+  }, []);
+
+  // Delete a block from a column
+  const deleteBlockFromColumn = useCallback((sectionId: string, columnId: string, blockId: string) => {
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id === sectionId) {
+          const updatedColumns = s.columns.map((col) => {
+            if (col.id === columnId) {
+              return { ...col, blocks: col.blocks.filter((b) => b.id !== blockId) };
+            }
+            return col;
+          });
+          return { ...s, columns: updatedColumns };
+        }
+        return s;
+      })
+    );
+    setSelectedBlockId(null);
+  }, []);
+
+  // Update a block's content
+  const updateBlockContent = useCallback((sectionId: string, columnId: string, blockId: string, content: Partial<BlockContent>) => {
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id === sectionId) {
+          const updatedColumns = s.columns.map((col) => {
+            if (col.id === columnId) {
+              const updatedBlocks = col.blocks.map((b) => {
+                if (b.id === blockId) {
+                  return { ...b, content: { ...b.content, ...content } };
+                }
+                return b;
+              });
+              return { ...col, blocks: updatedBlocks };
+            }
+            return col;
+          });
+          return { ...s, columns: updatedColumns };
+        }
+        return s;
+      })
+    );
+  }, []);
+
+  // Reorder blocks within a column
+  const reorderBlocksInColumn = useCallback((sectionId: string, columnId: string, blockIds: string[]) => {
+    setSections((prev) =>
+      prev.map((s) => {
+        if (s.id === sectionId) {
+          const updatedColumns = s.columns.map((col) => {
+            if (col.id === columnId) {
+              const blockMap = new Map(col.blocks.map((b) => [b.id, b]));
+              const reorderedBlocks = blockIds.map((id) => blockMap.get(id)).filter(Boolean) as Block[];
+              return { ...col, blocks: reorderedBlocks };
+            }
+            return col;
+          });
+          return { ...s, columns: updatedColumns };
+        }
+        return s;
+      })
+    );
+  }, []);
+
+  // Find the selected block and its context
+  const selectedBlockContext = useMemo(() => {
+    for (const section of sections) {
+      for (const column of section.columns) {
+        const block = column.blocks.find((b) => b.id === selectedBlockId);
+        if (block) {
+          return { section, column, block };
+        }
+      }
+    }
+    return null;
+  }, [sections, selectedBlockId]);
+
+  // Find the active (dragged) block for DragOverlay
+  const activeBlock = useMemo(() => {
+    if (!activeBlockId) return null;
+    for (const section of sections) {
+      for (const column of section.columns) {
+        const block = column.blocks.find((b) => b.id === activeBlockId);
+        if (block) return block;
+      }
+    }
+    return null;
+  }, [sections, activeBlockId]);
 
   return (
     <div className="fixed inset-0 bg-theme-primary flex flex-col z-50">
@@ -1235,6 +2336,13 @@ export default function PageBuilderPage() {
                           isSelected={selectedSectionId === section.id}
                           onClick={() => setSelectedSectionId(section.id)}
                           viewport={viewport}
+                          activeTab={activeTab}
+                          selectedBlockId={selectedBlockId}
+                          onSelectBlock={setSelectedBlockId}
+                          onAddBlock={(columnId, blockType) => addBlockToColumn(section.id, columnId, blockType)}
+                          onDeleteBlock={(columnId, blockId) => deleteBlockFromColumn(section.id, columnId, blockId)}
+                          onUpdateBlock={(columnId, blockId, content) => updateBlockContent(section.id, columnId, blockId, content)}
+                          onReorderBlocks={(columnId, blockIds) => reorderBlocksInColumn(section.id, columnId, blockIds)}
                           onResizeColumns={(leftId, rightId, leftW, rightW, vp) =>
                             resizeColumns(section.id, leftId, rightId, leftW, rightW, vp)
                           }
@@ -1251,6 +2359,13 @@ export default function PageBuilderPage() {
                       isSelected={selectedSectionId === section.id}
                       onClick={() => setSelectedSectionId(section.id)}
                       viewport={viewport}
+                      activeTab={activeTab}
+                      selectedBlockId={selectedBlockId}
+                      onSelectBlock={setSelectedBlockId}
+                      onAddBlock={(columnId, blockType) => addBlockToColumn(section.id, columnId, blockType)}
+                      onDeleteBlock={(columnId, blockId) => deleteBlockFromColumn(section.id, columnId, blockId)}
+                      onUpdateBlock={(columnId, blockId, content) => updateBlockContent(section.id, columnId, blockId, content)}
+                      onReorderBlocks={(columnId, blockIds) => reorderBlocksInColumn(section.id, columnId, blockIds)}
                       onResizeColumns={(leftId, rightId, leftW, rightW, vp) =>
                         resizeColumns(section.id, leftId, rightId, leftW, rightW, vp)
                       }
@@ -1268,19 +2383,81 @@ export default function PageBuilderPage() {
                 </button>
               </>
             ) : (
-              <div className="flex items-center justify-center min-h-[400px] text-center text-theme-secondary">
-                {sections.length === 0 ? (
+              /* Design Tab - Show sections with block drop zones */
+              sections.length === 0 ? (
+                <div className="flex items-center justify-center min-h-[400px] text-center text-theme-secondary">
                   <p>Switch to Layout tab to add sections first</p>
-                ) : (
-                  <p>Design mode - Component placement coming in Step 6</p>
-                )}
-              </div>
+                </div>
+              ) : isMounted ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCorners}
+                  onDragStart={handleBlockDragStart}
+                  onDragEnd={handleBlockDragEnd}
+                >
+                  <div className="space-y-4">
+                    {sections.map((section) => (
+                      <SectionComponent
+                        key={section.id}
+                        section={section}
+                        isSelected={selectedSectionId === section.id}
+                        onClick={() => setSelectedSectionId(section.id)}
+                        viewport={viewport}
+                        activeTab={activeTab}
+                        selectedBlockId={selectedBlockId}
+                        onSelectBlock={setSelectedBlockId}
+                        onAddBlock={(columnId, blockType) => addBlockToColumn(section.id, columnId, blockType)}
+                        onDeleteBlock={(columnId, blockId) => deleteBlockFromColumn(section.id, columnId, blockId)}
+                        onUpdateBlock={(columnId, blockId, content) => updateBlockContent(section.id, columnId, blockId, content)}
+                        onReorderBlocks={(columnId, blockIds) => reorderBlocksInColumn(section.id, columnId, blockIds)}
+                        onResizeColumns={(leftId, rightId, leftW, rightW, vp) =>
+                          resizeColumns(section.id, leftId, rightId, leftW, rightW, vp)
+                        }
+                      />
+                    ))}
+                  </div>
+                  <DragOverlay>
+                    {activeBlock && (
+                      <div className="opacity-80 rotate-2 scale-105">
+                        <BlockRenderer
+                          block={activeBlock}
+                          isSelected={false}
+                          onSelect={() => {}}
+                          onDelete={() => {}}
+                        />
+                      </div>
+                    )}
+                  </DragOverlay>
+                </DndContext>
+              ) : (
+                <div className="space-y-4">
+                  {sections.map((section) => (
+                    <SectionComponent
+                      key={section.id}
+                      section={section}
+                      isSelected={selectedSectionId === section.id}
+                      onClick={() => setSelectedSectionId(section.id)}
+                      viewport={viewport}
+                      activeTab={activeTab}
+                      selectedBlockId={selectedBlockId}
+                      onSelectBlock={setSelectedBlockId}
+                      onAddBlock={(columnId, blockType) => addBlockToColumn(section.id, columnId, blockType)}
+                      onDeleteBlock={(columnId, blockId) => deleteBlockFromColumn(section.id, columnId, blockId)}
+                      onUpdateBlock={(columnId, blockId, content) => updateBlockContent(section.id, columnId, blockId, content)}
+                      onReorderBlocks={(columnId, blockIds) => reorderBlocksInColumn(section.id, columnId, blockIds)}
+                      onResizeColumns={(leftId, rightId, leftW, rightW, vp) =>
+                        resizeColumns(section.id, leftId, rightId, leftW, rightW, vp)
+                      }
+                    />
+                  ))}
+                </div>
+              )
             )}
           </div>
         </div>
       </div>
 
-      {/* Floating Settings Panel */}
+      {/* Floating Settings Panel - Section (Layout mode) */}
       {selectedSection && activeTab === "layout" && (
         <SectionSettingsPanel
           section={selectedSection}
@@ -1289,6 +2466,29 @@ export default function PageBuilderPage() {
           onDelete={() => deleteSection(selectedSection.id)}
           onClose={() => setSelectedSectionId(null)}
           viewport={viewport}
+        />
+      )}
+
+      {/* Floating Settings Panel - Block (Design mode) */}
+      {selectedBlockContext && activeTab === "design" && (
+        <BlockSettingsPanel
+          block={selectedBlockContext.block}
+          onUpdate={(content) =>
+            updateBlockContent(
+              selectedBlockContext.section.id,
+              selectedBlockContext.column.id,
+              selectedBlockContext.block.id,
+              content
+            )
+          }
+          onDelete={() =>
+            deleteBlockFromColumn(
+              selectedBlockContext.section.id,
+              selectedBlockContext.column.id,
+              selectedBlockContext.block.id
+            )
+          }
+          onClose={() => setSelectedBlockId(null)}
         />
       )}
     </div>
