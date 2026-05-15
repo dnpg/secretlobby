@@ -79,7 +79,69 @@ textarea:focus-visible {
 }
 
 body {
-  background-color: var(--color-bg-primary, #030712);
+  background: var(--color-bg, #030712);
+  background-size: var(--bg-size, auto);
+  background-position: var(--bg-position, center);
+  background-repeat: var(--bg-repeat, no-repeat);
+}
+
+/* ============================================
+   Gradient text utility classes
+   --------------------------------------------
+   Each rich text role emits two CSS variables: `--<name>` (the color) and
+   `--<name>-image` (the background-image used for gradient text). When the
+   role is a solid the image var resolves to `none`, so applying these utility
+   classes is a no-op for the solid case.
+
+   We rely on the cascade: `color` is already set on the element from the
+   role's CSS var (via inline style or another rule). The class below adds the
+   `background-image` + `background-clip:text` declarations on top. Browsers
+   that don't support background-clip:text ignore those properties and fall
+   back to the `color` declaration — which we make sure is the fallback hex
+   (set on the color var) when the role is rendered through a hex-only path.
+
+   Caveat: when the role IS a gradient the color var resolves to `transparent`.
+   In a non-supporting browser the text would render invisible. The lobby
+   currently targets evergreen Chrome/Safari/Firefox + iOS Safari, all of
+   which support background-clip:text — but for legacy IE/etc., the
+   gradient-fallback would need an additional @supports rule.
+   ============================================ */
+/* For each role: when the `*-image` var is set (a gradient), we mask the
+   gradient through the text glyphs. We set BOTH `color: transparent` and
+   `-webkit-text-fill-color: transparent` so Safari renders the gradient
+   reliably; the `color` declaration also acts as the fallback hex on browsers
+   that don't honour `background-clip: text`. The `:where()` selector keeps
+   specificity at 0 so any consumer's inline `color` still wins for solids. */
+.gradient-text-primary:where([style*="--color-text-primary-image"]) {
+  background-image: var(--color-text-primary-image, none);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+.gradient-text-primary {
+  background-image: var(--color-text-primary-image, none);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.gradient-text-card-heading {
+  background-image: var(--card-heading-color-image, none);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.gradient-text-card-content {
+  background-image: var(--card-content-color-image, none);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.gradient-text-btn {
+  background-image: var(--btn-text-image, none);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 a,

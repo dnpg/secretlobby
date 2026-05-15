@@ -1,15 +1,28 @@
 import type { Route } from "./+types/api.stream-mp3.$trackId";
-import { getSession, isAuthenticatedForLobby } from "@secretlobby/auth";
+import { getSession, isAuthenticatedForLobby, validatePreviewToken } from "@secretlobby/auth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
 import { verifyPreloadToken } from "~/lib/token.server";
 import { getFile } from "@secretlobby/storage";
+import {
+  corsResponseHeaders,
+  handleCorsPreflight,
+  isConsoleCrossOriginRequest,
+} from "~/lib/api-cors.server";
 
 /**
  * MP3 streaming route. Serves the full MP3 file with authentication.
  * Used as fallback when HLS playback fails (e.g. legacy MP3-in-fMP4
  * segments incompatible with the browser's MSE) or for tracks without HLS.
  */
+export async function action({ request }: Route.ActionArgs) {
+  if (request.method === "OPTIONS") {
+    const preflight = handleCorsPreflight(request);
+    if (preflight) return preflight;
+  }
+  return new Response(null, { status: 405 });
+}
+
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { session } = await getSession(request);
   const tenant = await resolveTenant(request);
@@ -23,11 +36,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return new Response(null, { status: 400 });
   }
 
-  // Auth: session (multi-lobby aware) or preload token
+  // Auth: session (multi-lobby aware), preload token, or preview token bound
+  // to the lobby. Preview tokens let the console page-builder fetch this
+  // file cross-origin without minting a lobby session.
   const isAuthenticated = isAuthenticatedForLobby(session, tenant.lobby.id);
 
-  if (tenant.lobby.password && !isAuthenticated) {
-    const url = new URL(request.url);
+  const url = new URL(request.url);
+  const previewTokenParam = url.searchParams.get("preview");
+  const previewTokenInfo = previewTokenParam
+    ? validatePreviewToken(previewTokenParam)
+    : null;
+  const hasValidPreviewToken =
+    !!previewTokenInfo &&
+    previewTokenInfo.lobbyId === tenant.lobby.id &&
+    previewTokenInfo.accountId === tenant.lobby.accountId;
+
+  if (tenant.lobby.password && !isAuthenticated && !hasValidPreviewToken) {
     const preloadToken = url.searchParams.get("preload");
     if (!preloadToken) {
       return new Response(null, { status: 401 });
@@ -38,13 +62,20 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     }
   }
 
-  // Origin check
+  // Origin check — bypassed for the configured console origin or when a
+  // valid preview token has authorized the request.
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
   const host = request.headers.get("host");
   const isValidOrigin = origin?.includes(host || "") || referer?.includes(host || "");
+  const isConsoleCors = isConsoleCrossOriginRequest(request);
 
-  if (!isValidOrigin && process.env.NODE_ENV === "production") {
+  if (
+    !isValidOrigin &&
+    !isConsoleCors &&
+    !hasValidPreviewToken &&
+    process.env.NODE_ENV === "production"
+  ) {
     return new Response(null, { status: 403 });
   }
 
@@ -81,6 +112,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "X-Robots-Tag": "noindex, nofollow",
+      ...corsResponseHeaders(request),
     },
   });
 }

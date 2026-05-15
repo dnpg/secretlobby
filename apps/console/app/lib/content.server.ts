@@ -1,6 +1,34 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { prisma } from "@secretlobby/db";
+import {
+  type ColorMode,
+  type ThemeSettings,
+  defaultDarkTheme,
+  defaultLightTheme,
+  defaultTheme,
+  generateThemeCSS,
+  getCardBgCSS,
+  getCardBorderCSS,
+  getDefaultThemeForMode,
+  normalizeBorderRadius,
+  normalizeCSSValue,
+  normalizeThemeBackground,
+} from "@secretlobby/theme";
+
+// Re-export the package types + helpers so existing
+// `import { ThemeSettings, ... } from "~/lib/content.server"` keeps working.
+export type { ColorMode, ThemeSettings };
+export {
+  defaultDarkTheme,
+  defaultLightTheme,
+  defaultTheme,
+  generateThemeCSS,
+  getCardBgCSS,
+  getCardBorderCSS,
+  getDefaultThemeForMode,
+  normalizeCSSValue,
+};
 
 export interface Track {
   id: string;
@@ -8,158 +36,6 @@ export interface Track {
   artist: string;
   filename: string;
 }
-
-export type ColorMode = "dark" | "light" | "system";
-
-export interface ThemeSettings {
-  colorMode: ColorMode;
-  bgPrimary: string;
-  bgSecondary: string;
-  bgTertiary: string;
-  textPrimary: string;
-  textSecondary: string;
-  textMuted: string;
-  border: string;
-  primary: string;
-  primaryHover: string;
-  primaryText: string;
-  secondary: string;
-  secondaryHover: string;
-  secondaryText: string;
-  accent: string;
-  visualizerBg: string;
-  visualizerBgOpacity: number;
-  visualizerBar: string;
-  visualizerBarAlt: string;
-  visualizerGlow: string;
-  visualizerUseCardBg: boolean;
-  visualizerBorderShow: boolean;
-  visualizerBorderColor: string;
-  visualizerBorderRadius: number;
-  visualizerBlendMode: string;
-  visualizerType: "equalizer" | "waveform";
-  // Card settings
-  cardHeadingColor: string;
-  cardContentColor: string;
-  cardMutedColor: string;
-  cardBgType: "solid" | "gradient";
-  cardBgColor: string;
-  cardBgGradientFrom: string;
-  cardBgGradientTo: string;
-  cardBgGradientAngle: number;
-  cardBgOpacity: number;
-  cardBorderShow: boolean;
-  cardBorderType: "solid" | "gradient";
-  cardBorderColor: string;
-  cardBorderGradientFrom: string;
-  cardBorderGradientTo: string;
-  cardBorderGradientAngle: number;
-  cardBorderOpacity: number;
-  cardBorderWidth: string;
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
-}
-
-export const defaultDarkTheme: ThemeSettings = {
-  colorMode: "dark",
-  bgPrimary: "#030712",
-  bgSecondary: "#111827",
-  bgTertiary: "#1f2937",
-  textPrimary: "#ffffff",
-  textSecondary: "#9ca3af",
-  textMuted: "#6b7280",
-  border: "#374151",
-  primary: "#ffffff",
-  primaryHover: "#e5e7eb",
-  primaryText: "#111827",
-  secondary: "#1f2937",
-  secondaryHover: "#374151",
-  secondaryText: "#ffffff",
-  accent: "#ffffff",
-  visualizerBg: "#111827",
-  visualizerBgOpacity: 0,
-  visualizerBar: "#ffffff",
-  visualizerBarAlt: "#9ca3af",
-  visualizerGlow: "#ffffff",
-  visualizerUseCardBg: false,
-  visualizerBorderShow: false,
-  visualizerBorderColor: "#374151",
-  visualizerBorderRadius: 8,
-  visualizerBlendMode: "normal",
-  visualizerType: "equalizer",
-  cardHeadingColor: "#ffffff",
-  cardContentColor: "#9ca3af",
-  cardMutedColor: "#6b7280",
-  cardBgType: "solid",
-  cardBgColor: "#111827",
-  cardBgGradientFrom: "#1f2937",
-  cardBgGradientTo: "#111827",
-  cardBgGradientAngle: 135,
-  cardBgOpacity: 50,
-  cardBorderShow: true,
-  cardBorderType: "solid",
-  cardBorderColor: "#374151",
-  cardBorderGradientFrom: "#374151",
-  cardBorderGradientTo: "#1f2937",
-  cardBorderGradientAngle: 135,
-  cardBorderOpacity: 100,
-  cardBorderWidth: "1px",
-  cardBorderRadius: 12,
-  buttonBorderRadius: 24,
-  playButtonBorderRadius: 50,
-};
-
-export const defaultLightTheme: ThemeSettings = {
-  colorMode: "light",
-  bgPrimary: "#ffffff",
-  bgSecondary: "#f3f4f6",
-  bgTertiary: "#e5e7eb",
-  textPrimary: "#111827",
-  textSecondary: "#4b5563",
-  textMuted: "#9ca3af",
-  border: "#d1d5db",
-  primary: "#111827",
-  primaryHover: "#374151",
-  primaryText: "#ffffff",
-  secondary: "#e5e7eb",
-  secondaryHover: "#d1d5db",
-  secondaryText: "#111827",
-  accent: "#111827",
-  visualizerBg: "#e5e7eb",
-  visualizerBgOpacity: 0,
-  visualizerBar: "#111827",
-  visualizerBarAlt: "#4b5563",
-  visualizerGlow: "#111827",
-  visualizerUseCardBg: false,
-  visualizerBorderShow: false,
-  visualizerBorderColor: "#d1d5db",
-  visualizerBorderRadius: 8,
-  visualizerBlendMode: "normal",
-  visualizerType: "equalizer",
-  cardHeadingColor: "#111827",
-  cardContentColor: "#4b5563",
-  cardMutedColor: "#9ca3af",
-  cardBgType: "solid",
-  cardBgColor: "#f3f4f6",
-  cardBgGradientFrom: "#e5e7eb",
-  cardBgGradientTo: "#f3f4f6",
-  cardBgGradientAngle: 135,
-  cardBgOpacity: 50,
-  cardBorderShow: true,
-  cardBorderType: "solid",
-  cardBorderColor: "#d1d5db",
-  cardBorderGradientFrom: "#d1d5db",
-  cardBorderGradientTo: "#e5e7eb",
-  cardBorderGradientAngle: 135,
-  cardBorderOpacity: 100,
-  cardBorderWidth: "1px",
-  cardBorderRadius: 12,
-  buttonBorderRadius: 24,
-  playButtonBorderRadius: 50,
-};
-
-export const defaultTheme: ThemeSettings = defaultDarkTheme;
 
 export interface SiteContent {
   background: string;
@@ -356,84 +232,6 @@ export async function resetThemeSettings(accountId: string): Promise<void> {
   await updateAccountSettings(accountId, { theme: defaultTheme });
 }
 
-export function getCardBgCSS(theme: ThemeSettings): string {
-  const opacity = (theme.cardBgOpacity ?? 50) / 100;
-  if (theme.cardBgType === "gradient") {
-    // For gradient with opacity, we use a gradient with alpha colors
-    const from = hexToRgba(theme.cardBgGradientFrom, opacity);
-    const to = hexToRgba(theme.cardBgGradientTo, opacity);
-    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
-  }
-  return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
-}
-
-export function normalizeCSSValue(value: string | number | undefined, fallback: string): string {
-  if (value === undefined || value === null || value === "") return fallback;
-  const str = String(value).trim();
-  if (!str) return fallback;
-  // If it's purely numeric, append "px"
-  if (/^[\d.]+$/.test(str)) return `${str}px`;
-  return str;
-}
-
-export function getCardBorderCSS(theme: ThemeSettings): { style: string; borderImage?: string } {
-  if (!theme.cardBorderShow) {
-    return { style: "none" };
-  }
-  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
-  const width = normalizeCSSValue(theme.cardBorderWidth, "1px");
-  if (theme.cardBorderType === "gradient") {
-    const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
-    const to = hexToRgba(theme.cardBorderGradientTo, opacity);
-    return {
-      style: `${width} solid transparent`,
-      borderImage: `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to}) 1`,
-    };
-  }
-  return { style: `${width} solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}` };
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
-  }
-  return `rgba(0, 0, 0, ${alpha})`;
-}
-
-export function generateThemeCSS(theme: ThemeSettings): string {
-  const colorScheme = theme.colorMode === "light" ? "light" : "dark";
-  return [
-    `color-scheme: ${colorScheme}`,
-    `--color-mode: ${theme.colorMode}`,
-    `--color-bg-primary: ${theme.bgPrimary}`,
-    `--color-bg-secondary: ${theme.bgSecondary}`,
-    `--color-bg-tertiary: ${theme.bgTertiary}`,
-    `--color-text-primary: ${theme.textPrimary}`,
-    `--color-text-secondary: ${theme.textSecondary}`,
-    `--color-text-muted: ${theme.textMuted}`,
-    `--color-border: ${theme.border}`,
-    `--color-border-light: ${theme.border}`,
-    `--color-primary: ${theme.primary}`,
-    `--color-primary-hover: ${theme.primaryHover}`,
-    `--color-primary-active: ${theme.primaryHover}`,
-    `--color-primary-text: ${theme.primaryText}`,
-    `--color-secondary: ${theme.secondary}`,
-    `--color-secondary-hover: ${theme.secondaryHover}`,
-    `--color-secondary-active: ${theme.secondaryHover}`,
-    `--color-secondary-text: ${theme.secondaryText}`,
-    `--color-accent: ${theme.accent}`,
-    `--color-accent-muted: ${theme.accent}33`,
-    `--color-visualizer-bar: ${theme.visualizerBar}`,
-    `--color-visualizer-bar-alt: ${theme.visualizerBarAlt}`,
-    `--color-visualizer-glow: ${theme.visualizerGlow}`,
-  ].join("; ");
-}
-
-export function getDefaultThemeForMode(mode: ColorMode): ThemeSettings {
-  return mode === "light" ? defaultLightTheme : defaultDarkTheme;
-}
-
 export async function getAllowUserColorMode(accountId: string): Promise<boolean> {
   const settings = await getAccountSettings(accountId);
   return settings.allowUserColorMode !== false;
@@ -563,11 +361,28 @@ export async function getLobbyThemeSettings(lobbyId: string): Promise<ThemeSetti
 
   // Use lobby settings if available, otherwise fall back to account settings (legacy)
   const themeSource = lobbySettings.theme || accountSettings.theme;
-  const theme = { ...defaultTheme, ...themeSource };
+  const theme = { ...defaultTheme, ...themeSource } as ThemeSettings;
 
   if (!theme.colorMode) {
     theme.colorMode = "dark";
   }
+  // Synthesize the unified background from any legacy bgPrimary on read.
+  // We always recompute it: defaultTheme already has `background`, but old
+  // persisted JSON without a `background` field needs the bgPrimary fallback.
+  if (!themeSource || !(themeSource as { background?: unknown }).background) {
+    theme.background = normalizeThemeBackground(theme);
+  }
+  // Coerce border-radius fields so both legacy number JSON and new per-corner
+  // object JSON load cleanly. We always run this — `defaultTheme` already has
+  // number values which normalize as-is.
+  theme.cardBorderRadius = normalizeBorderRadius(theme.cardBorderRadius);
+  theme.buttonBorderRadius = normalizeBorderRadius(theme.buttonBorderRadius);
+  theme.playButtonBorderRadius = normalizeBorderRadius(
+    theme.playButtonBorderRadius
+  );
+  theme.visualizerBorderRadius = normalizeBorderRadius(
+    theme.visualizerBorderRadius
+  );
   return theme;
 }
 

@@ -2,6 +2,10 @@ import { prisma } from "@secretlobby/db";
 
 export async function createTrack(data: {
   lobbyId: string;
+  // Phase 6: prefer attaching new tracks to a playlist. Optional for legacy
+  // call sites that haven't migrated yet — those tracks will inherit the
+  // lobby's default playlist via a future tightening migration.
+  playlistId?: string;
   title: string;
   artist?: string | null;
   filename: string;
@@ -11,6 +15,7 @@ export async function createTrack(data: {
   return prisma.track.create({
     data: {
       lobbyId: data.lobbyId,
+      playlistId: data.playlistId,
       title: data.title,
       artist: data.artist,
       filename: data.filename,

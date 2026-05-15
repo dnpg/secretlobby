@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo } from "react";
-import { computeByteFrequencyData } from "~/lib/fft";
+import { computeByteFrequencyData } from "./fft";
 
 interface DecodedTrack {
   sampleRate: number;
@@ -75,8 +75,6 @@ export function usePcmAnalyser({
         if (controller.signal.aborted) return;
 
         // Create AudioContext for decoding (reused across tracks).
-        // AudioContext can be created outside a user gesture — only
-        // resume() requires a gesture, and we don't need it for decoding.
         if (!audioCtxRef.current) {
           audioCtxRef.current = new AudioContext();
         }
@@ -142,7 +140,6 @@ export function usePcmAnalyser({
       );
 
       // Apply temporal smoothing matching AnalyserNode behavior
-      // (smoothingTimeConstant = 0.8): bars rise instantly but decay slowly.
       const binCount = fftSize >> 1;
       if (!smoothedRef.current || smoothedRef.current.length !== binCount) {
         smoothedRef.current = new Float32Array(binCount);

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
-import { AudioVisualizer } from "~/components/AudioVisualizer";
-import { WaveformProgress } from "~/components/WaveformProgress";
-import { usePcmAnalyser } from "~/hooks/usePcmAnalyser";
-import { SocialLinks, type SocialLinksSettings } from "~/components/SocialLinks";
 import { createLogger, formatError } from "@secretlobby/logger/client";
+import { borderRadiusToCSS, type BorderRadius } from "@secretlobby/theme";
+import { AudioVisualizer } from "./AudioVisualizer";
+import { WaveformProgress } from "./WaveformProgress";
+import { usePcmAnalyser } from "./usePcmAnalyser";
+import { SocialLinks, type SocialLinksSettings } from "./SocialLinks";
 
 const logger = createLogger({ service: "lobby:player" });
 
@@ -13,12 +14,9 @@ const logger = createLogger({ service: "lobby:player" });
  * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
  */
 function trackEvent(eventName: string, params: Record<string, any>) {
-  // Track with Google Analytics (gtag)
   if (typeof (window as any).gtag === 'function') {
     (window as any).gtag('event', eventName, params);
   }
-
-  // Track with Google Tag Manager (dataLayer)
   if (Array.isArray((window as any).dataLayer)) {
     (window as any).dataLayer.push({
       event: eventName,
@@ -79,12 +77,12 @@ export interface CardStyles {
   visualizerUseCardBg: boolean;
   visualizerBorderShow: boolean;
   visualizerBorderColor: string;
-  visualizerBorderRadius: number;
+  visualizerBorderRadius: BorderRadius;
   visualizerBlendMode: string;
   visualizerType: "equalizer" | "waveform";
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
+  cardBorderRadius: BorderRadius;
+  buttonBorderRadius: BorderRadius;
+  playButtonBorderRadius: BorderRadius;
 }
 
 interface CardContainerProps {
@@ -94,19 +92,37 @@ interface CardContainerProps {
 }
 
 function CardContainer({ cardStyles, children, className }: CardContainerProps) {
-  const radius = cardStyles?.cardBorderRadius ?? 12;
+  // Route the BorderRadius (number or per-corner object) through the helper so
+  // both uniform and per-corner cases render correctly. The gradient-border
+  // branch needs an outer radius and an inset inner radius; for the per-corner
+  // case we apply the same CSS string to both (the visible inner offset comes
+  // from the wrapper padding, not from radius math).
+  const radiusCSS = borderRadiusToCSS(cardStyles?.cardBorderRadius, 12);
   const borderWidth = cardStyles?.borderWidth || "1px";
 
   const contentBg = cardStyles?.bgIsGradient
     ? { background: cardStyles.bg }
     : { backgroundColor: cardStyles?.bg || "color-mix(in srgb, var(--color-bg-secondary) 50%, transparent)" };
 
+  // PlayerView's CardContainer doesn't currently know about the page-builder
+  // backdrop-filter theme field — that's a per-block override on the canvas
+  // CardBlock. If/when the lobby app starts rendering pageLayout, we'd thread
+  // a `backdropFilter` string through `cardStyles` here and apply it inline.
+  // Until then, no backdrop-filter is applied at this layer.
+
   if (cardStyles?.borderType === "gradient") {
-    // Double-div technique for gradient borders with rounded corners
+    // For a uniform numeric radius, keep the previous calc-based inner radius
+    // so the inner shape hugs the outer ring tightly. For per-corner mode we
+    // fall back to applying the same shorthand to the inner shape — the
+    // visible padding still produces a visible gradient ring.
+    const isUniform = typeof cardStyles.cardBorderRadius === "number";
+    const innerRadius = isUniform
+      ? `calc(${cardStyles.cardBorderRadius as number}px - ${borderWidth})`
+      : radiusCSS;
     return (
       <div
         style={{
-          borderRadius: `${radius}px`,
+          borderRadius: radiusCSS,
           background: cardStyles.borderGradient,
           padding: borderWidth,
         }}
@@ -114,7 +130,7 @@ function CardContainer({ cardStyles, children, className }: CardContainerProps) 
         <div
           className={className}
           style={{
-            borderRadius: `calc(${radius}px - ${borderWidth})`,
+            borderRadius: innerRadius,
             ...contentBg,
           }}
         >
@@ -124,12 +140,11 @@ function CardContainer({ cardStyles, children, className }: CardContainerProps) 
     );
   }
 
-  // Solid or no border: single div
   return (
     <div
       className={className}
       style={{
-        borderRadius: `${radius}px`,
+        borderRadius: radiusCSS,
         ...contentBg,
         border: cardStyles?.borderType === "solid" ? cardStyles.borderSolid : "none",
       }}
@@ -170,7 +185,7 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
   return (
     <div className="space-y-6">
       {showProfile && (
-        <div className="flex justify-center overflow-hidden border-2" style={{ borderRadius: `${cardStyles?.cardBorderRadius ?? 12}px`, borderColor: "var(--color-border)" }}>
+        <div className="flex justify-center overflow-hidden border-2" style={{ borderRadius: borderRadiusToCSS(cardStyles?.cardBorderRadius, 12), borderColor: "var(--color-border)" }}>
           {imageUrls.profileDark ? (
             <PictureImage
               sources={[
@@ -193,7 +208,6 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
         </div>
       )}
 
-      {/* Social Links - Sidebar Above */}
       {showSocialAbove && <SocialCard />}
 
       {(bandName || bandDescription) && (
@@ -213,7 +227,6 @@ const Sidebar = memo(function Sidebar({ imageUrls, bandName, bandDescription, ca
         </CardContainer>
       )}
 
-      {/* Social Links - Sidebar Below */}
       {showSocialBelow && <SocialCard />}
     </div>
   );
@@ -239,6 +252,22 @@ interface PlayerViewProps {
   initialTrackId?: string | null;
   csrfToken: string;
   isDesignerMode?: boolean;
+  /**
+   * When true, the player renders as an inline block (no full-viewport
+   * sizing, no fullscreen fixed background/overlay, no outer page padding).
+   * This is the mode used by the page-builder canvas where the player is
+   * one of many blocks on a page rather than the entire page.
+   */
+  embedded?: boolean;
+  /**
+   * Optional absolute origin (e.g. `https://acme.secretlobby.co`) that
+   * cross-origin audio API requests should target. The consumer (e.g. the
+   * console page-builder) sets this so that audio fetches from
+   * `useHlsAudio` and friends hit the lobby host instead of the host the
+   * player is rendered on. Lobby callers leave this `undefined` and keep
+   * the same-origin behavior.
+   */
+  apiBaseUrl?: string;
 }
 
 export function PlayerView({
@@ -256,10 +285,17 @@ export function PlayerView({
   initialTrackId,
   csrfToken,
   isDesignerMode = false,
+  embedded = false,
+  apiBaseUrl: _apiBaseUrl,
 }: PlayerViewProps) {
+  // apiBaseUrl is plumbed through props for API symmetry but is consumed by
+  // the caller via `useHlsAudio` directly — PlayerView never sets `<audio
+  // src>` itself, so there's nothing for it to do with the value here. We
+  // accept it so consumers can flow it through a single prop boundary.
+  void _apiBaseUrl;
   const { audioRef, loadTrack: loadSegmentedTrack, isLoading, isSeeking, loadingProgress, isReady, seekTo, cancelAutoPlay, estimatedDuration } = audio;
+  void isSeeking;
 
-  // Find initial track: use initialTrackId if provided, otherwise first track
   const getInitialTrack = () => {
     if (initialTrackId) {
       const found = tracks.find((t) => t.id === initialTrackId);
@@ -281,27 +317,19 @@ export function PlayerView({
   const seekLoadingRef = useRef(false);
   const isDraggingRef = useRef(false);
   const dragPercentRef = useRef(0);
-  // Ref that always has the latest track duration (avoids stale closure issues)
   const trackDurationRef = useRef(0);
   const progressBarRef = useRef<HTMLDivElement>(null);
-  // Tracking refs for analytics
   const progressMilestonesRef = useRef<Set<number>>(new Set());
   const currentTrackIdRef = useRef<string | null>(null);
   const technicalInfoRef = useRef<HTMLDivElement>(null);
 
-  // Refs for document-level mouse handlers (need stable references)
   const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
   const mouseUpHandlerRef = useRef<(() => void) | null>(null);
 
-  // Detect Safari locally — createMediaElementSource can't capture audio
-  // from MSE or native HLS sources on Safari/iOS.
   const isSafari = typeof navigator !== "undefined"
     && /Safari/.test(navigator.userAgent)
     && !/Chrome/.test(navigator.userAgent);
 
-  // PCM analyser for Safari equalizer: decodes MP3 to PCM and computes FFT.
-  // Only enabled for non-HLS tracks — HLS tracks must not trigger a full MP3
-  // download just for visualization. Safari + HLS falls back to waveform.
   const currentTrackHlsReady = currentTrack?.hlsReady ?? false;
   const pcmEnabled = isSafari && !currentTrackHlsReady && (cardStyles?.visualizerType ?? "equalizer") === "equalizer";
   const pcmAnalyser = usePcmAnalyser({
@@ -310,8 +338,6 @@ export function PlayerView({
     audioElement,
   });
 
-  // On Safari with HLS tracks, fall back to waveform visualization since the
-  // equalizer would require downloading the entire MP3 for PCM decoding.
   const effectiveVisualizerType = (isSafari && currentTrackHlsReady && (cardStyles?.visualizerType ?? "equalizer") === "equalizer")
     ? "waveform"
     : (cardStyles?.visualizerType ?? "equalizer");
@@ -322,7 +348,6 @@ export function PlayerView({
     }
   }, [isReady, audioRef]);
 
-  // Cleanup document listeners on unmount
   useEffect(() => {
     return () => {
       if (mouseMoveHandlerRef.current) {
@@ -334,7 +359,6 @@ export function PlayerView({
     };
   }, []);
 
-  // Track clicks on custom links in WYSIWYG technical info content
   useEffect(() => {
     const handleLinkClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -361,12 +385,10 @@ export function PlayerView({
     };
   }, [technicalInfo?.content]);
 
-  // Notify parent when the current track changes
   useEffect(() => {
     if (currentTrack) {
       onTrackChange?.(currentTrack.id);
 
-      // Reset progress milestones when track changes
       if (currentTrackIdRef.current !== currentTrack.id) {
         progressMilestonesRef.current.clear();
         currentTrackIdRef.current = currentTrack.id;
@@ -387,18 +409,15 @@ export function PlayerView({
     const audio = audioRef.current;
     if (!audio) return;
 
-    // Total track duration (from manifest/DB, not from the partial blob)
     const totalDuration = estimatedDuration || 0;
 
     const updateProgress = () => {
-      // Don't update progress while dragging or during seek loading
       if (totalDuration > 0 && !isDraggingRef.current && !seekLoadingRef.current) {
         const realTime = audio.currentTime;
         const progressPercent = (realTime / totalDuration) * 100;
         setCurrentTime(realTime);
         setProgress(progressPercent);
 
-        // Track progress milestones (25%, 50%, 75%, 100%)
         const milestones = [25, 50, 75, 100];
         for (const milestone of milestones) {
           if (progressPercent >= milestone && !progressMilestonesRef.current.has(milestone)) {
@@ -416,17 +435,14 @@ export function PlayerView({
     };
 
     const handleLoadedMetadata = () => {
-      // Always use estimatedDuration (full track) for UI, not audio.duration (partial blob)
       if (totalDuration > 0) {
         setDuration(totalDuration);
       }
     };
 
     const handleEnded = () => {
-      // If a seek is in progress, ignore
       if (seekLoadingRef.current) return;
 
-      // Track ended event
       trackEvent('audio_complete', {
         event_category: 'audio',
         event_label: currentTrack?.title || 'Unknown',
@@ -434,13 +450,11 @@ export function PlayerView({
         track_artist: currentTrack?.artist,
       });
 
-      // Track ended: advance to next track
       onPlayingChange(false);
       playNext();
     };
 
     const handlePlaying = () => {
-      // Audio started playing — clear seek loading state
       if (seekLoadingRef.current) {
         seekLoadingRef.current = false;
         setSeekLoading(false);
@@ -448,8 +462,6 @@ export function PlayerView({
     };
 
     const handleSeeked = () => {
-      // Seek completed — clear seek loading state
-      // This handles instant seeks within cached blob where 'playing' doesn't re-fire
       if (seekLoadingRef.current) {
         seekLoadingRef.current = false;
         setSeekLoading(false);
@@ -459,7 +471,6 @@ export function PlayerView({
     const handlePlay = () => {
       onPlayingChange(true);
 
-      // Track play event
       trackEvent('audio_play', {
         event_category: 'audio',
         event_label: currentTrack?.title || 'Unknown',
@@ -472,7 +483,6 @@ export function PlayerView({
       if (!seekLoadingRef.current) {
         onPlayingChange(false);
 
-        // Track pause event
         trackEvent('audio_pause', {
           event_category: 'audio',
           event_label: currentTrack?.title || 'Unknown',
@@ -508,9 +518,8 @@ export function PlayerView({
 
     if (!audio.paused) {
       audio.pause();
-      cancelAutoPlay(); // Cancel any pending auto-play from blob transitions
+      cancelAutoPlay();
 
-      // Track button click
       trackEvent('player_control_click', {
         event_category: 'player',
         event_label: 'pause_button',
@@ -519,7 +528,6 @@ export function PlayerView({
     } else {
       audio.play().catch(() => {});
 
-      // Track button click
       trackEvent('player_control_click', {
         event_category: 'player',
         event_label: 'play_button',
@@ -528,38 +536,47 @@ export function PlayerView({
     }
   }, [cancelAutoPlay]);
 
-  // Global keyboard shortcuts for media controls (accessibility)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle if user is typing in an input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // Bail when the user is typing in any editable surface. TipTap (the
+      // RichTextEditor used in the page builder) renders into a
+      // contenteditable element, NOT a <textarea> — the original
+      // HTMLInputElement/HTMLTextAreaElement check missed that and the
+      // m/k/j/l/space shortcuts stole those keystrokes from the WYSIWYG.
+      const target = e.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target?.isContentEditable ?? false)
+      ) {
         return;
       }
 
       switch (e.key) {
-        case " ": // Space to toggle play/pause
+        case " ":
           e.preventDefault();
           togglePlay();
           break;
-        case "k": // YouTube-style play/pause
+        case "k":
           e.preventDefault();
           togglePlay();
           break;
-        case "j": // YouTube-style rewind 10 seconds
+        case "j":
           e.preventDefault();
           if (audioRef.current) {
             const newTime = Math.max(0, audioRef.current.currentTime - 10);
             seekTo(newTime);
           }
           break;
-        case "l": // YouTube-style forward 10 seconds
+        case "l":
           e.preventDefault();
           if (audioRef.current && estimatedDuration > 0) {
             const newTime = Math.min(estimatedDuration, audioRef.current.currentTime + 10);
             seekTo(newTime);
           }
           break;
-        case "m": // Mute toggle
+        case "m":
           e.preventDefault();
           if (audioRef.current) {
             audioRef.current.muted = !audioRef.current.muted;
@@ -586,6 +603,12 @@ export function PlayerView({
     seekLoadingRef.current = false;
     setSeekLoading(false);
 
+    // In designer mode we don't pull audio from the network — we still flip
+    // the UI to "selected" so the canvas reflects the click.
+    if (isDesignerMode) {
+      return;
+    }
+
     const success = await loadSegmentedTrack(track.id, undefined, {
       hlsReady: track.hlsReady ?? false,
       duration: track.duration,
@@ -605,7 +628,6 @@ export function PlayerView({
   const playNext = useCallback(() => {
     if (!currentTrack) return;
 
-    // Track button click
     trackEvent('player_control_click', {
       event_category: 'player',
       event_label: 'next_button',
@@ -616,6 +638,7 @@ export function PlayerView({
     const currentIndex = tracks.findIndex(
       (t) => t.id === currentTrack.id
     );
+    if (tracks.length === 0) return;
     const nextIndex = (currentIndex + 1) % tracks.length;
     const shouldPlay = audio ? !audio.paused : true;
     playTrack(tracks[nextIndex], shouldPlay);
@@ -624,7 +647,6 @@ export function PlayerView({
   const playPrev = () => {
     if (!currentTrack) return;
 
-    // Track button click
     trackEvent('player_control_click', {
       event_category: 'player',
       event_label: 'previous_button',
@@ -633,7 +655,6 @@ export function PlayerView({
 
     const audio = audioRef.current;
 
-    // If paused and more than 3 seconds in, seek to beginning first
     if (audio && audio.paused && audio.currentTime > 3) {
       audio.currentTime = 0;
       setCurrentTime(0);
@@ -644,6 +665,7 @@ export function PlayerView({
     const currentIndex = tracks.findIndex(
       (t) => t.id === currentTrack.id
     );
+    if (tracks.length === 0) return;
     const prevIndex =
       currentIndex === 0 ? tracks.length - 1 : currentIndex - 1;
     const shouldPlay = audio ? !audio.paused : true;
@@ -658,13 +680,11 @@ export function PlayerView({
     const clampedPercent = Math.max(0, Math.min(1, percent));
     const newTime = clampedPercent * effectiveDuration;
 
-    // Show loading spinner and freeze the progress bar at target
     seekLoadingRef.current = true;
     setSeekLoading(true);
     setProgress(clampedPercent * 100);
     setCurrentTime(newTime);
 
-    // Safety: clear seek loading if it takes too long (e.g., autoplay blocked on iOS)
     setTimeout(() => {
       if (seekLoadingRef.current) {
         seekLoadingRef.current = false;
@@ -672,7 +692,6 @@ export function PlayerView({
       }
     }, 3000);
 
-    // Perform the seek — the hook downloads required segment and resumes playback
     seekTo(newTime);
   };
 
@@ -693,7 +712,6 @@ export function PlayerView({
     setHoverPercent(null);
   };
 
-  // Mouse drag handlers for desktop
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const bar = progressBarRef.current;
@@ -706,7 +724,6 @@ export function PlayerView({
     setDragPercent(percent);
     setHoverPercent(null);
 
-    // Create handlers and store in refs for cleanup
     const moveHandler = (ev: MouseEvent) => {
       if (!isDraggingRef.current) return;
       const barEl = progressBarRef.current;
@@ -741,8 +758,8 @@ export function PlayerView({
   };
 
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent mouse events from firing
-    setHoverPercent(null); // Clear hover tooltip
+    e.preventDefault();
+    setHoverPercent(null);
     const bar = progressBarRef.current;
     if (!bar) return;
     const rect = bar.getBoundingClientRect();
@@ -756,7 +773,7 @@ export function PlayerView({
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!isDraggingRef.current) return;
-    e.preventDefault(); // Prevent scrolling while dragging
+    e.preventDefault();
     const bar = progressBarRef.current;
     if (!bar) return;
     const rect = bar.getBoundingClientRect();
@@ -767,10 +784,10 @@ export function PlayerView({
   };
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    e.preventDefault(); // Prevent mouse events from firing after touch
-    setHoverPercent(null); // Clear hover tooltip
+    e.preventDefault();
+    setHoverPercent(null);
     if (!isDraggingRef.current) {
-      setIsDragging(false); // Ensure dragging is cleared even if ref wasn't set
+      setIsDragging(false);
       return;
     }
     const finalPercent = dragPercentRef.current;
@@ -791,11 +808,12 @@ export function PlayerView({
 
   return (
     <div
-      className="relative min-h-screen"
-      onContextMenu={import.meta.env.VITE_ENV === "development" ? undefined : (e) => e.preventDefault()}
+      className={embedded ? "relative" : "relative min-h-screen"}
+      onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Background Image */}
-      {imageUrls.background && (
+      {/* Background Image — fullscreen lobby treatment, skipped when the
+          player is embedded as a block inside another layout. */}
+      {!embedded && imageUrls.background && (
         <div className="fixed inset-0 -z-20">
           {imageUrls.backgroundDark ? (
             <PictureImage
@@ -819,48 +837,50 @@ export function PlayerView({
           )}
         </div>
       )}
-      {/* Dark overlay */}
-      <div className="fixed inset-0 -z-10 bg-black/70" />
+      {!embedded && <div className="fixed inset-0 -z-10 bg-black/70" />}
 
-      {/* Header */}
-      <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
-        {isDesignerMode ? (
-          <span
-            className="px-4 py-2 text-sm"
-            style={{
-              borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
-              backgroundColor: "rgba(59, 130, 246, 0.2)",
-              color: "#60a5fa",
-            }}
-          >
-            Designer Preview
-          </span>
-        ) : (
-          <Form method="post" action="/logout" reloadDocument>
-            <input type="hidden" name="_csrf" value={csrfToken} />
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm transition cursor-pointer"
+      {!embedded && (
+        <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
+          {isDesignerMode ? (
+            <span
+              className="px-4 py-2 text-sm"
               style={{
-                borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px`,
-                backgroundColor: "var(--color-secondary)",
-                color: "var(--color-secondary-text)",
-              }}
-              onClick={() => {
-                trackEvent('logout', {
-                  event_category: 'authentication',
-                  method: 'button_click',
-                });
+                borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
+                backgroundColor: "rgba(59, 130, 246, 0.2)",
+                color: "#60a5fa",
               }}
             >
-              Logout
-            </button>
-          </Form>
-        )}
-      </header>
+              Designer Preview
+            </span>
+          ) : (
+            <Form method="post" action="/logout" reloadDocument>
+              <input type="hidden" name="_csrf" value={csrfToken} />
+              <button
+                type="submit"
+                className="px-4 py-2 text-sm transition cursor-pointer"
+                style={{
+                  borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
+                  backgroundColor: "var(--color-secondary)",
+                  color: "var(--color-secondary-text)",
+                }}
+                onClick={() => {
+                  trackEvent('logout', {
+                    event_category: 'authentication',
+                    method: 'button_click',
+                  });
+                }}
+              >
+                Logout
+              </button>
+            </Form>
+          )}
+        </header>
+      )}
 
-      <main className="container mx-auto px-4 py-8 max-w-6xl" style={{ color: "var(--color-text-primary)" }}>
-        {/* Banner */}
+      <main
+        className={embedded ? "w-full" : "container mx-auto px-4 py-8 max-w-6xl"}
+        style={{ color: "var(--color-text-primary)" }}
+      >
         {imageUrls.banner && (
           <div className="mb-8">
             {imageUrls.bannerDark ? (
@@ -886,7 +906,6 @@ export function PlayerView({
           </div>
         )}
 
-        {/* Social Links - Above Content */}
         {socialLinksSettings &&
           socialLinksSettings.placement === "above-content" &&
           (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
@@ -901,11 +920,8 @@ export function PlayerView({
           </div>
         )}
 
-        {/* Two Column Layout */}
         <div className={`grid gap-8 ${hasSidebar ? "lg:grid-cols-[1fr_300px]" : ""}`}>
-          {/* Left Column - Player */}
           <div className="space-y-6">
-            {/* Social Links - Above Player */}
             {socialLinksSettings &&
               socialLinksSettings.placement === "above-left" &&
               (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
@@ -918,7 +934,6 @@ export function PlayerView({
               </CardContainer>
             )}
 
-            {/* Visualizer */}
             {(() => {
               const visualizerProps = {
                 audioElement,
@@ -934,7 +949,11 @@ export function PlayerView({
               const VisualizerEl = effectiveVisualizerType === "waveform" ? (
                 <WaveformProgress {...visualizerProps} />
               ) : (
-                <AudioVisualizer {...visualizerProps} pcmAnalyser={pcmAnalyser} />
+                <AudioVisualizer
+                  {...visualizerProps}
+                  pcmAnalyser={pcmAnalyser}
+                  demoMode={isDesignerMode}
+                />
               );
 
               return cardStyles?.visualizerUseCardBg ? (
@@ -948,7 +967,6 @@ export function PlayerView({
               );
             })()}
 
-            {/* Track Info */}
             {currentTrack && (
               <div className="text-center">
                 <h2 className="text-2xl font-bold">{currentTrack.title}</h2>
@@ -958,7 +976,6 @@ export function PlayerView({
               </div>
             )}
 
-            {/* Progress Bar - Accessible Slider */}
             <div className="py-2 sm:py-0">
               <div
                 ref={progressBarRef}
@@ -985,8 +1002,8 @@ export function PlayerView({
 
                   let newPercent: number | null = null;
                   const currentPercent = progress / 100;
-                  const step = 0.05; // 5% step
-                  const largeStep = 0.1; // 10% for Page Up/Down
+                  const step = 0.05;
+                  const largeStep = 0.1;
 
                   switch (e.key) {
                     case "ArrowRight":
@@ -1017,19 +1034,16 @@ export function PlayerView({
                   }
                 }}
               >
-                {/* Download progress indicator */}
                 {loadingProgress > 0 && (
                   <div
                     className="absolute top-0 bottom-0 rounded-full"
                     style={{ width: `${loadingProgress}%`, backgroundColor: "color-mix(in srgb, var(--color-accent) 15%, transparent)" }}
                   />
                 )}
-                {/* Played progress */}
                 <div
                   className="absolute top-0 bottom-0 rounded-full"
                   style={{ width: `${isDragging ? dragPercent * 100 : progress}%`, backgroundColor: "var(--color-accent)" }}
                 />
-                {/* Scrubber - always visible on touch devices, hover on desktop */}
                 <div
                   className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
                   style={{
@@ -1037,7 +1051,6 @@ export function PlayerView({
                     backgroundColor: "var(--color-accent)",
                   }}
                 />
-                {/* Hover tooltip */}
                 {hoverPercent !== null && (duration || estimatedDuration) > 0 && (
                   <div
                     className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-xs pointer-events-none"
@@ -1046,7 +1059,6 @@ export function PlayerView({
                     {formatTime(hoverPercent * (duration || estimatedDuration))}
                   </div>
                 )}
-                {/* Drag tooltip */}
                 {isDragging && (duration || estimatedDuration) > 0 && (
                   <div
                     className="absolute -top-8 -translate-x-1/2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-xs pointer-events-none"
@@ -1062,7 +1074,6 @@ export function PlayerView({
               </div>
             </div>
 
-            {/* Controls - Skip link target */}
             <div
               id="player-controls"
               tabIndex={-1}
@@ -1074,7 +1085,7 @@ export function PlayerView({
                 onClick={playPrev}
                 aria-label="Previous track"
                 className="p-3 transition hover:opacity-80 cursor-pointer"
-                style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
+                style={{ borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24) }}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -1087,7 +1098,14 @@ export function PlayerView({
                 aria-busy={isLoading || seekLoading}
                 className="p-4 hover:scale-105 transition cursor-pointer"
                 style={{
-                  borderRadius: `${cardStyles?.playButtonBorderRadius ?? 50}%`,
+                  // Play button uses `%` units (50% = circle) instead of px so
+                  // it stays circular regardless of size. The BorderRadius
+                  // value's numbers are reinterpreted as percentages here.
+                  borderRadius: (() => {
+                    const r = cardStyles?.playButtonBorderRadius ?? 50;
+                    if (typeof r === "number") return `${r}%`;
+                    return `${r.tl}% ${r.tr}% ${r.br}% ${r.bl}%`;
+                  })(),
                   backgroundColor: "var(--color-primary)",
                   color: "var(--color-primary-text)",
                 }}
@@ -1112,7 +1130,7 @@ export function PlayerView({
                 onClick={playNext}
                 aria-label="Next track"
                 className="p-3 transition hover:opacity-80 cursor-pointer"
-                style={{ borderRadius: `${cardStyles?.buttonBorderRadius ?? 24}px` }}
+                style={{ borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24) }}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -1120,7 +1138,6 @@ export function PlayerView({
               </button>
             </div>
 
-            {/* Playlist */}
             <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
               <h3 id="playlist-heading" className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
               <div className="flex flex-col" role="list" aria-labelledby="playlist-heading">
@@ -1130,7 +1147,6 @@ export function PlayerView({
                   const isCurrentPlaying = isCurrent && isPlaying;
                   const isCurrentLoading = isCurrent && isLoading;
 
-                  // Build accessible label
                   const trackStatus = isCurrentLoading
                     ? "Loading"
                     : isCurrentPlaying
@@ -1151,7 +1167,6 @@ export function PlayerView({
                           audioRef.current?.pause();
                           onPlayingChange(false);
 
-                          // Track track pause
                           trackEvent('track_click', {
                             event_category: 'playlist',
                             event_label: track.title,
@@ -1163,7 +1178,6 @@ export function PlayerView({
                         } else if (isCurrent && !isPlaying && !isLoading) {
                           audioRef.current?.play().then(() => onPlayingChange(true)).catch(() => {});
 
-                          // Track track resume
                           trackEvent('track_click', {
                             event_category: 'playlist',
                             event_label: track.title,
@@ -1175,7 +1189,6 @@ export function PlayerView({
                         } else {
                           playTrack(track);
 
-                          // Track track selection
                           trackEvent('track_click', {
                             event_category: 'playlist',
                             event_label: track.title,
@@ -1188,14 +1201,13 @@ export function PlayerView({
                       }}
                       onMouseEnter={() => setHoveredTrackId(track.id)}
                       onMouseLeave={() => setHoveredTrackId(null)}
-                      className="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-3 group"
+                      className="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-3 group cursor-pointer"
                       style={{
                         backgroundColor: isCurrent
                           ? "color-mix(in srgb, var(--color-accent) 10%, transparent)"
                           : "transparent",
                       }}
                     >
-                      {/* Track number / play / pause indicator */}
                       <div className="w-6 flex items-center justify-center shrink-0" aria-hidden="true">
                         {isCurrentLoading ? (
                           <svg className="w-4 h-4 animate-spin" style={{ color: "var(--color-accent)" }} fill="none" viewBox="0 0 24 24">
@@ -1245,7 +1257,6 @@ export function PlayerView({
               </div>
             </CardContainer>
 
-            {/* Technical Info */}
             {technicalInfo && (technicalInfo.title || technicalInfo.content) && (
               <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
                 {technicalInfo.title && (
@@ -1264,7 +1275,6 @@ export function PlayerView({
               </CardContainer>
             )}
 
-            {/* Social Links - Below Player */}
             {socialLinksSettings &&
               socialLinksSettings.placement === "below-left" &&
               (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
@@ -1278,7 +1288,6 @@ export function PlayerView({
             )}
           </div>
 
-          {/* Right Column - Sidebar */}
           {hasSidebar && (
             <Sidebar
               imageUrls={imageUrls}
@@ -1290,7 +1299,6 @@ export function PlayerView({
           )}
         </div>
 
-        {/* Social Links - Below All (Full Width) */}
         {socialLinksSettings &&
           socialLinksSettings.placement === "below-content" &&
           (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (

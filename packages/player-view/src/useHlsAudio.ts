@@ -27,6 +27,27 @@ interface LoadTrackOptions {
   waveformPeaks?: number[] | null;
 }
 
+export interface UseHlsAudioOptions {
+  /**
+   * Optional absolute origin (e.g. `https://acme.secretlobby.co`) to prepend
+   * to the audio API endpoints. When omitted (the default), the existing
+   * relative-URL code path is used — which is what the public lobby app
+   * expects since it runs on the same origin as the API routes.
+   *
+   * The page-builder canvas in the console app sets this to the lobby's
+   * origin so that `/api/hls/...` and `/api/stream-mp3/...` requests hit
+   * the lobby host instead of the console host.
+   */
+  apiBaseUrl?: string;
+  /**
+   * Optional preview token to attach to API requests. When supplied, every
+   * URL gets a `?preview={token}` query so the lobby endpoints can bypass
+   * the lobby session auth check. Used by the page-builder canvas (which
+   * does not have a lobby session for arbitrary lobbies).
+   */
+  previewToken?: string;
+}
+
 interface HlsAudioReturn {
   loadTrack: (trackId: string, preloadToken?: string, options?: LoadTrackOptions) => Promise<boolean>;
   continueDownload: (options?: { waveformPeaks?: number[] | null; duration?: number | null }) => void;
@@ -57,12 +78,16 @@ interface HlsAudioReturn {
  *   1. hls.js via MSE  — Chrome, Firefox, Edge, Safari desktop, iOS 17.1+
  *   2. Native HLS      — Safari iOS <17.1 (no MSE / ManagedMediaSource)
  *   3. Direct MP3       — final fallback, or tracks without HLS segments
- *
- * If hls.js encounters a fatal/buffer error during playback (e.g. legacy
- * MP3-in-fMP4 segments that Chrome MSE rejects), the hook automatically
- * falls back to MP3 streaming and re-signals isReady so the UI can resume.
  */
-export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAudioReturn {
+export function useHlsAudio(
+  audioRef: RefObject<HTMLAudioElement | null>,
+  options?: UseHlsAudioOptions
+): HlsAudioReturn {
+  // Trim any trailing slash from the base URL so we always end up with a
+  // clean `${base}/api/...`. Empty string means "use relative paths" — the
+  // default lobby behavior.
+  const apiBaseUrl = (options?.apiBaseUrl ?? "").replace(/\/+$/, "");
+  const previewTokenForBase = options?.previewToken ?? "";
   const [isLoading, setIsLoading] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +100,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
   const preloadTokenRef = useRef<string | null>(null);
   const autoPlayCancelledRef = useRef(false);
 
-  // Detect Safari — createMediaElementSource can't capture audio from
-  // MSE or native HLS sources on Safari, so the PCM analyser is used instead.
   const isSafari =
     typeof navigator !== "undefined" &&
     /Safari/.test(navigator.userAgent) &&
@@ -120,7 +143,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       const audio = audioRef.current;
       if (!audio) return false;
 
-      // Clean up previous HLS instance
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -146,17 +168,17 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
         setEstimatedDuration(0);
       }
 
-      const preloadQuery = preloadToken
-        ? `?preload=${encodeURIComponent(preloadToken)}`
-        : "";
+      const queryParts: string[] = [];
+      if (preloadToken) {
+        queryParts.push(`preload=${encodeURIComponent(preloadToken)}`);
+      }
+      if (previewTokenForBase) {
+        queryParts.push(`preview=${encodeURIComponent(previewTokenForBase)}`);
+      }
+      const preloadQuery = queryParts.length ? `?${queryParts.join("&")}` : "";
 
-      // ---------------------------------------------------------------
-      // MP3 fallback — loads the full MP3 directly onto the <audio> src.
-      // Can be called at any time (initial load, or mid-playback after
-      // an hls.js error). Sets isReady when the browser can play.
-      // ---------------------------------------------------------------
       const loadMp3 = (): Promise<boolean> => {
-        const mp3Url = `/api/stream-mp3/${trackId}${preloadQuery}`;
+        const mp3Url = `${apiBaseUrl}/api/stream-mp3/${trackId}${preloadQuery}`;
         console.log("[useHlsAudio] Falling back to MP3:", mp3Url);
         return new Promise<boolean>((resolve) => {
           const onCanPlay = () => {
@@ -183,9 +205,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
         });
       };
 
-      // Async MP3 fallback — for use in event handlers that fire after
-      // loadTrack has already resolved (e.g. bufferAppendError during
-      // playback). Resets state so the UI transitions correctly.
       const switchToMp3 = () => {
         setIsReady(false);
         setIsLoading(true);
@@ -193,20 +212,12 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
         loadMp3();
       };
 
-      // Track doesn't have HLS segments — stream full MP3
       if (!options?.hlsReady) {
         return loadMp3();
       }
 
-      const playlistUrl = `/api/hls/${trackId}/playlist${preloadQuery}`;
+      const playlistUrl = `${apiBaseUrl}/api/hls/${trackId}/playlist${preloadQuery}`;
 
-      // ---------------------------------------------------------------
-      // 1. Try hls.js (MSE) — works on all browsers with MSE support,
-      //    including Safari desktop and iOS 17.1+ (ManagedMediaSource).
-      //    On Safari, createMediaElementSource can't capture audio from
-      //    MSE sources, but the separate PCM analyser handles the
-      //    equalizer visualization instead.
-      // ---------------------------------------------------------------
       const HlsClass = await getHls();
       const hlsJsSupported = HlsClass?.isSupported() ?? false;
 
@@ -264,9 +275,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
         });
       }
 
-      // ---------------------------------------------------------------
-      // 2. Native HLS — Safari/iOS without MSE, or other native support.
-      // ---------------------------------------------------------------
       const nativeHls = audio.canPlayType("application/vnd.apple.mpegurl");
       if (nativeHls) {
         return new Promise<boolean>((resolve) => {
@@ -292,12 +300,9 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
         });
       }
 
-      // ---------------------------------------------------------------
-      // 3. No HLS support at all — direct MP3 stream.
-      // ---------------------------------------------------------------
       return loadMp3();
     },
-    [audioRef]
+    [audioRef, apiBaseUrl, previewTokenForBase]
   );
 
   const continueDownload = useCallback((options?: { waveformPeaks?: number[] | null; duration?: number | null }) => {
@@ -307,7 +312,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
     const audio = audioRef.current;
     if (!audio) return;
 
-    // Re-apply track metadata that may have been lost during navigation
     if (options?.waveformPeaks) {
       setWaveformPeaks(options.waveformPeaks);
     }
@@ -315,16 +319,26 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
       setEstimatedDuration(options.duration);
     }
 
+    // Re-attach the preview-token query when present so the second request
+    // also passes the auth/CORS check on the lobby endpoint. The per-track
+    // preload token is intentionally dropped here — this branch fires once
+    // the original preload reservation has been consumed.
+    const reloadQuery = previewTokenForBase
+      ? `?preview=${encodeURIComponent(previewTokenForBase)}`
+      : "";
+
     if (hlsRef.current) {
-      hlsRef.current.loadSource(`/api/hls/${trackId}/playlist`);
+      hlsRef.current.loadSource(`${apiBaseUrl}/api/hls/${trackId}/playlist${reloadQuery}`);
     } else if (audio.src?.includes("preload=")) {
+      // The substring check still works for absolute URLs since the path
+      // segment `/api/hls/` is preserved in the full URL.
       const isHls = audio.src.includes("/api/hls/");
       audio.src = isHls
-        ? `/api/hls/${trackId}/playlist`
-        : `/api/stream-mp3/${trackId}`;
+        ? `${apiBaseUrl}/api/hls/${trackId}/playlist${reloadQuery}`
+        : `${apiBaseUrl}/api/stream-mp3/${trackId}${reloadQuery}`;
     }
     preloadTokenRef.current = null;
-  }, [audioRef]);
+  }, [audioRef, apiBaseUrl, previewTokenForBase]);
 
   const seekTo = useCallback(
     async (time: number): Promise<void> => {
@@ -353,7 +367,6 @@ export function useHlsAudio(audioRef: RefObject<HTMLAudioElement | null>): HlsAu
     estimatedDuration,
     waveformPeaks,
     isSafari,
-    // Compat stubs
     isAllSegmentsCached: true as const,
     blobTimeOffset: 0 as const,
     blobHasLastSegment: true as const,

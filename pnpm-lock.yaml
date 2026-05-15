@@ -78,9 +78,15 @@ importers:
       '@secretlobby/payments':
         specifier: workspace:*
         version: link:../../packages/payments
+      '@secretlobby/player-view':
+        specifier: workspace:*
+        version: link:../../packages/player-view
       '@secretlobby/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@secretlobby/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       '@secretlobby/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -185,9 +191,15 @@ importers:
       '@secretlobby/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@secretlobby/player-view':
+        specifier: workspace:*
+        version: link:../../packages/player-view
       '@secretlobby/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@secretlobby/theme':
+        specifier: workspace:*
+        version: link:../../packages/theme
       '@secretlobby/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -497,6 +509,40 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  packages/player-view:
+    dependencies:
+      '@secretlobby/logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@secretlobby/theme':
+        specifier: workspace:*
+        version: link:../theme
+      '@secretlobby/ui':
+        specifier: workspace:*
+        version: link:../ui
+      hls.js:
+        specifier: ^1.6.15
+        version: 1.6.15
+      react:
+        specifier: ^19.0.0
+        version: 19.2.3
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.3(react@19.2.3)
+      react-router:
+        specifier: ^7.0.0
+        version: 7.12.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.8)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
   packages/storage:
     dependencies:
       '@aws-sdk/client-s3':
@@ -508,6 +554,12 @@ importers:
       '@secretlobby/logger':
         specifier: workspace:*
         version: link:../logger
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  packages/theme:
     devDependencies:
       typescript:
         specifier: ^5.9.2

@@ -258,12 +258,20 @@ export default function AdminTheme() {
   const [cardBorderOpacity, setCardBorderOpacity] = useState(theme?.cardBorderOpacity ?? 100);
   const [cardBorderWidth, setCardBorderWidth] = useState(theme?.cardBorderWidth ?? "1px");
   const [cardBorderGradientAngle, setCardBorderGradientAngle] = useState(theme?.cardBorderGradientAngle ?? 135);
-  const [cardBorderRadius, setCardBorderRadius] = useState(theme?.cardBorderRadius ?? 12);
-  const [buttonBorderRadius, setButtonBorderRadius] = useState(theme?.buttonBorderRadius ?? 24);
-  const [playButtonBorderRadius, setPlayButtonBorderRadius] = useState(theme?.playButtonBorderRadius ?? 50);
+  // Legacy single-slider editor — collapse the BorderRadius union back to a
+  // plain number using the top-left corner as the representative value. The
+  // new per-corner editing lives in the page-builder Theme overlay; this
+  // route stays uniform-only.
+  const flattenRadius = (
+    r: number | { tl: number; tr: number; br: number; bl: number } | undefined,
+    def: number
+  ) => (typeof r === "number" ? r : (r?.tl ?? def));
+  const [cardBorderRadius, setCardBorderRadius] = useState(flattenRadius(theme?.cardBorderRadius, 12));
+  const [buttonBorderRadius, setButtonBorderRadius] = useState(flattenRadius(theme?.buttonBorderRadius, 24));
+  const [playButtonBorderRadius, setPlayButtonBorderRadius] = useState(flattenRadius(theme?.playButtonBorderRadius, 50));
   const [visualizerBgOpacity, setVisualizerBgOpacity] = useState(theme?.visualizerBgOpacity ?? 0);
   const [visualizerBorderShow, setVisualizerBorderShow] = useState(theme?.visualizerBorderShow ?? false);
-  const [visualizerBorderRadius, setVisualizerBorderRadius] = useState(theme?.visualizerBorderRadius ?? 8);
+  const [visualizerBorderRadius, setVisualizerBorderRadius] = useState(flattenRadius(theme?.visualizerBorderRadius, 8));
   const [visualizerType, setVisualizerType] = useState<"equalizer" | "waveform">(theme?.visualizerType || "equalizer");
 
   useEffect(() => {
@@ -326,7 +334,7 @@ export default function AdminTheme() {
               <ColorInput
                 label="Page Background"
                 name="bgPrimary"
-                value={theme.bgPrimary}
+                value={theme.bgPrimary ?? "#030712"}
                 description="Main page background color (used when no image is set)"
               />
             </div>

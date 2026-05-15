@@ -192,7 +192,7 @@ export default function LobbyThemePage() {
         <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
           <h2 className="text-lg font-semibold mb-4">Primary Colors</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <ColorInput name="bgPrimary" value={theme.bgPrimary} label="Background" />
+            <ColorInput name="bgPrimary" value={theme.bgPrimary ?? "#030712"} label="Background" />
             <ColorInput name="textPrimary" value={theme.textPrimary} label="Text" />
             <ColorInput name="primary" value={theme.primary} label="Primary" />
             <ColorInput name="accent" value={theme.accent} label="Accent" />

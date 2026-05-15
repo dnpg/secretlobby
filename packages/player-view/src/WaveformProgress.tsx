@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { borderRadiusToCSS, type BorderRadius } from "@secretlobby/theme";
 
 interface WaveformProgressProps {
   waveformPeaks: number[] | null;
@@ -8,7 +9,7 @@ interface WaveformProgressProps {
   audioElement?: HTMLAudioElement | null;
   borderShow?: boolean;
   borderColor?: string;
-  borderRadius?: number;
+  borderRadius?: BorderRadius;
   blendMode?: string;
 }
 
@@ -40,7 +41,6 @@ export function WaveformProgress({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
 
-  // Refs for rapidly-changing values so rAF loop doesn't need re-renders
   const currentTimeRef = useRef(currentTime);
   const durationRef = useRef(duration);
   const peaksRef = useRef(waveformPeaks);
@@ -52,8 +52,10 @@ export function WaveformProgress({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Captured locally so the rAF closure doesn't have to re-narrow null.
+    const localCanvas = canvas;
 
-    const ctxOrNull = canvas.getContext("2d");
+    const ctxOrNull = localCanvas.getContext("2d");
     if (!ctxOrNull) return;
     const ctx = ctxOrNull;
 
@@ -63,26 +65,26 @@ export function WaveformProgress({
     const barAltColor = getThemeColor(canvas, "--color-visualizer-bar-alt", "#9ca3af");
     const glowColor = getThemeColor(canvas, "--color-visualizer-glow", "#ffffff");
 
-    const centerY = canvas.height / 2;
+    const centerY = localCanvas.height / 2;
 
     function draw() {
       const peaks = peaksRef.current;
       const dur = durationRef.current;
       const time = audioElement && isPlaying ? audioElement.currentTime : currentTimeRef.current;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, localCanvas.width, localCanvas.height);
       if (bgOpacity > 0) {
         ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, localCanvas.width, localCanvas.height);
       }
 
       if (!peaks || peaks.length === 0) return;
 
       const barCount = peaks.length;
-      const barWidth = canvas.width / barCount;
+      const barWidth = localCanvas.width / barCount;
       const progressRatio = dur > 0 ? Math.min(1, Math.max(0, time / dur)) : 0;
       const progressIndex = Math.floor(progressRatio * barCount);
-      const progressX = progressRatio * canvas.width;
+      const progressX = progressRatio * localCanvas.width;
 
       for (let i = 0; i < barCount; i++) {
         const peak = peaks[i];
@@ -91,23 +93,18 @@ export function WaveformProgress({
         const y = centerY - height;
 
         if (i <= progressIndex) {
-          // Played bars — full color
           ctx.fillStyle = barColor;
         } else {
-          // Unplayed bars — alt color at reduced alpha
           ctx.fillStyle = hexToRgba(barAltColor, 0.35);
         }
 
-        // Top half (above center)
         ctx.fillRect(x + 1, y, barWidth - 2, height);
-        // Bottom half (below center, mirrored)
         ctx.fillRect(x + 1, centerY, barWidth - 2, height);
       }
 
-      // Playhead line
       if (dur > 0 && progressX > 0) {
         ctx.fillStyle = glowColor;
-        ctx.fillRect(progressX - 1, 0, 2, canvas.height);
+        ctx.fillRect(progressX - 1, 0, 2, localCanvas.height);
       }
     }
 
@@ -118,7 +115,6 @@ export function WaveformProgress({
       };
       loop();
     } else {
-      // Single draw when paused
       draw();
     }
 
@@ -130,7 +126,6 @@ export function WaveformProgress({
     };
   }, [audioElement, isPlaying, waveformPeaks]);
 
-  // Calculate progress percentage for accessibility
   const progressPercent = duration > 0 ? Math.round((currentTime / duration) * 100) : 0;
 
   return (
@@ -140,7 +135,7 @@ export function WaveformProgress({
       height={200}
       className="w-full h-32"
       style={{
-        borderRadius: `${borderRadius ?? 8}px`,
+        borderRadius: borderRadiusToCSS(borderRadius, 8),
         border: borderShow ? `1px solid ${borderColor || "#374151"}` : "none",
         mixBlendMode: (blendMode || "normal") as React.CSSProperties["mixBlendMode"],
       }}

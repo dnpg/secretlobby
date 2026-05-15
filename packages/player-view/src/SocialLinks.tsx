@@ -50,17 +50,6 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
   const contentBeforeRef = useRef<HTMLDivElement>(null);
   const contentAfterRef = useRef<HTMLDivElement>(null);
 
-  if (!hasContent) return null;
-
-  const icons = iconStyle === "brand" ? BRAND_ICONS : MONO_ICONS;
-  const monoStyle = iconStyle === "mono" && iconColor ? { color: iconColor } : undefined;
-
-  const alignmentClass = {
-    left: "justify-start",
-    center: "justify-center",
-    right: "justify-end",
-  }[iconAlignment];
-
   // Track clicks on custom links in WYSIWYG content
   useEffect(() => {
     const handleLinkClick = (e: MouseEvent) => {
@@ -95,6 +84,17 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
       }
     };
   }, [contentBefore, contentAfter]);
+
+  if (!hasContent) return null;
+
+  const icons = iconStyle === "brand" ? BRAND_ICONS : MONO_ICONS;
+  const monoStyle = iconStyle === "mono" && iconColor ? { color: iconColor } : undefined;
+
+  const alignmentClass = {
+    left: "justify-start",
+    center: "justify-center",
+    right: "justify-end",
+  }[iconAlignment];
 
   return (
     <div className="space-y-3">
@@ -135,7 +135,7 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
                 href={href}
                 target={isEmail ? undefined : "_blank"}
                 rel={isEmail ? undefined : "noopener noreferrer"}
-                className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70 focus-visible:ring-2 focus-visible:ring-offset-2"
+                className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70 focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer"
                 aria-label={accessibleLabel}
                 style={monoStyle}
                 onClick={() => {

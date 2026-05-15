@@ -1,7 +1,7 @@
-import { Form, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
+import { Form, Link, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Route } from "./+types/_layout.lobby.playlist";
-import { MediaPicker, type MediaItem } from "@secretlobby/ui";
+import { MediaPicker, cn, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
 import {
   DndContext,
@@ -27,12 +27,27 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { getSession, isAdmin } = await import("@secretlobby/auth");
-  const { getLobbyByIdWithTracks } = await import("~/models/queries/lobby.server");
+  const { getSession, isAdmin, getCsrfToken } = await import("@secretlobby/auth");
+  const { getLobbyById } = await import("~/models/queries/lobby.server");
+  const {
+    getPlaylistsByLobbyIdWithTracks,
+    getPlaylistByIdWithTracks,
+  } = await import("~/models/queries/playlist.server");
+  const { ensureDefaultPlaylistExists } = await import(
+    "~/models/mutations/playlist.server"
+  );
 
   const { session } = await getSession(request);
   if (!isAdmin(session)) {
-    return { playlist: [], autoplayTrackId: null, lobbyName: "" };
+    return {
+      playlist: [],
+      autoplayTrackId: null,
+      lobbyName: "",
+      lobbyId: "",
+      playlists: [],
+      currentPlaylist: null,
+      csrfToken: "",
+    };
   }
 
   const accountId = session.currentAccountId;
@@ -45,13 +60,35 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     throw redirect("/lobbies");
   }
 
-  const lobby = await getLobbyByIdWithTracks(lobbyId);
-
+  const lobby = await getLobbyById(lobbyId);
   if (!lobby || lobby.accountId !== accountId) {
     throw redirect("/lobbies");
   }
 
-  const playlist = (lobby?.tracks || []).map((track) => ({
+  // Resolve the active playlist from ?playlistId=...; if missing, redirect to
+  // the default playlist's URL so the rest of the page logic always has an
+  // explicit playlist to render against.
+  const url = new URL(request.url);
+  const requestedPlaylistId = url.searchParams.get("playlistId");
+
+  if (!requestedPlaylistId) {
+    const defaultPlaylist = await ensureDefaultPlaylistExists(lobbyId);
+    throw redirect(`${url.pathname}?playlistId=${defaultPlaylist.id}`);
+  }
+
+  const [playlists, currentPlaylist, csrfToken] = await Promise.all([
+    getPlaylistsByLobbyIdWithTracks(lobbyId),
+    getPlaylistByIdWithTracks(requestedPlaylistId),
+    getCsrfToken(request),
+  ]);
+
+  // If the playlistId is unknown/foreign, redirect to default.
+  if (!currentPlaylist || currentPlaylist.lobbyId !== lobbyId) {
+    const defaultPlaylist = await ensureDefaultPlaylistExists(lobbyId);
+    throw redirect(`${url.pathname}?playlistId=${defaultPlaylist.id}`);
+  }
+
+  const playlist = currentPlaylist.tracks.map((track) => ({
     id: track.id,
     title: track.title,
     artist: track.artist,
@@ -65,16 +102,47 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const lobbySettings = (lobby?.settings as Record<string, unknown>) || {};
   const autoplayTrackId = (lobbySettings.autoplayTrackId as string) || null;
 
-  return { playlist, autoplayTrackId, lobbyName: lobby.name };
+  return {
+    playlist,
+    autoplayTrackId,
+    lobbyName: lobby.name,
+    lobbyId,
+    playlists: playlists.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isDefault: p.isDefault,
+      position: p.position,
+      trackCount: p.tracks.length,
+    })),
+    currentPlaylist: {
+      id: currentPlaylist.id,
+      name: currentPlaylist.name,
+      isDefault: currentPlaylist.isDefault,
+      position: currentPlaylist.position,
+    },
+    csrfToken,
+  };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
   const { getSession, isAdmin } = await import("@secretlobby/auth");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { getLobbyById } = await import("~/models/queries/lobby.server");
   const { getMediaByIds, getMediaByIdAndAccountId } = await import("~/models/queries/media.server");
   const { getLastTrackByLobbyId, getTrackIdsByLobbyId } = await import("~/models/queries/track.server");
   const { createTrack, updateTrack, deleteTrack, reorderTracks, swapTrackPositions } = await import("~/models/mutations/track.server");
   const { mergeLobbySettings } = await import("~/models/mutations/lobby.server");
+  const {
+    createPlaylist,
+    updatePlaylist,
+    deletePlaylist,
+    setDefaultPlaylist,
+    ensureDefaultPlaylistExists,
+  } = await import("~/models/mutations/playlist.server");
+  const { getPlaylistById } = await import("~/models/queries/playlist.server");
+
+  // CSRF validation up front — reject before we touch any state.
+  await csrfProtect(request);
 
   const { session } = await getSession(request);
   if (!isAdmin(session)) {
@@ -99,9 +167,24 @@ export async function action({ request, params }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = formData.get("intent");
 
+  // Helper to validate that a playlistId belongs to this lobby before mutating.
+  const ensurePlaylistInLobby = async (playlistId: string) => {
+    const pl = await getPlaylistById(playlistId);
+    if (!pl || pl.lobbyId !== lobbyId) {
+      return null;
+    }
+    return pl;
+  };
+
   try {
     switch (intent) {
       case "add-tracks": {
+        const playlistId = formData.get("playlistId") as string;
+        const playlist = playlistId
+          ? await ensurePlaylistInLobby(playlistId)
+          : await ensureDefaultPlaylistExists(lobbyId);
+        if (!playlist) return { error: "Playlist not found" };
+
         const mediaIds = (formData.get("mediaIds") as string || "").split(",").filter(Boolean);
         if (mediaIds.length === 0) {
           return { error: "No tracks selected" };
@@ -120,6 +203,7 @@ export async function action({ request, params }: Route.ActionArgs) {
           const title = media.filename.replace(/\.[^/.]+$/, "");
           await createTrack({
             lobbyId,
+            playlistId: playlist.id,
             title,
             artist: null,
             filename: media.key,
@@ -191,6 +275,47 @@ export async function action({ request, params }: Route.ActionArgs) {
         await updateTrack(id, { mediaId: media.id, filename: media.key });
         return { success: "Track file updated" };
       }
+
+      case "create_playlist": {
+        const name = (formData.get("name") as string)?.trim();
+        if (!name) {
+          return { error: "Playlist name is required" };
+        }
+        const created = await createPlaylist({ lobbyId, name });
+        return { success: "Playlist created", createdPlaylistId: created.id };
+      }
+
+      case "rename_playlist": {
+        const playlistId = formData.get("playlistId") as string;
+        const name = (formData.get("name") as string)?.trim();
+        const playlist = await ensurePlaylistInLobby(playlistId);
+        if (!playlist) return { error: "Playlist not found" };
+        if (!name) return { error: "Playlist name is required" };
+        await updatePlaylist(playlistId, { name });
+        return { success: "Playlist renamed" };
+      }
+
+      case "delete_playlist": {
+        const playlistId = formData.get("playlistId") as string;
+        const playlist = await ensurePlaylistInLobby(playlistId);
+        if (!playlist) return { error: "Playlist not found" };
+        try {
+          await deletePlaylist(playlistId);
+          return { success: "Playlist deleted", deletedPlaylistId: playlistId };
+        } catch (err) {
+          return {
+            error: err instanceof Error ? err.message : "Could not delete playlist",
+          };
+        }
+      }
+
+      case "set_default_playlist": {
+        const playlistId = formData.get("playlistId") as string;
+        const playlist = await ensurePlaylistInLobby(playlistId);
+        if (!playlist) return { error: "Playlist not found" };
+        await setDefaultPlaylist(lobbyId, playlistId);
+        return { success: "Default playlist updated" };
+      }
     }
   } catch {
     return { error: "Operation failed" };
@@ -208,6 +333,14 @@ type PlaylistTrack = {
   hlsReady: boolean;
   position: number;
   mediaId: string | null;
+};
+
+type PlaylistChip = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  position: number;
+  trackCount: number;
 };
 
 function formatDuration(seconds: number | null): string {
@@ -228,6 +361,7 @@ function SortableTrackRow({
   isSubmitting,
   changingFileTrackId,
   isAutoplay,
+  csrfToken,
   onStartEditing,
   onCancelEditing,
   onEditTitleChange,
@@ -247,6 +381,7 @@ function SortableTrackRow({
   isSubmitting: boolean;
   changingFileTrackId: string | null;
   isAutoplay: boolean;
+  csrfToken: string;
   onStartEditing: (track: PlaylistTrack) => void;
   onCancelEditing: () => void;
   onEditTitleChange: (v: string) => void;
@@ -289,6 +424,7 @@ function SortableTrackRow({
         </div>
       ) : editingTrackId === track.id ? (
         <Form method="post" className="space-y-3" onSubmit={() => onCancelEditing()}>
+          <input type="hidden" name="_csrf" value={csrfToken} />
           <input type="hidden" name="intent" value="edit-track" />
           <input type="hidden" name="id" value={track.id} />
           <div className="flex items-center gap-3">
@@ -370,6 +506,7 @@ function SortableTrackRow({
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
             </button>
             <Form method="post">
+              <input type="hidden" name="_csrf" value={csrfToken} />
               <input type="hidden" name="intent" value="remove-track" />
               <input type="hidden" name="id" value={track.id} />
               <button type="submit" className="p-2 hover:bg-red-600/20 rounded-lg transition text-red-400 cursor-pointer" title="Remove track">
@@ -383,12 +520,229 @@ function SortableTrackRow({
   );
 }
 
+interface PlaylistChipsProps {
+  playlists: PlaylistChip[];
+  currentPlaylistId: string;
+  lobbyId: string;
+  csrfToken: string;
+}
+
+function PlaylistChips({ playlists, currentPlaylistId, lobbyId, csrfToken }: PlaylistChipsProps) {
+  const submit = useSubmit();
+  const [isCreating, setIsCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const handleCreate = useCallback(() => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    submit({ _csrf: csrfToken, intent: "create_playlist", name: trimmed }, { method: "post" });
+    setIsCreating(false);
+    setNewName("");
+  }, [newName, submit, csrfToken]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      {playlists.map((p) => {
+        const active = p.id === currentPlaylistId;
+        return (
+          <Link
+            key={p.id}
+            to={`/lobby/${lobbyId}/playlist?playlistId=${p.id}`}
+            className={cn(
+              "px-3 py-1.5 rounded-full text-sm border transition-colors cursor-pointer",
+              active
+                ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                : "border-theme text-theme-secondary hover:bg-theme-tertiary"
+            )}
+          >
+            <span>{p.name}</span>
+            {p.isDefault && (
+              <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">Default</span>
+            )}
+            <span className="ml-2 text-xs opacity-70">{p.trackCount}</span>
+          </Link>
+        );
+      })}
+      {isCreating ? (
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Playlist name"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleCreate();
+              } else if (e.key === "Escape") {
+                setIsCreating(false);
+                setNewName("");
+              }
+            }}
+            className="px-3 py-1.5 text-sm rounded-full border border-theme bg-theme-secondary text-theme-primary"
+          />
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="px-3 py-1.5 text-sm btn-primary rounded-full cursor-pointer"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsCreating(false);
+              setNewName("");
+            }}
+            className="px-3 py-1.5 text-sm rounded-full border border-theme text-theme-secondary cursor-pointer"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsCreating(true)}
+          className="px-3 py-1.5 rounded-full text-sm border border-dashed border-theme text-theme-secondary hover:bg-theme-tertiary transition-colors cursor-pointer"
+        >
+          + New playlist
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface CurrentPlaylistHeaderProps {
+  current: { id: string; name: string; isDefault: boolean };
+  csrfToken: string;
+}
+
+function CurrentPlaylistHeader({ current, csrfToken }: CurrentPlaylistHeaderProps) {
+  const submit = useSubmit();
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(current.name);
+
+  useEffect(() => {
+    setDraftName(current.name);
+  }, [current.name, current.id]);
+
+  const handleSaveName = useCallback(() => {
+    const trimmed = draftName.trim();
+    if (!trimmed || trimmed === current.name) {
+      setEditingName(false);
+      return;
+    }
+    submit(
+      {
+        _csrf: csrfToken,
+        intent: "rename_playlist",
+        playlistId: current.id,
+        name: trimmed,
+      },
+      { method: "post" }
+    );
+    setEditingName(false);
+  }, [draftName, current.id, current.name, submit, csrfToken]);
+
+  const handleSetDefault = useCallback(() => {
+    if (current.isDefault) return;
+    submit(
+      {
+        _csrf: csrfToken,
+        intent: "set_default_playlist",
+        playlistId: current.id,
+      },
+      { method: "post" }
+    );
+  }, [current.id, current.isDefault, submit, csrfToken]);
+
+  const handleDelete = useCallback(() => {
+    if (current.isDefault) return;
+    if (!confirm(`Delete playlist "${current.name}"? Tracks will be detached but kept.`)) return;
+    submit(
+      {
+        _csrf: csrfToken,
+        intent: "delete_playlist",
+        playlistId: current.id,
+      },
+      { method: "post" }
+    );
+  }, [current.id, current.isDefault, current.name, submit, csrfToken]);
+
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {editingName ? (
+          <input
+            type="text"
+            value={draftName}
+            autoFocus
+            onChange={(e) => setDraftName(e.target.value)}
+            onBlur={handleSaveName}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSaveName();
+              } else if (e.key === "Escape") {
+                setEditingName(false);
+                setDraftName(current.name);
+              }
+            }}
+            className="text-lg font-semibold bg-theme-tertiary rounded px-2 py-1 border border-theme min-w-0 max-w-full"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingName(true)}
+            className="text-lg font-semibold hover:underline cursor-pointer"
+          >
+            {current.name}
+          </button>
+        )}
+        {current.isDefault && (
+          <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+            Default
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {!current.isDefault && (
+          <button
+            type="button"
+            onClick={handleSetDefault}
+            className="px-3 py-1.5 text-xs rounded border border-theme text-theme-secondary hover:bg-theme-tertiary cursor-pointer"
+          >
+            Set as default
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={current.isDefault}
+          onClick={handleDelete}
+          className={cn(
+            "px-3 py-1.5 text-xs rounded border cursor-pointer",
+            current.isDefault
+              ? "border-theme text-theme-muted opacity-50 pointer-events-none"
+              : "border-red-500/40 text-red-400 hover:bg-red-500/10"
+          )}
+          title={current.isDefault ? "Cannot delete the default playlist" : "Delete playlist"}
+        >
+          Delete playlist
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function LobbyPlaylistPage() {
-  const { playlist, autoplayTrackId } = useLoaderData<typeof loader>();
+  const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const submit = useSubmit();
+
+  const { playlist, autoplayTrackId, playlists, currentPlaylist, lobbyId, csrfToken } = data;
 
   const [localPlaylist, setLocalPlaylist] = useState<PlaylistTrack[]>(playlist);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -417,11 +771,12 @@ export default function LobbyPlaylistPage() {
       lastActionRef.current = null;
       return;
     }
-    const isNewResult = actionData.success !== lastActionRef.current?.success || actionData.error !== lastActionRef.current?.error;
+    const ad = actionData as { success?: string; error?: string };
+    const isNewResult = ad.success !== lastActionRef.current?.success || ad.error !== lastActionRef.current?.error;
     if (isNewResult) {
-      if (actionData.success) toast.success(actionData.success);
-      if (actionData.error) toast.error(actionData.error);
-      lastActionRef.current = { success: actionData.success, error: actionData.error };
+      if (ad.success) toast.success(ad.success);
+      if (ad.error) toast.error(ad.error);
+      lastActionRef.current = { success: ad.success, error: ad.error };
     }
   }, [actionData]);
 
@@ -438,39 +793,53 @@ export default function LobbyPlaylistPage() {
     if (oldIndex === -1 || newIndex === -1) return;
     const reordered = arrayMove(localPlaylist, oldIndex, newIndex);
     setLocalPlaylist(reordered);
-    submit({ intent: "reorder-tracks", order: JSON.stringify(reordered.map((t) => t.id)) }, { method: "post" });
-  }, [submit, localPlaylist]);
+    submit(
+      { _csrf: csrfToken, intent: "reorder-tracks", order: JSON.stringify(reordered.map((t) => t.id)) },
+      { method: "post" }
+    );
+  }, [submit, localPlaylist, csrfToken]);
 
   const handleMoveUp = useCallback((id: string) => {
     const idx = localPlaylist.findIndex((t) => t.id === id);
     if (idx <= 0) return;
     const reordered = arrayMove(localPlaylist, idx, idx - 1);
     setLocalPlaylist(reordered);
-    submit({ intent: "move-track-up", id }, { method: "post" });
-  }, [submit, localPlaylist]);
+    submit({ _csrf: csrfToken, intent: "move-track-up", id }, { method: "post" });
+  }, [submit, localPlaylist, csrfToken]);
 
   const handleMoveDown = useCallback((id: string) => {
     const idx = localPlaylist.findIndex((t) => t.id === id);
     if (idx < 0 || idx >= localPlaylist.length - 1) return;
     const reordered = arrayMove(localPlaylist, idx, idx + 1);
     setLocalPlaylist(reordered);
-    submit({ intent: "move-track-down", id }, { method: "post" });
-  }, [submit, localPlaylist]);
+    submit({ _csrf: csrfToken, intent: "move-track-down", id }, { method: "post" });
+  }, [submit, localPlaylist, csrfToken]);
 
   const handleAddTracks = useCallback((mediaItems: MediaItem[]) => {
     const ids = mediaItems.map((m) => m.id);
     if (ids.length === 0) return;
     setPendingTrackNames(mediaItems.map((m) => m.filename.replace(/\.[^/.]+$/, "")));
-    submit({ intent: "add-tracks", mediaIds: ids.join(",") }, { method: "post" });
-  }, [submit]);
+    submit(
+      {
+        _csrf: csrfToken,
+        intent: "add-tracks",
+        mediaIds: ids.join(","),
+        playlistId: currentPlaylist?.id ?? "",
+      },
+      { method: "post" }
+    );
+  }, [submit, csrfToken, currentPlaylist]);
 
   const handleChangeFile = useCallback((trackId: string, media: MediaItem) => {
-    submit({ intent: "change-track-file", id: trackId, mediaId: media.id }, { method: "post" });
-  }, [submit]);
+    submit(
+      { _csrf: csrfToken, intent: "change-track-file", id: trackId, mediaId: media.id },
+      { method: "post" }
+    );
+  }, [submit, csrfToken]);
 
   const handleSetAutoplay = useCallback((trackId: string | null) => {
-    submit({ intent: "set-autoplay-track", trackId: trackId || "" }, { method: "post" });
-  }, [submit]);
+    submit({ _csrf: csrfToken, intent: "set-autoplay-track", trackId: trackId || "" }, { method: "post" });
+  }, [submit, csrfToken]);
 
   const startEditing = useCallback((track: PlaylistTrack) => {
     setEditingTrackId(track.id);
@@ -486,11 +855,29 @@ export default function LobbyPlaylistPage() {
 
   const trackIds = useMemo(() => localPlaylist.map((t) => t.id), [localPlaylist]);
 
+  if (!currentPlaylist) {
+    return (
+      <div className="space-y-8">
+        <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
+          <p className="text-theme-secondary">Loading playlist...</p>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold">Playlist</h2>
+        <PlaylistChips
+          playlists={playlists}
+          currentPlaylistId={currentPlaylist.id}
+          lobbyId={lobbyId}
+          csrfToken={csrfToken}
+        />
+
+        <CurrentPlaylistHeader current={currentPlaylist} csrfToken={csrfToken} />
+
+        <div className="flex justify-end mb-4">
           {isAddingTracks ? (
             <span className="px-4 py-2 btn-primary rounded-lg text-sm opacity-70 inline-flex items-center gap-2">
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -525,6 +912,7 @@ export default function LobbyPlaylistPage() {
                     isSubmitting={isSubmitting}
                     changingFileTrackId={changingFileTrackId ?? null}
                     isAutoplay={track.id === autoplayTrackId}
+                    csrfToken={csrfToken}
                     onStartEditing={startEditing}
                     onCancelEditing={cancelEditing}
                     onEditTitleChange={setEditTitle}

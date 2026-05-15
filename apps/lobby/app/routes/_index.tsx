@@ -4,15 +4,25 @@ import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
 import { getSession, createSessionResponse, authenticateForLobby, isAuthenticatedForLobby } from "@secretlobby/auth";
-import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/content.server";
+import {
+  getSiteContent,
+  getSitePassword,
+  getSwatchesByAccountId,
+  type AccountSwatch,
+  type Track as FileTrack,
+} from "~/lib/content.server";
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
-import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
+import {
+  PlayerView,
+  PreviewBar,
+  useHlsAudio,
+  useTrackPrefetcher,
+  type Track,
+  type ImageUrls,
+  type SocialLinksSettings,
+} from "@secretlobby/player-view";
 import { ResponsiveImage } from "@secretlobby/ui";
-import type { SocialLinksSettings } from "~/components/SocialLinks";
-import { PreviewBar } from "~/components/PreviewBar";
-import { useHlsAudio } from "~/hooks/useHlsAudio";
-import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
 
 /**
  * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
@@ -60,11 +70,114 @@ const defaultLoginPageSettings: LoginPageSettings = {
   buttonLabel: "Enter Lobby",
 };
 
+interface GradientStop {
+  id: string;
+  position: number;
+  color: string;
+  opacity: number;
+}
+type SwatchRef = { type: "swatch-ref"; swatchId: string };
+type ImageBackground = {
+  type: "image";
+  mediaId: string;
+  mediaUrl: string;
+  size: "cover" | "contain" | "auto";
+  position: string;
+  repeat: "no-repeat" | "repeat" | "repeat-x" | "repeat-y";
+  overlay?: { color: string; opacity: number };
+};
+// Mirror of @secretlobby/theme.ThemeBackground — layered shape with a
+// required color base and an optional image overlay.
+type ThemeBackgroundColor =
+  | { type: "solid"; color: string; opacity: number }
+  | { type: "gradient"; gradient: { kind: "linear"; angle: number; stops: GradientStop[] } }
+  | SwatchRef;
+type ThemeBackground = {
+  color: ThemeBackgroundColor;
+  image?: ImageBackground;
+};
+
+const SWATCH_REF_FALLBACK_HEX = "#888888";
+
+function resolveBgSwatchRef(
+  ref: SwatchRef,
+  swatches: AccountSwatch[] | undefined
+):
+  | { type: "solid"; color: string; opacity: number }
+  | { type: "gradient"; gradient: { kind: "linear"; angle: number; stops: GradientStop[] } }
+  | null {
+  if (!swatches) return null;
+  const found = swatches.find((s) => s.id === ref.swatchId);
+  return found ? (found.value as
+    | { type: "solid"; color: string; opacity: number }
+    | { type: "gradient"; gradient: { kind: "linear"; angle: number; stops: GradientStop[] } }
+  ) : null;
+}
+
+// Narrowed text-color value mirrored from @secretlobby/theme.TextColorValue —
+// kept inline so this file stays free of the package's structural ThemeSwatch
+// dependency. The shape mirrors ThemeBackground minus the image branch.
+type TextColorValue =
+  | { type: "solid"; color: string; opacity: number }
+  | {
+      type: "gradient";
+      gradient: {
+        kind: "linear";
+        angle: number;
+        stops: GradientStop[];
+      };
+      fallback: string;
+    }
+  | SwatchRef;
+
+// Border radius — mirror of @secretlobby/theme.BorderRadius. Number = uniform;
+// object = per-corner {tl,tr,br,bl}. Kept inline to preserve this file's
+// no-cross-package-deps boundary.
+interface RadiusCorners {
+  tl: number;
+  tr: number;
+  br: number;
+  bl: number;
+}
+type BorderRadius = number | RadiusCorners;
+
+function borderRadiusToCSS(
+  r: BorderRadius | undefined | null,
+  fallback = 0
+): string {
+  if (r === undefined || r === null) return `${fallback}px`;
+  if (typeof r === "number") return `${r}px`;
+  return `${r.tl}px ${r.tr}px ${r.br}px ${r.bl}px`;
+}
+
+function normalizeBorderRadius(raw: unknown): BorderRadius {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    if (
+      typeof r.tl === "number" &&
+      typeof r.tr === "number" &&
+      typeof r.br === "number" &&
+      typeof r.bl === "number"
+    ) {
+      return { tl: r.tl, tr: r.tr, br: r.br, bl: r.bl };
+    }
+  }
+  return 0;
+}
+
 interface ThemeSettings {
-  bgPrimary: string;
-  bgSecondary: string;
-  bgTertiary: string;
+  background?: ThemeBackground;
+  /** @deprecated legacy */
+  bgPrimary?: string;
+  /** @deprecated legacy */
+  bgSecondary?: string;
+  /** @deprecated legacy */
+  bgTertiary?: string;
   textPrimary: string;
+  /** Rich text color — takes precedence over `textPrimary` when set. Enables
+   *  gradient text via background-clip:text in supporting browsers. */
+  textPrimaryColor?: TextColorValue;
   textSecondary: string;
   textMuted: string;
   border: string;
@@ -83,11 +196,15 @@ interface ThemeSettings {
   visualizerUseCardBg: boolean;
   visualizerBorderShow: boolean;
   visualizerBorderColor: string;
-  visualizerBorderRadius: number;
+  visualizerBorderRadius: BorderRadius;
   visualizerBlendMode: string;
   visualizerType: "equalizer" | "waveform";
   cardHeadingColor: string;
+  /** Rich heading color — see `textPrimaryColor`. */
+  cardHeadingColorRich?: TextColorValue;
   cardContentColor: string;
+  /** Rich content color — see `textPrimaryColor`. */
+  cardContentColorRich?: TextColorValue;
   cardMutedColor: string;
   cardBgType: "solid" | "gradient";
   cardBgColor: string;
@@ -103,15 +220,35 @@ interface ThemeSettings {
   cardBorderGradientAngle: number;
   cardBorderOpacity: number;
   cardBorderWidth: string;
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
+  cardBorderRadius: BorderRadius;
+  /** Optional composed `backdrop-filter` for the card surface — see
+   *  @secretlobby/theme.BackdropFilter. Stored as a structured array of
+   *  filter functions, not a raw CSS string. */
+  cardBackdropFilter?: unknown[];
+  buttonBorderRadius: BorderRadius;
+  playButtonBorderRadius: BorderRadius;
+  // Optional button styling — kept optional so legacy persisted theme JSON
+  // (saved before this existed) still type-checks. Buttons are color-only
+  // (no image overlay) — `ThemeBackgroundColor` is the tightest type.
+  buttonBg?: ThemeBackgroundColor;
+  buttonText?: string;
+  buttonTextRich?: TextColorValue;
+  buttonBorderShow?: boolean;
+  buttonBorderColor?: string;
+  buttonBorderWidth?: string;
+  buttonHoverBg?: ThemeBackgroundColor;
+  buttonHoverText?: string;
+  buttonHoverTextRich?: TextColorValue;
+  buttonPressedBg?: ThemeBackgroundColor;
+  buttonPressedText?: string;
+  buttonPressedTextRich?: TextColorValue;
+  buttonActiveBg?: ThemeBackgroundColor;
+  buttonActiveText?: string;
+  buttonActiveTextRich?: TextColorValue;
 }
 
 const defaultTheme: ThemeSettings = {
-  bgPrimary: "#030712",
-  bgSecondary: "#111827",
-  bgTertiary: "#1f2937",
+  background: { color: { type: "solid", color: "#030712", opacity: 100 } },
   textPrimary: "#ffffff",
   textSecondary: "#9ca3af",
   textMuted: "#6b7280",
@@ -164,21 +301,116 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(0, 0, 0, ${alpha})`;
 }
 
-function getCardBgCSS(theme: ThemeSettings): string {
+// Coerce a possibly-legacy theme JSON into the new layered ThemeBackground.
+// Handles four legacy single-variant shapes (solid/gradient/swatch-ref/image)
+// plus the new layered `{ color, image? }` shape. A legacy single-variant
+// image is paired with a synthesized default solid black color underneath so
+// the image now overlays on a neutral base (the user can change later).
+function resolveBackground(theme: ThemeSettings): ThemeBackground {
+  const bg = theme.background as unknown;
+  if (bg && typeof bg === "object") {
+    const b = bg as Record<string, unknown>;
+    if ("type" in b) {
+      // Legacy single-variant shapes.
+      if (b.type === "image") {
+        return {
+          color: { type: "solid", color: "#000000", opacity: 100 },
+          image: b as unknown as ImageBackground,
+        };
+      }
+      return { color: b as unknown as ThemeBackgroundColor };
+    }
+    if ("color" in b) {
+      // Already-layered shape.
+      return b as unknown as ThemeBackground;
+    }
+  }
+  if (theme.bgPrimary) {
+    return {
+      color: { type: "solid", color: theme.bgPrimary, opacity: 100 },
+    };
+  }
+  return { color: { type: "solid", color: "#030712", opacity: 100 } };
+}
+
+function colorPartToCSS(
+  color: ThemeBackgroundColor,
+  swatches?: AccountSwatch[]
+): string {
+  if (color.type === "swatch-ref") {
+    const resolved = resolveBgSwatchRef(color, swatches);
+    if (!resolved) return SWATCH_REF_FALLBACK_HEX;
+    return colorPartToCSS(resolved, swatches);
+  }
+  if (color.type === "gradient") {
+    const stops = [...color.gradient.stops].sort((a, b) => a.position - b.position);
+    const parts = stops.map(
+      (s) => `${hexToRgba(s.color, (s.opacity ?? 100) / 100)} ${s.position}%`
+    );
+    return `linear-gradient(${color.gradient.angle}deg, ${parts.join(", ")})`;
+  }
+  const opacity = color.opacity ?? 100;
+  return opacity >= 100 ? color.color : hexToRgba(color.color, opacity / 100);
+}
+
+/**
+ * Render a layered ThemeBackground (`{ color, image? }`) as a CSS string.
+ * Stack order: overlay (top) > image > color (bottom). The trailing color
+ * layer acts as `background-color` and shows through transparency.
+ */
+function backgroundToCSS(
+  bg: ThemeBackground,
+  swatches?: AccountSwatch[]
+): string {
+  const colorCSS = colorPartToCSS(bg.color, swatches);
+  if (!bg.image) return colorCSS;
+  const imgUrl = `url(${JSON.stringify(bg.image.mediaUrl)})`;
+  const overlay = bg.image.overlay && bg.image.overlay.opacity > 0
+    ? (() => {
+        const rgba = hexToRgba(bg.image.overlay.color, bg.image.overlay.opacity / 100);
+        return `linear-gradient(${rgba}, ${rgba})`;
+      })()
+    : null;
+  const layers = [overlay, imgUrl].filter(Boolean).join(", ");
+  return `${layers}, ${colorCSS}`;
+}
+
+function colorPartFirstColor(
+  color: ThemeBackgroundColor,
+  swatches?: AccountSwatch[]
+): string {
+  if (color.type === "swatch-ref") {
+    const resolved = resolveBgSwatchRef(color, swatches);
+    if (!resolved) return SWATCH_REF_FALLBACK_HEX;
+    return colorPartFirstColor(resolved, swatches);
+  }
+  return color.type === "solid" ? color.color : color.gradient.stops[0]?.color ?? "#000000";
+}
+
+function getCardBgCSS(
+  theme: ThemeSettings,
+  swatches?: AccountSwatch[]
+): string {
   const opacity = (theme.cardBgOpacity ?? 50) / 100;
   if (theme.cardBgType === "gradient") {
     const from = hexToRgba(theme.cardBgGradientFrom, opacity);
     const to = hexToRgba(theme.cardBgGradientTo, opacity);
     return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
   }
-  return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
+  const fallback =
+    theme.bgSecondary ??
+    colorPartFirstColor(resolveBackground(theme).color, swatches);
+  return hexToRgba(theme.cardBgColor || fallback, opacity);
 }
 
-function getBodyBgCSS(theme: ThemeSettings): string {
+function getBodyBgCSS(
+  theme: ThemeSettings,
+  swatches?: AccountSwatch[]
+): string {
   if (theme.cardBgType === "gradient") {
     return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${theme.cardBgGradientFrom}, ${theme.cardBgGradientTo})`;
   }
-  return theme.bgPrimary;
+  return backgroundToCSS(resolveBackground(theme), swatches);
 }
 
 interface CardStyles {
@@ -194,12 +426,12 @@ interface CardStyles {
   visualizerUseCardBg: boolean;
   visualizerBorderShow: boolean;
   visualizerBorderColor: string;
-  visualizerBorderRadius: number;
+  visualizerBorderRadius: BorderRadius;
   visualizerBlendMode: string;
   visualizerType: "equalizer" | "waveform";
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
+  cardBorderRadius: BorderRadius;
+  buttonBorderRadius: BorderRadius;
+  playButtonBorderRadius: BorderRadius;
 }
 
 function normalizeCSSValue(value: string | undefined, fallback: string): string {
@@ -210,8 +442,11 @@ function normalizeCSSValue(value: string | undefined, fallback: string): string 
   return str;
 }
 
-function computeCardStyles(theme: ThemeSettings): CardStyles {
-  const bg = getCardBgCSS(theme);
+function computeCardStyles(
+  theme: ThemeSettings,
+  swatches?: AccountSwatch[]
+): CardStyles {
+  const bg = getCardBgCSS(theme, swatches);
   const borderWidth = normalizeCSSValue(theme.cardBorderWidth, "1px");
   const opacity = (theme.cardBorderOpacity ?? 100) / 100;
 
@@ -244,21 +479,152 @@ function computeCardStyles(theme: ThemeSettings): CardStyles {
     visualizerUseCardBg: theme.visualizerUseCardBg ?? false,
     visualizerBorderShow: theme.visualizerBorderShow ?? false,
     visualizerBorderColor: theme.visualizerBorderColor || theme.border,
-    visualizerBorderRadius: theme.visualizerBorderRadius ?? 8,
+    visualizerBorderRadius: normalizeBorderRadius(theme.visualizerBorderRadius ?? 8),
     visualizerBlendMode: theme.visualizerBlendMode || "normal",
     visualizerType: theme.visualizerType || "equalizer",
-    cardBorderRadius: theme.cardBorderRadius ?? 12,
-    buttonBorderRadius: theme.buttonBorderRadius ?? 24,
-    playButtonBorderRadius: theme.playButtonBorderRadius ?? 50,
+    cardBorderRadius: normalizeBorderRadius(theme.cardBorderRadius ?? 12),
+    buttonBorderRadius: normalizeBorderRadius(theme.buttonBorderRadius ?? 24),
+    playButtonBorderRadius: normalizeBorderRadius(theme.playButtonBorderRadius ?? 50),
   };
 }
 
-function generateThemeCSSVars(theme: ThemeSettings): Record<string, string> {
+// Small darken helper for button state derivation. Returns hex unchanged when
+// the input isn't parseable as a 6-char hex (gradients darken every stop).
+function darkenHexBtn(hex: string, amount: number): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!result) return hex;
+  const r = parseInt(result[1], 16) * (1 - amount);
+  const g = parseInt(result[2], 16) * (1 - amount);
+  const b = parseInt(result[3], 16) * (1 - amount);
+  const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+
+function darkenColorPartBtn(
+  color: ThemeBackgroundColor,
+  amount: number,
+  swatches?: AccountSwatch[]
+): ThemeBackgroundColor {
+  if (color.type === "swatch-ref") {
+    const resolved = resolveBgSwatchRef(color, swatches);
+    if (!resolved) {
+      return { type: "solid", color: darkenHexBtn(SWATCH_REF_FALLBACK_HEX, amount), opacity: 100 };
+    }
+    return darkenColorPartBtn(resolved, amount, swatches);
+  }
+  if (color.type === "solid") return { ...color, color: darkenHexBtn(color.color, amount) };
+  const stops = color.gradient.stops.map((s) => ({ ...s, color: darkenHexBtn(s.color, amount) }));
+  return { type: "gradient", gradient: { kind: "linear", angle: color.gradient.angle, stops } };
+}
+
+// Resolve a TextColorValue into the pair of CSS values that the lobby's
+// `.gradient-text` utility (see app.css) consumes. Mirrors
+// @secretlobby/theme.textColorToCSSDeclarations but kept inline so this file
+// doesn't add another package dependency. Returns:
+//   - color: the `color` declaration. "transparent" for gradients.
+//   - image: the `background-image` declaration. "none" for solids/unset.
+function richTextCSSVars(
+  rich: TextColorValue | undefined,
+  legacy: string,
+  swatches?: AccountSwatch[]
+): { color: string; image: string } {
+  if (!rich) return { color: legacy, image: "none" };
+  if (rich.type === "swatch-ref") {
+    const resolved = resolveBgSwatchRef(rich, swatches);
+    if (!resolved) return { color: SWATCH_REF_FALLBACK_HEX, image: "none" };
+    // Swatches store solid|gradient; reuse this fn recursively by wrapping
+    // the resolved value as a TextColorValue.
+    return richTextCSSVars(resolved as TextColorValue, legacy, swatches);
+  }
+  if (rich.type === "solid") {
+    const opacity = rich.opacity ?? 100;
+    return {
+      color: opacity >= 100 ? rich.color : hexToRgba(rich.color, opacity / 100),
+      image: "none",
+    };
+  }
+  const stops = [...rich.gradient.stops].sort((a, b) => a.position - b.position);
+  const parts = stops.map(
+    (s) => `${hexToRgba(s.color, (s.opacity ?? 100) / 100)} ${s.position}%`
+  );
   return {
-    "--color-bg-primary": theme.bgPrimary,
-    "--color-bg-secondary": theme.bgSecondary,
-    "--color-bg-tertiary": theme.bgTertiary,
-    "--color-text-primary": theme.textPrimary,
+    color: "transparent",
+    image: `linear-gradient(${rich.gradient.angle}deg, ${parts.join(", ")})`,
+  };
+}
+
+function generateThemeCSSVars(
+  theme: ThemeSettings,
+  swatches?: AccountSwatch[]
+): Record<string, string> {
+  const resolvedBg = resolveBackground(theme);
+  const bgCSS = backgroundToCSS(resolvedBg, swatches);
+  // Image-bg layout vars (auto/center/no-repeat defaults for non-image bg).
+  const imageBgVars = resolvedBg.image ?? null;
+  const bgSize = imageBgVars?.size ?? "auto";
+  const bgPosition = imageBgVars?.position ?? "center";
+  const bgRepeat = imageBgVars?.repeat ?? "no-repeat";
+
+  // Button base + derived state vars. Mirrors @secretlobby/theme.generateThemeCSS
+  // so /lobby and the designer preview emit the same --btn-* vars.
+  const btnBg: ThemeBackgroundColor = theme.buttonBg ?? { type: "solid", color: "#ffffff", opacity: 100 };
+  const btnText = theme.buttonText ?? "#000000";
+  const btnBorderShow = theme.buttonBorderShow ?? false;
+  const btnBorderColor = theme.buttonBorderColor ?? theme.border;
+  const btnBorderWidth = theme.buttonBorderWidth ?? "1px";
+  const hoverBg: ThemeBackgroundColor = theme.buttonHoverBg ?? { type: "solid", color: btnText, opacity: 100 };
+  const hoverText = theme.buttonHoverText ?? colorPartFirstColor(btnBg, swatches);
+  const pressedBg: ThemeBackgroundColor = theme.buttonPressedBg ?? darkenColorPartBtn(hoverBg, 0.1, swatches);
+  const pressedText = theme.buttonPressedText ?? darkenHexBtn(hoverText, 0.1);
+  const activeBg: ThemeBackgroundColor = theme.buttonActiveBg ?? darkenColorPartBtn(hoverBg, 0.1, swatches);
+  const activeText = theme.buttonActiveText ?? darkenHexBtn(hoverText, 0.1);
+
+  // Rich text vars — pair each text color CSS var with a sibling `*-image`
+  // var that consumers use for the background-clip:text gradient trick.
+  // When the rich field is unset the image var is "none" and the color var
+  // stays the legacy hex, so old consumers and old themes render unchanged.
+  const textPrimaryCSS = richTextCSSVars(
+    theme.textPrimaryColor,
+    theme.textPrimary,
+    swatches
+  );
+  const btnTextCSS = richTextCSSVars(theme.buttonTextRich, btnText, swatches);
+  const btnHoverTextCSS = richTextCSSVars(
+    theme.buttonHoverTextRich,
+    hoverText,
+    swatches
+  );
+  const btnPressedTextCSS = richTextCSSVars(
+    theme.buttonPressedTextRich,
+    pressedText,
+    swatches
+  );
+  const btnActiveTextCSS = richTextCSSVars(
+    theme.buttonActiveTextRich,
+    activeText,
+    swatches
+  );
+  const cardHeadingCSS = richTextCSSVars(
+    theme.cardHeadingColorRich,
+    theme.cardHeadingColor,
+    swatches
+  );
+  const cardContentCSS = richTextCSSVars(
+    theme.cardContentColorRich,
+    theme.cardContentColor,
+    swatches
+  );
+
+  return {
+    "--color-bg": bgCSS,
+    "--color-bg-primary": "var(--color-bg)",
+    "--color-bg-secondary": "var(--color-bg)",
+    "--color-bg-tertiary": "var(--color-bg)",
+    "--bg-size": bgSize,
+    "--bg-position": bgPosition,
+    "--bg-repeat": bgRepeat,
+    "--color-text-primary": textPrimaryCSS.color,
+    "--color-text-primary-image": textPrimaryCSS.image,
     "--color-text-secondary": theme.textSecondary,
     "--color-text-muted": theme.textMuted,
     "--color-border": theme.border,
@@ -274,6 +640,28 @@ function generateThemeCSSVars(theme: ThemeSettings): Record<string, string> {
     "--color-visualizer-bar": theme.visualizerBar,
     "--color-visualizer-bar-alt": theme.visualizerBarAlt,
     "--color-visualizer-glow": theme.visualizerGlow,
+    // Card text — rich-aware mirrors of the legacy hex strings.
+    "--card-heading-color": cardHeadingCSS.color,
+    "--card-heading-color-image": cardHeadingCSS.image,
+    "--card-content-color": cardContentCSS.color,
+    "--card-content-color-image": cardContentCSS.image,
+    // Button base (color-only — no image overlay).
+    "--btn-bg": colorPartToCSS(btnBg, swatches),
+    "--btn-text": btnTextCSS.color,
+    "--btn-text-image": btnTextCSS.image,
+    "--btn-border-color": btnBorderColor,
+    "--btn-border-width": btnBorderWidth,
+    "--btn-border-show": btnBorderShow ? "1" : "0",
+    // Button states.
+    "--btn-hover-bg": colorPartToCSS(hoverBg, swatches),
+    "--btn-hover-text": btnHoverTextCSS.color,
+    "--btn-hover-text-image": btnHoverTextCSS.image,
+    "--btn-pressed-bg": colorPartToCSS(pressedBg, swatches),
+    "--btn-pressed-text": btnPressedTextCSS.color,
+    "--btn-pressed-text-image": btnPressedTextCSS.image,
+    "--btn-active-bg": colorPartToCSS(activeBg, swatches),
+    "--btn-active-text": btnActiveTextCSS.color,
+    "--btn-active-text-image": btnActiveTextCSS.image,
   };
 }
 
@@ -443,9 +831,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     loginLogoImageUrl = getPublicUrl(loginPageSettings.logoImage);
   }
 
-  const themeVars = generateThemeCSSVars(themeSettings);
-  const cardStyles = computeCardStyles(themeSettings);
-  const bodyBg = getBodyBgCSS(themeSettings);
+  // Resolve any swatch-ref entries in the persisted theme JSON. Swatches are
+  // per-account so we fetch the full list once and thread it into the CSS
+  // generators.
+  const accountSwatches = await getSwatchesByAccountId(account.id);
+
+  const themeVars = generateThemeCSSVars(themeSettings, accountSwatches);
+  const cardStyles = computeCardStyles(themeSettings, accountSwatches);
+  const bodyBg = getBodyBgCSS(themeSettings, accountSwatches);
 
   // Fetch lobby with media relations for image URL resolution
   const lobbyWithMedia = await prisma.lobby.findUnique({
@@ -748,7 +1141,12 @@ export default function LobbyIndex() {
   // Apply body background from theme settings
   useEffect(() => {
     const bg = data.bodyBg;
-    if (bg.startsWith("linear-gradient")) {
+    if (
+      bg.startsWith("linear-gradient") ||
+      bg.startsWith("radial-gradient") ||
+      bg.startsWith("conic-gradient") ||
+      bg.startsWith("url(")
+    ) {
       document.body.style.background = bg;
     } else {
       document.body.style.backgroundColor = bg;

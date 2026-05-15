@@ -123,9 +123,31 @@ model Account {
   paymentMethods PaymentMethod[]
   paymentHistory PaymentHistory[]
   feedback       Feedback[]
+  swatches       Swatch[]
   defaultLobbyId String? // Reference to the default lobby
 
   @@index([slug])
+}
+
+// ============================================================================
+// SWATCH (Saved color/gradient swatches per account — used by ColorPicker)
+// ============================================================================
+
+model Swatch {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // User-supplied label shown in the saved-swatches grid.
+  name  String
+  // "solid" or "gradient" — mirrors the ColorValue.type field in app code.
+  kind  String
+  // Full ColorValue payload (SolidValue | GradientValue).
+  value Json
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
 }
 
 // ============================================================================
@@ -281,6 +303,7 @@ model Lobby {
   // Relations
   account             Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
   tracks              Track[]
+  playlists           Playlist[]
   rateLimitViolations RateLimitViolation[] @relation("LobbyViolations")
   backgroundMedia     Media?               @relation("LobbyBackground", fields: [backgroundMediaId], references: [id], onDelete: SetNull)
   backgroundMediaDark Media?               @relation("LobbyBackgroundDark", fields: [backgroundMediaDarkId], references: [id], onDelete: SetNull)
@@ -295,12 +318,37 @@ model Lobby {
 }
 
 // ============================================================================
+// PLAYLIST (Named playlists scoped to a lobby; group tracks for player blocks)
+// ============================================================================
+
+model Playlist {
+  id        String   @id @default(cuid())
+  lobbyId   String
+  name      String
+  position  Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lobby  Lobby   @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  tracks Track[]
+
+  @@unique([lobbyId, name])
+  @@index([lobbyId, position])
+}
+
+// ============================================================================
 // TRACK (Audio tracks for a lobby)
 // ============================================================================
 
 model Track {
   id      String @id @default(cuid())
   lobbyId String
+
+  // Phase 6: tracks are owned by a playlist. Nullable initially so the
+  // backfill can run; future migration will tighten to NOT NULL once prod
+  // is verified to have zero null playlistId.
+  playlistId String?
 
   // Track info
   title    String
@@ -315,7 +363,8 @@ model Track {
   // Media reference (new)
   mediaId String?
 
-  // Ordering
+  // Ordering (within playlist; lobbyId kept as denormalized cache for
+  // legacy queries and convenience joins).
   position Int @default(0)
 
   // Timestamps
@@ -323,11 +372,14 @@ model Track {
   updatedAt DateTime @updatedAt
 
   // Relations
-  lobby Lobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
-  media Media? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  lobby    Lobby     @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  playlist Playlist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  media    Media?    @relation(fields: [mediaId], references: [id], onDelete: SetNull)
 
   @@index([lobbyId])
   @@index([lobbyId, position])
+  @@index([playlistId])
+  @@index([playlistId, position])
   @@index([mediaId])
 }
 

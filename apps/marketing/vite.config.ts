@@ -9,10 +9,7 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: [
       "secretlobby.local",
-      "www.secretlobby.local",
-      "console.secretlobby.local",
-      "admin.secretlobby.local",
-      ".secretlobby.local", // Allow all subdomains
+      "www.secretlobby.local"      
     ],
   },
 });
