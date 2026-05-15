@@ -106,7 +106,7 @@ export function SectionSettings({
     <div className="p-3 space-y-4">
           {/* Column Count */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">Columns</label>
+            <label className="block text-sm font-medium text-theme-primary mb-2">Columns</label>
             <div className="grid grid-cols-4 gap-2">
               {([1, 2, 3, 4] as const).map((num) => (
                 <button
@@ -116,7 +116,7 @@ export function SectionSettings({
                     "p-2 text-sm rounded-lg border transition-colors cursor-pointer",
                     columnCount === num
                       ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                      : "border-theme text-gray-300 hover:bg-theme-tertiary hover:text-white"
+                      : "border-theme text-theme-secondary hover:bg-theme-tertiary hover:text-theme-primary"
                   )}
                 >
                   {num}
@@ -128,13 +128,13 @@ export function SectionSettings({
           {/* Column Widths */}
           {columnCount > 1 && (
             <div>
-              <label className="block text-sm font-medium text-white mb-2">
+              <label className="block text-sm font-medium text-theme-primary mb-2">
                 Column Widths
-                {viewport === "tablet" && <span className="text-xs text-gray-400 ml-2">(Tablet)</span>}
-                {viewport === "mobile" && <span className="text-xs text-gray-400 ml-2">(Mobile)</span>}
+                {viewport === "tablet" && <span className="text-xs text-theme-secondary ml-2">(Tablet)</span>}
+                {viewport === "mobile" && <span className="text-xs text-theme-secondary ml-2">(Mobile)</span>}
               </label>
               {viewport === "mobile" && section.mobileLayout === "stack" ? (
-                <p className="text-sm text-gray-400">Columns are stacked at 100% width on mobile</p>
+                <p className="text-sm text-theme-secondary">Columns are stacked at 100% width on mobile</p>
               ) : (
                 <>
                   <div className="space-y-2">
@@ -146,7 +146,7 @@ export function SectionSettings({
 
                       return (
                         <div key={col.id} className="flex items-center gap-2">
-                          <span className="text-xs text-gray-400 w-12">Col {idx + 1}</span>
+                          <span className="text-xs text-theme-secondary w-12">Col {idx + 1}</span>
                           <input
                             type="text"
                             value={displayValue}
@@ -158,12 +158,12 @@ export function SectionSettings({
                               }
                             }}
                             placeholder="50%, 33.33%"
-                            className="flex-1 px-2 py-1 text-sm bg-theme-tertiary border border-theme rounded text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-red)]"
+                            className="flex-1 px-2 py-1 text-sm bg-theme-tertiary border border-theme rounded text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-red)]"
                           />
                           {viewport === "tablet" && col.tabletWidth && (
                             <button
                               onClick={() => onUpdateColumn(col.id, { tabletWidth: undefined })}
-                              className="text-xs text-gray-500 hover:text-red-400 cursor-pointer"
+                              className="text-xs text-theme-muted hover:text-red-400 cursor-pointer"
                               title="Reset to desktop width"
                             >
                               ✕
@@ -173,7 +173,7 @@ export function SectionSettings({
                       );
                     })}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-theme-secondary mt-1">
                     {viewport === "tablet" ? "Tablet overrides desktop widths" : "Desktop widths (base)"}
                   </p>
                 </>
@@ -183,33 +183,33 @@ export function SectionSettings({
 
           {/* Column Gap */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">Column Gap</label>
+            <label className="block text-sm font-medium text-theme-primary mb-2">Column Gap</label>
             <input
               type="text"
               value={section.columnGap}
               onChange={(e) => onUpdate({ columnGap: e.target.value })}
               placeholder="e.g., 16, 1rem, 10%"
-              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
+              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
             />
-            <p className="text-xs text-gray-400 mt-1">Numbers default to px</p>
+            <p className="text-xs text-theme-secondary mt-1">Numbers default to px</p>
           </div>
 
           {/* Row Gap */}
           <div>
-            <label className="block text-sm font-medium text-white mb-2">Row Gap</label>
+            <label className="block text-sm font-medium text-theme-primary mb-2">Row Gap</label>
             <input
               type="text"
               value={section.rowGap}
               onChange={(e) => onUpdate({ rowGap: e.target.value })}
               placeholder="e.g., 16, 1rem, 10%"
-              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
+              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
             />
-            <p className="text-xs text-gray-400 mt-1">Numbers default to px</p>
+            <p className="text-xs text-theme-secondary mt-1">Numbers default to px</p>
           </div>
 
           {/* Mobile Layout */}
           <div className="pt-2 border-t border-theme">
-            <label className="flex items-center gap-2 text-sm font-medium text-white mb-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-theme-primary mb-2">
               <MobileIcon /> Mobile Layout
             </label>
             <div className="space-y-2">
@@ -221,7 +221,7 @@ export function SectionSettings({
                   onChange={() => onUpdate({ mobileLayout: "stack" })}
                   className="accent-[var(--color-brand-red)]"
                 />
-                <span className="text-sm text-gray-300">Stack (1 column)</span>
+                <span className="text-sm text-theme-secondary">Stack (1 column)</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -231,11 +231,11 @@ export function SectionSettings({
                   onChange={() => onUpdate({ mobileLayout: "keep", mobileColumns: 2 })}
                   className="accent-[var(--color-brand-red)]"
                 />
-                <span className="text-sm text-gray-300">Keep columns</span>
+                <span className="text-sm text-theme-secondary">Keep columns</span>
               </label>
               {section.mobileLayout === "keep" && (
                 <div className="ml-6 flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Columns:</span>
+                  <span className="text-xs text-theme-secondary">Columns:</span>
                   <div className="flex gap-1">
                     {([1, 2] as const).map((num) => (
                       <button
@@ -245,7 +245,7 @@ export function SectionSettings({
                           "px-2 py-1 text-xs rounded border transition-colors cursor-pointer",
                           section.mobileColumns === num
                             ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                            : "border-theme text-gray-300 hover:bg-theme-tertiary"
+                            : "border-theme text-theme-secondary hover:bg-theme-tertiary"
                         )}
                       >
                         {num}
@@ -262,7 +262,7 @@ export function SectionSettings({
                   onChange={() => onUpdate({ mobileLayout: "slider" })}
                   className="accent-[var(--color-brand-red)]"
                 />
-                <span className="text-sm text-gray-300">Horizontal slider</span>
+                <span className="text-sm text-theme-secondary">Horizontal slider</span>
               </label>
             </div>
           </div>

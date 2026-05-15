@@ -7,43 +7,37 @@ interface ViewportSwitcherProps {
   onChange: (viewport: ViewportSize) => void;
 }
 
-// Three-up viewport toggle in the top bar. Mirrors the original inline pill
-// group — keeps title attributes for the size-in-px hint.
+// Three-up viewport toggle in the top bar. Visually mirrors ColorModeToggle
+// so the two controls read as a matched pair.
 export function ViewportSwitcher({ viewport, onChange }: ViewportSwitcherProps) {
+  const buttonBase =
+    "p-1 rounded-lg transition cursor-pointer [&_svg]:w-4 [&_svg]:h-4";
+  const idle =
+    "text-theme-secondary hover:text-theme-primary hover:bg-(--color-accent-muted)";
+  const active = "btn-primary";
+
   return (
-    <div className="flex items-center gap-1 bg-theme-tertiary rounded-lg p-1">
+    <div className="flex items-center bg-theme-secondary rounded-lg p-1.5 gap-1 border border-theme">
       <button
+        type="button"
         onClick={() => onChange("desktop")}
-        className={cn(
-          "p-2 rounded-md transition-colors cursor-pointer",
-          viewport === "desktop"
-            ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
-            : "text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary"
-        )}
+        className={cn(buttonBase, viewport === "desktop" ? active : idle)}
         title="Desktop (1440px)"
       >
         <DesktopIcon />
       </button>
       <button
+        type="button"
         onClick={() => onChange("tablet")}
-        className={cn(
-          "p-2 rounded-md transition-colors cursor-pointer",
-          viewport === "tablet"
-            ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
-            : "text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary"
-        )}
+        className={cn(buttonBase, viewport === "tablet" ? active : idle)}
         title="Tablet (768px)"
       >
         <TabletIcon />
       </button>
       <button
+        type="button"
         onClick={() => onChange("mobile")}
-        className={cn(
-          "p-2 rounded-md transition-colors cursor-pointer",
-          viewport === "mobile"
-            ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
-            : "text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary"
-        )}
+        className={cn(buttonBase, viewport === "mobile" ? active : idle)}
         title="Mobile (375px)"
       >
         <MobileIcon />

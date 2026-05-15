@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
-import { cn } from "@secretlobby/ui";
+import { cn, useColorMode } from "@secretlobby/ui";
 import {
-  defaultDarkTheme,
-  defaultLightTheme,
-  getDefaultThemeForMode,
-  type ColorMode,
   type TextColorValue,
   type ThemeBackgroundColor,
   type ThemeSettings,
@@ -96,6 +92,19 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
   const { state, dispatch } = usePageBuilder();
   const { theme, themeSaveStatus } = state;
   const { swatches, saveSwatch, updateSwatch, deleteSwatch } = useSwatches();
+  const { resolvedMode } = useColorMode();
+  // Force every theme-aware text utility inside this overlay to render in
+  // pure black under light mode (matches the SettingsOverlay rule). Specific
+  // color classes — e.g. the destructive red on the reset button — are
+  // unaffected because they don't read these variables.
+  const lightModeBlackTextStyle: React.CSSProperties | undefined =
+    resolvedMode === "light"
+      ? ({
+          "--color-text-primary": "#000",
+          "--color-text-secondary": "#000",
+          "--color-text-muted": "#000",
+        } as React.CSSProperties)
+      : undefined;
 
   const [entered, setEntered] = useState(false);
 
@@ -125,16 +134,6 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
     });
   };
 
-  const resetToDefaults = () => {
-    const next = getDefaultThemeForMode(theme.colorMode);
-    dispatch({ type: "resetTheme", theme: next });
-  };
-
-  const swapMode = (mode: ColorMode) => {
-    const seed = mode === "light" ? defaultLightTheme : defaultDarkTheme;
-    dispatch({ type: "resetTheme", theme: seed });
-  };
-
   return (
     <div
       className={cn(
@@ -143,6 +142,7 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
         "transition-transform duration-300 ease-out will-change-transform",
         entered ? "translate-x-0" : "translate-x-full"
       )}
+      style={lightModeBlackTextStyle}
       role="dialog"
       aria-label="Theme settings"
     >
@@ -159,56 +159,24 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
             <ChevronLeftIcon />
           </button>
           <div className="min-w-0 flex-1">
-            <div className="text-xs text-theme-muted">Page Builder</div>
             <div className="text-sm font-medium text-theme-primary truncate">
               Theme
             </div>
           </div>
+          <span className="text-xs text-theme-muted">
+            {themeSaveStatus === "saving"
+              ? "Saving…"
+              : themeSaveStatus === "error"
+                ? "Save failed"
+                : themeSaveStatus === "saved"
+                  ? "Saved"
+                  : ""}
+          </span>
         </div>
       </div>
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
-        <div className="px-3 py-3 border-b border-theme space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-theme-muted">
-              {themeSaveStatus === "saving"
-                ? "Saving theme…"
-                : themeSaveStatus === "error"
-                  ? "Save failed"
-                  : themeSaveStatus === "saved"
-                    ? "Theme saved"
-                    : "Theme"}
-            </span>
-            <button
-              type="button"
-              onClick={resetToDefaults}
-              className="px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 rounded cursor-pointer"
-              title="Reset all theme tokens to the defaults for the current mode"
-            >
-              Reset
-            </button>
-          </div>
-          <div className="flex items-center gap-1 rounded border border-theme bg-theme-tertiary/40 p-0.5">
-            {(["light", "dark"] as const).map((m) => {
-              const active = theme.colorMode === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => swapMode(m)}
-                  className={`flex-1 px-2 py-1 text-xs rounded transition-colors cursor-pointer ${
-                    active
-                      ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
-                      : "text-theme-secondary hover:text-theme-primary"
-                  }`}
-                >
-                  {m === "light" ? "Light mode" : "Dark mode"}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         <CollapsibleSection title="Swatches" defaultOpen>
           <SwatchesGrid
@@ -226,17 +194,7 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
             drafts map on every change, and clear on cancel / submit. See
             <SwatchEditor> below for the wiring. */}
 
-        <CollapsibleSection title="Mode & Background">
-          <SelectRow
-            label="Color mode"
-            value={theme.colorMode}
-            options={[
-              { value: "dark", label: "Dark" },
-              { value: "light", label: "Light" },
-              { value: "system", label: "System" },
-            ]}
-            onChange={(v) => set("colorMode", v)}
-          />
+        <CollapsibleSection title="Background">
           <div>
             <label className="block text-xs text-theme-secondary mb-1">
               Background

@@ -2,7 +2,39 @@ import { RichTextEditor } from "@secretlobby/ui";
 import type { CardBlockContent } from "../../state/types";
 import type { ThemeSettings } from "~/lib/theme";
 import { usePageBuilder } from "../../state/provider";
+import { useThemeOverlay } from "../../PageBuilderRoot";
 import { CardThemeFields } from "../CardThemeFields";
+
+// Theme keys this panel manages. Used to count active overrides for the
+// "Reset all overrides" affordance — overrides outside this list (if any
+// future block kind ever stores them on a Card block) survive the bulk reset.
+const CARD_THEME_KEYS = new Set<keyof ThemeSettings>([
+  "cardBgColor",
+  "cardBgType",
+  "cardBgOpacity",
+  "cardBackdropFilter",
+  "cardHeadingColor",
+  "cardHeadingColorRich",
+  "cardContentColor",
+  "cardContentColorRich",
+  // Border — legacy flat fields kept for back-compat consumers.
+  "cardBorderShow",
+  "cardBorderType",
+  "cardBorderColor",
+  "cardBorderGradientFrom",
+  "cardBorderGradientTo",
+  "cardBorderGradientAngle",
+  "cardBorderOpacity",
+  "cardBorderWidth",
+  // Border — new CSS3 structured fields owned by BorderEditor.
+  "cardBorderStyle",
+  "cardBorderSideWidths",
+  "cardBorderSideStyles",
+  "cardBorderImage",
+  "cardOutline",
+  "cardBoxShadow",
+  "cardBorderRadius",
+]);
 
 interface CardBlockSettingsProps {
   blockId: string;
@@ -22,6 +54,7 @@ export function CardBlockSettings({
   onUpdate,
 }: CardBlockSettingsProps) {
   const { state, dispatch } = usePageBuilder();
+  const { setOpen: setThemeOverlayOpen } = useThemeOverlay();
   // Walk to the block. Cheap — block settings already iterate this tree.
   const block = (() => {
     for (const section of state.sections) {
@@ -60,17 +93,17 @@ export function CardBlockSettings({
   return (
     <>
       <div>
-        <label className="block text-sm font-medium text-white mb-2">Title</label>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Title</label>
         <input
           type="text"
           value={content.title}
           onChange={(e) => onUpdate({ title: e.target.value })}
           placeholder="Optional card title"
-          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-white mb-2">Content</label>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Content</label>
         <RichTextEditor
           defaultValue={content.content}
           onChange={(html) => onUpdate({ content: html })}
@@ -85,28 +118,56 @@ export function CardBlockSettings({
           onChange={(e) => onUpdate({ showBorder: e.target.checked })}
           className="accent-[var(--color-brand-red)]"
         />
-        <span className="text-sm text-gray-300">Show Border</span>
+        <span className="text-sm text-theme-secondary">Show Border</span>
       </label>
-      {block && (
-        <div className="pt-3 border-t border-theme space-y-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-theme-muted">
-            Card style overrides
+      {block && (() => {
+        // Count overrides that belong to the Card panel — used to decide
+        // whether the "Reset all" button is meaningful.
+        const cardOverrideKeys = (
+          Object.keys(overrides) as (keyof ThemeSettings)[]
+        ).filter((k) => CARD_THEME_KEYS.has(k));
+        const hasCardOverrides = cardOverrideKeys.length > 0;
+        return (
+          <div className="pt-3 border-t border-theme space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-theme-muted">
+                Card style overrides
+              </div>
+              <button
+                type="button"
+                onClick={() => setThemeOverlayOpen(true)}
+                className="text-xs text-[var(--color-brand-red)] hover:underline cursor-pointer"
+                title="Edit the global Card theme settings"
+              >
+                Global styles →
+              </button>
+            </div>
+            {hasCardOverrides && (
+              <button
+                type="button"
+                onClick={() => resetFields(cardOverrideKeys)}
+                className="w-full px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 rounded cursor-pointer"
+                title="Clear every Card override on this block and inherit the global theme"
+              >
+                Reset all overrides
+              </button>
+            )}
+            <CardThemeFields
+              value={effectiveTheme}
+              baseTheme={state.theme}
+              showResetButtons
+              onChange={(partial) =>
+                dispatch({
+                  type: "updateBlockThemeOverrides",
+                  blockId,
+                  overrides: partial,
+                })
+              }
+              onResetField={resetFields}
+            />
           </div>
-          <CardThemeFields
-            value={effectiveTheme}
-            baseTheme={state.theme}
-            showResetButtons
-            onChange={(partial) =>
-              dispatch({
-                type: "updateBlockThemeOverrides",
-                blockId,
-                overrides: partial,
-              })
-            }
-            onResetField={resetFields}
-          />
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 }

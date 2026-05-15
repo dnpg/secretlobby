@@ -40,7 +40,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
     <>
       {/* Desktop Image (required) */}
       <div>
-        <label className="block text-sm font-medium text-white mb-2">
+        <label className="block text-sm font-medium text-theme-primary mb-2">
           <DesktopIcon /> Desktop Image
         </label>
         {content.mediaUrl ? (
@@ -54,7 +54,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
                 tabs={["library", "upload"]}
                 onSelect={(media: MediaItem) => onUpdate({ mediaId: media.id, mediaUrl: media.url })}
               >
-                <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-gray-300 hover:text-white hover:bg-theme-secondary transition-colors cursor-pointer">
+                <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary transition-colors cursor-pointer">
                   Change
                 </button>
               </MediaPicker>
@@ -72,7 +72,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
             tabs={["library", "upload"]}
             onSelect={(media: MediaItem) => onUpdate({ mediaId: media.id, mediaUrl: media.url })}
           >
-            <button className="w-full py-8 border-2 border-dashed border-theme rounded-lg text-gray-400 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer flex flex-col items-center gap-2">
+            <button className="w-full py-8 border-2 border-dashed border-theme rounded-lg text-theme-secondary hover:text-theme-primary hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer flex flex-col items-center gap-2">
               <ImageIcon className="w-8 h-8" />
               <span className="text-xs">Select Image</span>
             </button>
@@ -82,8 +82,8 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
 
       {/* Tablet Image (optional override) */}
       <div className="pt-3 border-t border-theme">
-        <label className="block text-sm font-medium text-white mb-2">
-          <TabletIcon /> Tablet Override <span className="text-xs text-gray-500 font-normal">(optional)</span>
+        <label className="block text-sm font-medium text-theme-primary mb-2">
+          <TabletIcon /> Tablet Override <span className="text-xs text-theme-muted font-normal">(optional)</span>
         </label>
         {content.tabletMediaUrl ? (
           <div className="space-y-2">
@@ -96,7 +96,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
                 tabs={["library", "upload"]}
                 onSelect={(media: MediaItem) => onUpdate({ tabletMediaId: media.id, tabletMediaUrl: media.url })}
               >
-                <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-gray-300 hover:text-white hover:bg-theme-secondary transition-colors cursor-pointer">
+                <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary transition-colors cursor-pointer">
                   Change
                 </button>
               </MediaPicker>
@@ -114,7 +114,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
             tabs={["library", "upload"]}
             onSelect={(media: MediaItem) => onUpdate({ tabletMediaId: media.id, tabletMediaUrl: media.url })}
           >
-            <button className="w-full py-4 border border-dashed border-theme rounded-lg text-gray-500 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer text-xs">
+            <button className="w-full py-4 border border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer text-xs">
               + Add tablet image
             </button>
           </MediaPicker>
@@ -123,8 +123,8 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
 
       {/* Mobile Image (optional override) */}
       <div className="pt-3 border-t border-theme">
-        <label className="block text-sm font-medium text-white mb-2">
-          <MobileIcon /> Mobile Override <span className="text-xs text-gray-500 font-normal">(optional)</span>
+        <label className="block text-sm font-medium text-theme-primary mb-2">
+          <MobileIcon /> Mobile Override <span className="text-xs text-theme-muted font-normal">(optional)</span>
         </label>
         {content.mobileMediaUrl ? (
           <div className="space-y-2">
@@ -137,7 +137,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
                 tabs={["library", "upload"]}
                 onSelect={(media: MediaItem) => onUpdate({ mobileMediaId: media.id, mobileMediaUrl: media.url })}
               >
-                <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-gray-300 hover:text-white hover:bg-theme-secondary transition-colors cursor-pointer">
+                <button className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary transition-colors cursor-pointer">
                   Change
                 </button>
               </MediaPicker>
@@ -155,7 +155,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
             tabs={["library", "upload"]}
             onSelect={(media: MediaItem) => onUpdate({ mobileMediaId: media.id, mobileMediaUrl: media.url })}
           >
-            <button className="w-full py-4 border border-dashed border-theme rounded-lg text-gray-500 hover:text-white hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer text-xs">
+            <button className="w-full py-4 border border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-[var(--color-brand-red)]/50 transition-colors cursor-pointer text-xs">
               + Add mobile image
             </button>
           </MediaPicker>
@@ -164,15 +164,15 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
 
       {/* Alt Text */}
       <div className="pt-3 border-t border-theme">
-        <label className="block text-sm font-medium text-white mb-2">Alt Text</label>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Alt Text</label>
         <input
           type="text"
           value={content.alt || ""}
           onChange={(e) => onUpdate({ alt: e.target.value })}
           placeholder="Describe the image for accessibility"
-          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
         />
-        <p className="text-xs text-gray-500 mt-1">Important for SEO and accessibility</p>
+        <p className="text-xs text-theme-muted mt-1">Important for SEO and accessibility</p>
       </div>
 
       {/* Border Radius — defaults to the theme's cardBorderRadius. When the
@@ -181,7 +181,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
           BlockColorOverrides. */}
       <div>
         <div className="flex items-center justify-between gap-2 mb-2">
-          <label className="text-sm font-medium text-white flex items-center gap-1.5">
+          <label className="text-sm font-medium text-theme-primary flex items-center gap-1.5">
             <span>Border radius</span>
             {isBorderRadiusModified && (
               <span
@@ -213,13 +213,13 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
 
       {/* Link URL */}
       <div>
-        <label className="block text-sm font-medium text-white mb-2">Link URL <span className="text-xs text-gray-500 font-normal">(optional)</span></label>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Link URL <span className="text-xs text-theme-muted font-normal">(optional)</span></label>
         <input
           type="text"
           value={content.linkUrl || ""}
           onChange={(e) => onUpdate({ linkUrl: e.target.value })}
           placeholder="https://..."
-          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
+          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
         />
       </div>
     </>

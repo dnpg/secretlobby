@@ -1,5 +1,6 @@
 import { Link } from "react-router";
-import { cn } from "@secretlobby/ui";
+import { ColorModeToggle, cn } from "@secretlobby/ui";
+import { getDefaultThemeForMode } from "~/lib/theme";
 import type { ViewportSize } from "../state/types";
 import { usePageBuilder } from "../state/provider";
 import {
@@ -62,11 +63,18 @@ export function TopHeader({
     themeSaveStatus,
     themeLastSavedAt,
     themeDirty,
+    theme,
   } = state;
   const isPreview = mode === "preview";
+  const onResetTheme = () => {
+    dispatch({
+      type: "resetTheme",
+      theme: getDefaultThemeForMode(theme.colorMode),
+    });
+  };
 
   return (
-    <header className="flex-shrink-0 h-16 bg-theme-secondary border-b border-theme flex items-center pr-4">
+    <header className="flex-shrink-0 h-12 bg-theme-secondary border-b border-theme flex items-center pr-4">
       {/* Left cluster */}
       <div className="flex items-center h-full">
         <Link
@@ -137,9 +145,6 @@ export function TopHeader({
         </button>
 
         <div className="px-4 min-w-0">
-          <div className="text-xs text-theme-muted leading-tight">
-            Page Builder
-          </div>
           <div className="text-sm font-medium text-theme-primary truncate leading-tight">
             {lobby.title || lobby.name}
           </div>
@@ -148,6 +153,17 @@ export function TopHeader({
 
       {/* Right cluster */}
       <div className="ml-auto flex items-center gap-4">
+        {themeOverlayOpen && (
+          <button
+            type="button"
+            onClick={onResetTheme}
+            className="px-3 py-1.5 rounded-md text-sm font-medium border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer"
+            title="Reset all theme tokens to defaults"
+            aria-label="Reset theme"
+          >
+            Reset
+          </button>
+        )}
         {hasUnsaved && (
           <button
             type="button"
@@ -172,6 +188,7 @@ export function TopHeader({
           themeLastSavedAt={themeLastSavedAt}
           themeDirty={themeDirty}
         />
+        <ColorModeToggle />
         <ViewportSwitcher viewport={viewport} onChange={onChangeViewport} />
       </div>
     </header>

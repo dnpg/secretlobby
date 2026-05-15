@@ -63,6 +63,30 @@ interface PageBuilderLoaderData {
 // list optimistically so the ColorPicker can react immediately.
 // =============================================================================
 
+// =============================================================================
+// Theme overlay context — tiny helper so deep child components can request to
+// open the global Theme overlay (the paint-brush sliding panel). The state
+// itself still lives in `PageBuilderInner`; this context only exposes the
+// setter / current state so we don't have to prop-drill it through SettingsOverlay
+// → BlockSettings → CardBlockSettings.
+// =============================================================================
+
+interface ThemeOverlayContextValue {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}
+
+const ThemeOverlayContext = createContext<ThemeOverlayContextValue | null>(null);
+
+export function useThemeOverlay(): ThemeOverlayContextValue {
+  const ctx = useContext(ThemeOverlayContext);
+  if (!ctx) {
+    // No-op default so callers used outside the provider don't crash.
+    return { open: false, setOpen: () => {} };
+  }
+  return ctx;
+}
+
 interface SwatchContextValue {
   swatches: SavedSwatch[];
   saveSwatch: (name: string, value: ColorValue) => void;
@@ -446,6 +470,15 @@ function PageBuilderInner({ lobby, csrfToken }: PageBuilderInnerProps) {
   // ThemeOverlay inside LeftRail reads it. Selecting any layer auto-closes the
   // overlay so the SettingsOverlay can take over.
   const [themeOverlayOpen, setThemeOverlayOpen] = useState(false);
+  // Lift the theme-overlay opener so deep components (e.g. CardBlockSettings'
+  // "Global styles" link) can request it without prop drilling.
+  const themeOverlayApi = useMemo<ThemeOverlayContextValue>(
+    () => ({
+      open: themeOverlayOpen,
+      setOpen: setThemeOverlayOpen,
+    }),
+    [themeOverlayOpen]
+  );
   // Layout-edit toggle (dashed-square button in TopHeader). Default is OFF —
   // the page-builder opens in a clean, content-focused view; the user opts in
   // to layout-edit affordances (section/column borders, click-to-select,
@@ -627,6 +660,7 @@ function PageBuilderInner({ lobby, csrfToken }: PageBuilderInnerProps) {
   }, [dispatch]);
 
   return (
+    <ThemeOverlayContext.Provider value={themeOverlayApi}>
     <div className="fixed inset-0 bg-theme-primary flex flex-col z-50">
       <TopHeader
         lobby={lobby}
@@ -652,6 +686,7 @@ function PageBuilderInner({ lobby, csrfToken }: PageBuilderInnerProps) {
           <LeftRail
             themeOverlayOpen={themeOverlayOpen}
             onCloseThemeOverlay={() => setThemeOverlayOpen(false)}
+            showLayoutEdit={showLayoutEdit}
           />
         </div>
 
@@ -680,6 +715,7 @@ function PageBuilderInner({ lobby, csrfToken }: PageBuilderInnerProps) {
         />
       )}
     </div>
+    </ThemeOverlayContext.Provider>
   );
 }
 

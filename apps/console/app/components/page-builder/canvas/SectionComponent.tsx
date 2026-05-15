@@ -66,10 +66,11 @@ export function SectionComponent({
   // dashed-square toggle in TopHeader is off — blocks remain editable, the
   // canvas just stops showing section/column scaffolding.
   const showSectionUi = isEditing && showLayoutEdit;
-  // Visibility plumbing: in preview mode skip hidden nodes entirely; in edit
-  // mode keep them visible but dim them so the user can still find + toggle.
+  // Visibility: a hidden section is fully removed from the canvas in every
+  // mode. The sidebar still surfaces it (with the eye-off icon + dimmed row)
+  // so the user can toggle it back on without needing a canvas placeholder.
   const sectionHidden = section.hidden === true;
-  if (sectionHidden && !isEditing) return null;
+  if (sectionHidden) return null;
   const isMobile = viewport === "mobile";
   const isTablet = viewport === "tablet";
   const columnCount = section.columns.length;
@@ -151,20 +152,14 @@ export function SectionComponent({
           : undefined
       }
       className={cn(
-        "relative rounded-lg transition-all p-4",
+        "relative rounded-lg transition-all",
         showSectionUi && "cursor-pointer",
         isSelected && showSectionUi
           ? "border-2 border-violet-400 bg-violet-500/10"
           : showSectionUi
             ? "border-2 border-dashed border-violet-500/30 hover:border-violet-400/60 hover:bg-violet-500/5"
-            : "border-2 border-transparent",
-        sectionHidden && "opacity-40"
+            : "border-2 border-transparent"
       )}
-      title={
-        sectionHidden
-          ? "Hidden — toggle the eye in the sidebar to show"
-          : undefined
-      }
       style={{ "--section-gap": gapValue } as React.CSSProperties}
     >
       {/* Column layout using flexbox for better control of gaps and resize handles */}

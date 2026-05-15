@@ -205,6 +205,184 @@ export function normalizeBorderRadius(raw: unknown): BorderRadius {
   return 0;
 }
 
+// =============================================================================
+// Border — extended CSS3 model.
+// -----------------------------------------------------------------------------
+// The legacy flat fields on `ThemeSettings` (cardBorderShow / cardBorderType /
+// cardBorderColor / cardBorderGradientFrom|To|Angle / cardBorderOpacity /
+// cardBorderWidth) only describe a uniform solid OR linear-gradient border.
+// The new types here describe the full CSS border surface: per-side widths
+// and styles, border-image (gradient OR uploaded image) with slice/width/
+// outset/repeat, an `outline` layer, and a `box-shadow` stack. They're
+// additive — the legacy fields stay populated for back-compat consumers,
+// and `getCardBorderCSS` reads the new fields first and falls back to the
+// legacy ones when they're absent.
+// =============================================================================
+
+export type BorderStyle =
+  | "none"
+  | "hidden"
+  | "solid"
+  | "dashed"
+  | "dotted"
+  | "double"
+  | "groove"
+  | "ridge"
+  | "inset"
+  | "outset";
+
+/** Per-side widths in CSS length units (e.g. "1px"). All four sides are
+ *  always present so consumers can drop them straight into `border-*-width`. */
+export interface BorderSideWidths {
+  top: string;
+  right: string;
+  bottom: string;
+  left: string;
+}
+
+/** Per-side styles. */
+export interface BorderSideStyles {
+  top: BorderStyle;
+  right: BorderStyle;
+  bottom: BorderStyle;
+  left: BorderStyle;
+}
+
+export type BorderImageRepeat = "stretch" | "repeat" | "round" | "space";
+
+export type BorderImageSource =
+  | { type: "gradient"; gradient: ThemeGradient }
+  | { type: "image"; mediaId: string; mediaUrl: string };
+
+export interface BorderImage {
+  source: BorderImageSource;
+  /** border-image-slice — a single number applied to all four edges. 0-100.
+   *  We don't expose the `fill` keyword (rarely useful for chrome) — it can
+   *  be added later as an optional boolean if a use-case appears. */
+  slice: number;
+  /** border-image-width — CSS length / number / `auto`. */
+  width: string;
+  /** border-image-outset — CSS length / number. */
+  outset: string;
+  repeat: BorderImageRepeat;
+}
+
+export interface ShadowStop {
+  id: string;
+  inset: boolean;
+  x: number; // px
+  y: number; // px
+  blur: number; // px
+  spread: number; // px
+  /** Hex (#RRGGBB or #RRGGBBAA) — alpha carried through `formatHexWithAlpha`. */
+  color: string;
+}
+
+export type BoxShadow = ShadowStop[];
+
+export interface Outline {
+  show: boolean;
+  width: string; // CSS length
+  style: BorderStyle;
+  color: string; // hex with optional alpha
+  offset: string; // CSS length
+}
+
+/**
+ * Render a `BorderImage` value as the value-side of a `border-image` shorthand:
+ * `<source> <slice> / <width> / <outset> <repeat>`. Image sources are wrapped
+ * in `url(...)` (JSON.stringify-quoted so embedded quotes/parens are safe).
+ * Returns `none` for an empty / undefined value.
+ */
+export function borderImageToCSS(
+  image: BorderImage | undefined | null
+): string {
+  if (!image) return "none";
+  let source: string;
+  if (image.source.type === "gradient") {
+    // Reuse the gradient renderer — `colorPartToCSS` already knows how to
+    // emit linear / radial / conic. Wrap as a Gradient value so it takes the
+    // gradient branch directly.
+    const stops = [...image.source.gradient.stops].sort(
+      (a, b) => a.position - b.position
+    );
+    const parts = stops.map(
+      (s) => `${hexToRgba(s.color, (s.opacity ?? 100) / 100)} ${s.position}%`
+    );
+    const g = image.source.gradient;
+    if (g.kind === "linear") {
+      source = `linear-gradient(${g.angle}deg, ${parts.join(", ")})`;
+    } else if (g.kind === "radial") {
+      source = `radial-gradient(${g.shape} at center, ${parts.join(", ")})`;
+    } else {
+      source = `conic-gradient(from ${g.angle}deg at 50% 50%, ${parts.join(", ")})`;
+    }
+  } else {
+    source = `url(${JSON.stringify(image.source.mediaUrl)})`;
+  }
+  return `${source} ${image.slice} / ${image.width} / ${image.outset} ${image.repeat}`;
+}
+
+/**
+ * Render a `BoxShadow` stack as a CSS `box-shadow` value (comma-separated
+ * layers). Empty / undefined returns `none`.
+ */
+export function boxShadowToCSS(shadow: BoxShadow | undefined | null): string {
+  if (!shadow || shadow.length === 0) return "none";
+  return shadow
+    .map((s) => {
+      const inset = s.inset ? "inset " : "";
+      return `${inset}${s.x}px ${s.y}px ${s.blur}px ${s.spread}px ${s.color}`;
+    })
+    .join(", ");
+}
+
+/**
+ * Render an `Outline` value as a CSS object suitable for spreading into a
+ * style attribute. `outline-offset` is emitted separately because the
+ * `outline` shorthand doesn't include it. Returns `null` when `show` is false.
+ */
+export function outlineToCSS(
+  outline: Outline | undefined | null
+):
+  | { outline: string; outlineOffset: string }
+  | null {
+  if (!outline || !outline.show) return null;
+  return {
+    outline: `${outline.width} ${outline.style} ${outline.color}`,
+    outlineOffset: outline.offset,
+  };
+}
+
+/**
+ * Coerce a persisted `BorderSideWidths` shape (legacy uniform CSS-length
+ * string, new per-side object, or junk) into either a single string (uniform)
+ * or a per-side object. Callers pass the legacy uniform value as the fallback.
+ */
+export function normalizeBorderSideWidths(
+  raw: unknown,
+  fallback: string
+): string | BorderSideWidths {
+  if (typeof raw === "string" && raw.length > 0) return raw;
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    if (
+      typeof r.top === "string" &&
+      typeof r.right === "string" &&
+      typeof r.bottom === "string" &&
+      typeof r.left === "string"
+    ) {
+      // Collapse to a single string when all four match — keeps the persisted
+      // JSON minimal for the common uniform case.
+      if (r.top === r.right && r.right === r.bottom && r.bottom === r.left) {
+        return r.top;
+      }
+      return { top: r.top, right: r.right, bottom: r.bottom, left: r.left };
+    }
+  }
+  return fallback;
+}
+
 /**
  * Render a `BackdropFilter` array as a CSS `backdrop-filter` string. Empty /
  * undefined returns `"none"` so the result can drop straight into a CSS
@@ -319,6 +497,23 @@ export interface ThemeSettings {
   cardBorderGradientAngle: number;
   cardBorderOpacity: number;
   cardBorderWidth: string;
+  // ---------------------------------------------------------------------------
+  // Extended CSS3 border fields (optional, additive). Legacy consumers keep
+  // reading the flat fields above; new consumers prefer these when present.
+  // ---------------------------------------------------------------------------
+  /** CSS `border-style` — defaults to `"solid"` for legacy themes. */
+  cardBorderStyle?: BorderStyle;
+  /** Per-side border widths. When set, overrides `cardBorderWidth` (uniform). */
+  cardBorderSideWidths?: BorderSideWidths;
+  /** Per-side border styles. When set, overrides `cardBorderStyle` (uniform). */
+  cardBorderSideStyles?: BorderSideStyles;
+  /** `border-image` source — gradient (any kind) or uploaded image. When set,
+   *  takes precedence over `cardBorderColor` + `cardBorderType=gradient`. */
+  cardBorderImage?: BorderImage;
+  /** Optional `outline` layer — independent of `border`. */
+  cardOutline?: Outline;
+  /** `box-shadow` stack — multi-layer with inset support. */
+  cardBoxShadow?: BoxShadow;
   /** Border radius — number (uniform) or per-corner `{ tl, tr, br, bl }`. */
   cardBorderRadius: BorderRadius;
   /**
@@ -971,25 +1166,127 @@ export function getCardBgCSS(
   return hexToRgba(hex, opacity);
 }
 
-export function getCardBorderCSS(theme: ThemeSettings): {
+// =============================================================================
+// getCardBorderCSS
+// -----------------------------------------------------------------------------
+// Resolves the effective card border into a small CSS bag the canvas can
+// spread onto a wrapper element. Reads the extended CSS3 fields first
+// (cardBorderImage / cardBorderSideWidths / cardBorderSideStyles / cardOutline /
+// cardBoxShadow) and falls back to the legacy flat fields when they're absent.
+//
+// Returned shape:
+//   - `style`        — fallback shorthand value for `border:` (single string).
+//                      Used when none of the per-side / image overrides apply.
+//   - `borderImage`  — value for `border-image:` when an image / gradient
+//                      border is active. The caller is responsible for setting
+//                      `border: <width> solid transparent` alongside.
+//   - `widths`       — per-side widths when the user has diverged from uniform.
+//                      Caller spreads `borderTopWidth` / etc. directly.
+//   - `styles`       — per-side styles when the user has diverged from uniform.
+//   - `outline` /
+//     `outlineOffset` — when `cardOutline.show` is true.
+//   - `boxShadow`    — composed `box-shadow` value (or `none` when empty).
+// =============================================================================
+export interface CardBorderCSS {
   style: string;
   borderImage?: string;
-} {
+  borderImageSlice?: number;
+  borderImageWidth?: string;
+  borderImageOutset?: string;
+  borderImageRepeat?: BorderImageRepeat;
+  widths?: BorderSideWidths;
+  styles?: BorderSideStyles;
+  outline?: string;
+  outlineOffset?: string;
+  boxShadow?: string;
+}
+
+export function getCardBorderCSS(theme: ThemeSettings): CardBorderCSS {
+  // Outline + box-shadow are independent of `cardBorderShow` — a card can be
+  // borderless yet still cast a shadow or have an outline. Resolve them up
+  // front so we can attach them regardless of the border branch below.
+  const outlineDecls = outlineToCSS(theme.cardOutline);
+  const boxShadow = theme.cardBoxShadow && theme.cardBoxShadow.length > 0
+    ? boxShadowToCSS(theme.cardBoxShadow)
+    : undefined;
+  const decorations: Pick<
+    CardBorderCSS,
+    "outline" | "outlineOffset" | "boxShadow"
+  > = {
+    ...(outlineDecls
+      ? { outline: outlineDecls.outline, outlineOffset: outlineDecls.outlineOffset }
+      : {}),
+    ...(boxShadow ? { boxShadow } : {}),
+  };
+
   if (!theme.cardBorderShow) {
-    return { style: "none" };
+    return { style: "none", ...decorations };
   }
+
   const opacity = (theme.cardBorderOpacity ?? 100) / 100;
-  const width = normalizeCSSValue(theme.cardBorderWidth, "1px");
+  const uniformWidth = normalizeCSSValue(theme.cardBorderWidth, "1px");
+  const uniformStyle: BorderStyle = theme.cardBorderStyle ?? "solid";
+
+  // Per-side overrides — only emitted when at least one side diverges from
+  // uniform, so the canvas can keep using the simple `border:` shorthand in
+  // the common case.
+  const widthsDiverge =
+    !!theme.cardBorderSideWidths &&
+    (theme.cardBorderSideWidths.top !== uniformWidth ||
+      theme.cardBorderSideWidths.right !== uniformWidth ||
+      theme.cardBorderSideWidths.bottom !== uniformWidth ||
+      theme.cardBorderSideWidths.left !== uniformWidth);
+  const stylesDiverge =
+    !!theme.cardBorderSideStyles &&
+    (theme.cardBorderSideStyles.top !== uniformStyle ||
+      theme.cardBorderSideStyles.right !== uniformStyle ||
+      theme.cardBorderSideStyles.bottom !== uniformStyle ||
+      theme.cardBorderSideStyles.left !== uniformStyle);
+
+  const perSide: Pick<CardBorderCSS, "widths" | "styles"> = {
+    ...(widthsDiverge ? { widths: theme.cardBorderSideWidths } : {}),
+    ...(stylesDiverge ? { styles: theme.cardBorderSideStyles } : {}),
+  };
+
+  // --- Border-image branch (new). Takes precedence over the legacy solid /
+  //     gradient color path so the user can pick an image OR a gradient any
+  //     of three kinds (linear/radial/conic) AND configure slice/width/
+  //     outset/repeat. The canvas pairs this with `border-style: solid` and a
+  //     transparent border color so the image actually paints.
+  if (theme.cardBorderImage) {
+    const img = theme.cardBorderImage;
+    return {
+      style: `${uniformWidth} solid transparent`,
+      borderImage: borderImageToCSS(img),
+      borderImageSlice: img.slice,
+      borderImageWidth: img.width,
+      borderImageOutset: img.outset,
+      borderImageRepeat: img.repeat,
+      ...perSide,
+      ...decorations,
+    };
+  }
+
+  // --- Legacy gradient path — preserved for back-compat. The new
+  //     cardBorderImage field is the recommended way to express a gradient
+  //     border; this branch fires when only the legacy flat fields are set.
   if (theme.cardBorderType === "gradient") {
     const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
     const to = hexToRgba(theme.cardBorderGradientTo, opacity);
     return {
-      style: `${width} solid transparent`,
+      style: `${uniformWidth} solid transparent`,
       borderImage: `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to}) 1`,
+      ...perSide,
+      ...decorations,
     };
   }
+
+  // --- Uniform solid path. Honours the new `cardBorderStyle` when set,
+  //     defaulting to "solid".
   return {
-    style: `${width} solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}`,
+    style: `${uniformWidth} ${uniformStyle} ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}`,
+    ...perSide,
+    ...decorations,
   };
 }
 

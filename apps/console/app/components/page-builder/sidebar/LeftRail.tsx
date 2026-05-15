@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@secretlobby/ui";
+import { cn, useColorMode } from "@secretlobby/ui";
 import {
   closestCenter,
   DndContext,
@@ -33,7 +33,6 @@ import {
   PlusIcon,
   TrashIcon,
 } from "../icons";
-import { LayerDot } from "./LayerDot";
 import { SettingsOverlay } from "./SettingsOverlay";
 import { ThemeOverlay } from "./ThemeOverlay";
 
@@ -58,6 +57,11 @@ import { ThemeOverlay } from "./ThemeOverlay";
 interface LeftRailProps {
   themeOverlayOpen: boolean;
   onCloseThemeOverlay: () => void;
+  /** Drives the color-coded layer-row variant. Owned by PageBuilderRoot (via
+   *  the dashed-square button in TopHeader). When true, sections / columns /
+   *  blocks paint with the LAYER_COLORS palette (violet / indigo / brand-red);
+   *  when false, they fall back to neutral black/white based on theme.colorMode. */
+  showLayoutEdit: boolean;
 }
 
 // Shared confirm-delete state for "section has blocks" — surfaced from the
@@ -73,10 +77,29 @@ interface SectionConfirm {
 export function LeftRail({
   themeOverlayOpen,
   onCloseThemeOverlay,
+  showLayoutEdit,
 }: LeftRailProps) {
   const { state, dispatch } = usePageBuilder();
   const { sections, selection, mode } = state;
   const isPreview = mode === "preview";
+  // Drive the color-coded layer-row variant off the same flag as the
+  // canvas's layout-edit affordances. The dashed-square button in TopHeader
+  // toggles `showLayoutEdit` upstream; the rail simply mirrors that flag so
+  // there's only one toggle for the user to find.
+  const layoutMode = showLayoutEdit;
+  // Drive the sidebar's black/white surfaces off the *global* app color mode
+  // (the one the header's ColorModeToggle writes via useColorMode). This is
+  // distinct from `state.theme.colorMode`, which is the color mode of the
+  // lobby being designed and only affects the canvas — using that here would
+  // let the sidebar diverge from its own surrounding chrome.
+  const { resolvedMode } = useColorMode();
+  const isDarkMode = resolvedMode === "dark";
+  // Layer rows are flat: no default fill, no border, no shadow. Hover and the
+  // selected state both pick up a light-grey surface (theme-tertiary), so the
+  // row is only visible when the user is interacting with it.
+  const neutralRowText = isDarkMode ? "text-white" : "text-black";
+  const neutralRowBgHover = "hover:bg-theme-tertiary";
+  const neutralRowBgSelected = "bg-theme-tertiary";
 
   // Derive the legacy id-based selection so the row helpers below stay simple.
   const selectedSectionId =
@@ -387,6 +410,10 @@ export function LeftRail({
                 selectedSectionId={selectedSectionId}
                 selectedColumnId={selectedColumnId}
                 selectedBlockId={selectedBlockId}
+                layoutMode={layoutMode}
+                neutralRowText={neutralRowText}
+                neutralRowBgHover={neutralRowBgHover}
+                neutralRowBgSelected={neutralRowBgSelected}
                 onToggleSection={toggleSection}
                 onToggleColumn={toggleColumn}
                 onSelectSection={(id) =>
@@ -463,7 +490,12 @@ export function LeftRail({
         <button
           type="button"
           onClick={onAddSection}
-          className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 bg-violet-500/10 hover:bg-violet-500/20 border border-dashed border-violet-500/40 rounded-lg text-violet-300 text-sm transition-colors cursor-pointer"
+          className={cn(
+            "mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 border border-dashed rounded-lg text-sm transition-colors cursor-pointer shadow-sm",
+            isDarkMode
+              ? "border-white/40 text-white hover:bg-white/10"
+              : "border-black/40 text-black hover:bg-black/10"
+          )}
         >
           <PlusIcon className="w-4 h-4" />
           <span>Add Section</span>
@@ -575,7 +607,7 @@ function RowActions({
           onToggleHidden();
         }}
         onPointerDown={(e) => e.stopPropagation()}
-        className="p-0.5 rounded text-theme-secondary hover:text-theme-primary cursor-pointer"
+        className="p-0.5 rounded text-current cursor-pointer"
       >
         {hidden ? (
           <EyeOffIcon className="w-4 h-4" />
@@ -592,7 +624,7 @@ function RowActions({
           onDelete();
         }}
         onPointerDown={(e) => e.stopPropagation()}
-        className="p-0.5 rounded text-theme-secondary hover:text-red-400 cursor-pointer"
+        className="p-0.5 rounded text-current hover:text-red-400 cursor-pointer"
       >
         <TrashIcon />
       </button>
@@ -612,6 +644,12 @@ interface SortableSidebarSectionProps {
   selectedSectionId: string | null;
   selectedColumnId: string | null;
   selectedBlockId: string | null;
+  // When true, render rows with LAYER_COLORS color-coded backgrounds;
+  // otherwise fall back to the theme-appropriate neutral backgrounds.
+  layoutMode: boolean;
+  neutralRowText: string;
+  neutralRowBgHover: string;
+  neutralRowBgSelected: string;
   onToggleSection: (id: string) => void;
   onToggleColumn: (id: string) => void;
   onSelectSection: (id: string) => void;
@@ -640,6 +678,10 @@ function SortableSidebarSection({
   selectedSectionId,
   selectedColumnId,
   selectedBlockId,
+  layoutMode,
+  neutralRowText,
+  neutralRowBgHover,
+  neutralRowBgSelected,
   onToggleSection,
   onToggleColumn,
   onSelectSection,
@@ -697,30 +739,22 @@ function SortableSidebarSection({
     selectedSectionId === section.id &&
     !selectedColumnId &&
     !selectedBlockId;
-  const sectionColors = LAYER_COLORS.section;
   const defaultName = `Section ${sectionIndex + 1}`;
   const sectionHidden = section.hidden === true;
   const columnIds = section.columns.map((c) => c.id);
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="rounded-lg overflow-hidden"
-    >
+    <div ref={setNodeRef} style={style} className="rounded-lg">
       {/* Section header. `group` so the trailing trash/eye icons fade in on
           hover. Clicking anywhere on the body selects the section — renaming
           happens through the SettingsOverlay's inline rename field, not in
           the rail (per column-row pattern). */}
       <div
         className={cn(
-          "group flex items-center gap-1 px-2 py-2 rounded-lg border-l-2 transition-colors cursor-pointer",
-          sectionSelected
-            ? cn(sectionColors.bgSelected, "border-violet-400")
-            : cn(
-                sectionColors.bg,
-                "border-violet-500/40 hover:bg-violet-500/20"
-              )
+          "group flex items-center gap-1 px-2 py-2 rounded-lg transition-colors cursor-pointer",
+          neutralRowText,
+          sectionSelected ? neutralRowBgSelected : neutralRowBgHover,
+          sectionHidden && "opacity-50"
         )}
         onClick={() => onSelectSection(section.id)}
       >
@@ -733,13 +767,13 @@ function SortableSidebarSection({
           title="Drag to reorder"
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "p-0.5 rounded text-theme-secondary hover:text-theme-primary flex-shrink-0 cursor-grab active:cursor-grabbing touch-none",
+            "p-0.5 rounded text-current flex-shrink-0 cursor-grab active:cursor-grabbing touch-none",
             isDragging && "cursor-grabbing"
           )}
           {...attributes}
           {...listeners}
         >
-          <DragHandleIcon />
+          <DragHandleIcon className="w-3 h-3" />
         </button>
         <button
           type="button"
@@ -747,7 +781,7 @@ function SortableSidebarSection({
             e.stopPropagation();
             onToggleSection(section.id);
           }}
-          className="p-0.5 rounded text-theme-secondary hover:text-theme-primary cursor-pointer flex-shrink-0"
+          className="p-0.5 rounded text-current cursor-pointer flex-shrink-0"
           title={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? (
@@ -768,10 +802,9 @@ function SortableSidebarSection({
             </svg>
           )}
         </button>
-        <LayerDot tone="section" />
         <span
           className={cn(
-            "flex-1 text-sm text-violet-200 truncate",
+            "flex-1 text-sm truncate",
             sectionHidden && "line-through opacity-60"
           )}
         >
@@ -810,6 +843,10 @@ function SortableSidebarSection({
                   expanded={expandedColumns.has(column.id)}
                   selectedColumnId={selectedColumnId}
                   selectedBlockId={selectedBlockId}
+                  layoutMode={layoutMode}
+                  neutralRowText={neutralRowText}
+                  neutralRowBgHover={neutralRowBgHover}
+                  neutralRowBgSelected={neutralRowBgSelected}
                   onToggleColumn={onToggleColumn}
                   onSelectColumn={onSelectColumn}
                   onSelectBlock={onSelectBlock}
@@ -853,6 +890,10 @@ interface SortableSidebarColumnProps {
   expanded: boolean;
   selectedColumnId: string | null;
   selectedBlockId: string | null;
+  layoutMode: boolean;
+  neutralRowText: string;
+  neutralRowBgHover: string;
+  neutralRowBgSelected: string;
   onToggleColumn: (id: string) => void;
   onSelectColumn: (sectionId: string, columnId: string) => void;
   onSelectBlock: (sectionId: string, columnId: string, blockId: string) => void;
@@ -871,6 +912,10 @@ function SortableSidebarColumn({
   expanded,
   selectedColumnId,
   selectedBlockId,
+  layoutMode,
+  neutralRowText,
+  neutralRowBgHover,
+  neutralRowBgSelected,
   onToggleColumn,
   onSelectColumn,
   onSelectBlock,
@@ -916,7 +961,6 @@ function SortableSidebarColumn({
     opacity: isDragging ? 0.85 : 1,
   };
 
-  const columnColors = LAYER_COLORS.column;
   const colSelected = selectedColumnId === column.id;
   const defaultColName = `Column ${columnIndex + 1}`;
   const columnHidden = column.hidden === true;
@@ -926,13 +970,10 @@ function SortableSidebarColumn({
     <div ref={setNodeRef} style={style}>
       <div
         className={cn(
-          "group flex items-center gap-1 px-2 py-1.5 rounded-lg border-l-2 transition-colors cursor-pointer",
-          colSelected
-            ? cn(columnColors.bgSelected, "border-indigo-400")
-            : cn(
-                columnColors.bg,
-                "border-indigo-500/30 hover:bg-indigo-500/15"
-              )
+          "group flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors cursor-pointer",
+          neutralRowText,
+          colSelected ? neutralRowBgSelected : neutralRowBgHover,
+          columnHidden && "opacity-50"
         )}
         onClick={() => onSelectColumn(section.id, column.id)}
       >
@@ -942,13 +983,13 @@ function SortableSidebarColumn({
           title="Drag to reorder"
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "p-0.5 rounded text-theme-secondary hover:text-theme-primary flex-shrink-0 cursor-grab active:cursor-grabbing touch-none",
+            "p-0.5 rounded text-current flex-shrink-0 cursor-grab active:cursor-grabbing touch-none",
             isDragging && "cursor-grabbing"
           )}
           {...attributes}
           {...listeners}
         >
-          <DragHandleIcon />
+          <DragHandleIcon className="w-3 h-3" />
         </button>
         <button
           type="button"
@@ -956,7 +997,7 @@ function SortableSidebarColumn({
             e.stopPropagation();
             onToggleColumn(column.id);
           }}
-          className="p-0.5 rounded text-theme-secondary hover:text-theme-primary cursor-pointer flex-shrink-0"
+          className="p-0.5 rounded text-current cursor-pointer flex-shrink-0"
           title={expanded ? "Collapse" : "Expand"}
         >
           {expanded ? (
@@ -977,10 +1018,9 @@ function SortableSidebarColumn({
             </svg>
           )}
         </button>
-        <LayerDot tone="column" />
         <span
           className={cn(
-            "flex-1 text-sm text-indigo-200 truncate",
+            "flex-1 text-sm truncate",
             columnHidden && "line-through opacity-60"
           )}
         >
@@ -1016,6 +1056,10 @@ function SortableSidebarColumn({
                   block={block}
                   blockIndex={blockIndex}
                   selectedBlockId={selectedBlockId}
+                  layoutMode={layoutMode}
+                  neutralRowText={neutralRowText}
+                  neutralRowBgHover={neutralRowBgHover}
+                  neutralRowBgSelected={neutralRowBgSelected}
                   onSelectBlock={onSelectBlock}
                   onDeleteBlock={onDeleteBlock}
                   onToggleBlockVisibility={onToggleBlockVisibility}
@@ -1043,6 +1087,10 @@ interface SortableSidebarBlockProps {
   block: Block;
   blockIndex: number;
   selectedBlockId: string | null;
+  layoutMode: boolean;
+  neutralRowText: string;
+  neutralRowBgHover: string;
+  neutralRowBgSelected: string;
   onSelectBlock: (sectionId: string, columnId: string, blockId: string) => void;
   onDeleteBlock: (block: Block, blockIndex: number) => void;
   onToggleBlockVisibility: (blockId: string, hidden: boolean) => void;
@@ -1054,6 +1102,10 @@ function SortableSidebarBlock({
   block,
   blockIndex,
   selectedBlockId,
+  layoutMode,
+  neutralRowText,
+  neutralRowBgHover,
+  neutralRowBgSelected,
   onSelectBlock,
   onDeleteBlock,
   onToggleBlockVisibility,
@@ -1087,10 +1139,10 @@ function SortableSidebarBlock({
     <div ref={setNodeRef} style={style}>
       <div
         className={cn(
-          "group flex items-center gap-1 px-2 py-1.5 rounded-lg border-l-2 transition-colors cursor-pointer",
-          blockSelected
-            ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)]"
-            : "bg-[var(--color-brand-red-muted)]/40 border-[var(--color-brand-red)]/30 hover:bg-[var(--color-brand-red-muted)]/70"
+          "group flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors cursor-pointer",
+          neutralRowText,
+          blockSelected ? neutralRowBgSelected : neutralRowBgHover,
+          blockHidden && "opacity-50"
         )}
         onClick={() => onSelectBlock(section.id, column.id, block.id)}
       >
@@ -1100,19 +1152,18 @@ function SortableSidebarBlock({
           title="Drag to reorder"
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "p-0.5 rounded text-theme-secondary hover:text-theme-primary flex-shrink-0 cursor-grab active:cursor-grabbing touch-none",
+            "p-0.5 rounded text-current flex-shrink-0 cursor-grab active:cursor-grabbing touch-none",
             isDragging && "cursor-grabbing"
           )}
           {...attributes}
           {...listeners}
         >
-          <DragHandleIcon />
+          <DragHandleIcon className="w-3 h-3" />
         </button>
-        <LayerDot tone="block" />
-        <Icon className="w-3.5 h-3.5 text-[var(--color-brand-red)]" />
+        <Icon className="w-3.5 h-3.5 text-current" />
         <span
           className={cn(
-            "flex-1 text-sm text-theme-primary truncate",
+            "flex-1 text-sm truncate",
             blockHidden && "line-through opacity-60"
           )}
         >

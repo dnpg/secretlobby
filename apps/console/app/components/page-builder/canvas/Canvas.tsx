@@ -387,33 +387,34 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
   const viewportWidth = VIEWPORT_WIDTHS[viewport];
   const isDesktop = viewport === "desktop";
   const isMobile = viewport === "mobile";
+  const isPreview = mode === "preview";
 
   return (
     <div
       className={cn(
         "flex-1 overflow-auto bg-theme-tertiary",
-        // Desktop renders the preview flush with the panel — no surrounding
-        // padding so the canvas reads as one continuous gray surface.
-        // Mobile gets a tight 16px so the device frame still floats but
-        // small screens don't waste space. Tablet keeps the comfortable
-        // 32px gutter.
-        isDesktop ? "p-0" : isMobile ? "p-4" : "p-8"
+        // Preview fills the whole panel edge-to-edge, no surrounding gutter.
+        // In edit mode the gutter depends on the viewport (desktop flush;
+        // mobile gets a tight 16px so the device frame still floats; tablet
+        // keeps the comfortable 32px gutter).
+        isPreview ? "p-0" : isDesktop ? "p-0" : isMobile ? "p-4" : "p-8"
       )}
     >
       <div
         className={cn(
           "mx-auto transition-all duration-300",
-          // Tablet / mobile: keep the device-frame look — softer rounded
-          // corners and a subtle drop shadow instead of a hairline border.
-          // Desktop: drop the frame entirely so the preview fills the panel
-          // edge-to-edge.
-          isDesktop
+          // In preview mode we always render edge-to-edge with no device
+          // frame — the user is verifying the final look. In edit mode the
+          // tablet / mobile viewports keep the device-frame styling.
+          isPreview || isDesktop
             ? "min-h-full"
             : "min-h-full rounded-3xl shadow-xl shadow-black/20"
         )}
         style={{
-          width: viewportWidth,
-          maxWidth: isDesktop ? "100%" : "100%",
+          // Preview ignores the 1440 desktop cap and fills the panel; edit
+          // mode pins to the selected viewport width.
+          width: isPreview ? "100%" : viewportWidth,
+          maxWidth: "100%",
           // Use the `background` shorthand (NOT `background-color`) so the
           // theme bg variable can resolve to a gradient or an image URL, not
           // just a solid color. The Tailwind utility `bg-theme-primary`

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "@secretlobby/ui";
+import { cn, useColorMode } from "@secretlobby/ui";
 import type { Block, Section } from "../state/types";
 import { usePageBuilder } from "../state/provider";
 import { BLOCK_TYPES, TrashIcon } from "../icons";
@@ -38,6 +38,21 @@ function defaultBlockName(block: Block, sameTypeIndex: number): string {
 export function SettingsOverlay({ sections }: SettingsOverlayProps) {
   const { state, dispatch } = usePageBuilder();
   const { selection, viewport } = state;
+  const { resolvedMode } = useColorMode();
+  // In light mode all settings copy must be pure black — including the
+  // secondary/muted shades that normally render in gray. We override the
+  // theme-text CSS variables on the overlay root so every descendant using
+  // a `text-theme-*` utility inherits black without us having to retag each
+  // label. Specific color classes (e.g. the destructive red on the footer
+  // delete) are unaffected because they don't read these variables.
+  const lightModeBlackTextStyle: React.CSSProperties | undefined =
+    resolvedMode === "light"
+      ? ({
+          "--color-text-primary": "#000",
+          "--color-text-secondary": "#000",
+          "--color-text-muted": "#000",
+        } as React.CSSProperties)
+      : undefined;
 
   // Track entrance animation. We set `entered=true` on the next frame after
   // mount so the slide-in transition runs.
@@ -73,8 +88,12 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
 
   // Tab order: back arrow → name field → settings → delete. Auto-focus the
   // back arrow on mount so keyboard users start at the top of the overlay.
+  // `preventScroll: true` is critical here — on first mount the overlay is
+  // still translated off-screen (translate-x-full) for the slide-in, so a
+  // default focus() asks the browser to scroll the off-screen button into
+  // view, producing a visible jump under the still-sliding overlay.
   useEffect(() => {
-    backArrowRef.current?.focus();
+    backArrowRef.current?.focus({ preventScroll: true });
     // We re-focus when the active selection target changes.
   }, [
     selection.kind,
@@ -355,6 +374,7 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
         "transition-transform duration-300 ease-out will-change-transform",
         entered ? "translate-x-0" : "translate-x-full"
       )}
+      style={lightModeBlackTextStyle}
       role="dialog"
       aria-label={`${breadcrumb} settings`}
     >

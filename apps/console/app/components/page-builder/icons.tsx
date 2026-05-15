@@ -115,9 +115,9 @@ export function DashedSquareIcon({ className = "w-5 h-5" }: { className?: string
   );
 }
 
-export function DragHandleIcon() {
+export function DragHandleIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
-    <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+    <svg className={className} viewBox="0 0 20 20" fill="currentColor">
       <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
     </svg>
   );

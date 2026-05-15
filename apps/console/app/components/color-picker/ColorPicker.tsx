@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@secretlobby/ui";
 import type {
   ColorValue,
@@ -97,6 +97,15 @@ export function ColorPicker({
   const [prompt, setPrompt] = useState<PromptMode>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  // Smart placement — flip to top if there isn't room below, and flip the
+  // horizontal anchor (left-edge-of-trigger vs right-edge-of-trigger) so the
+  // 280px popover doesn't clip off-screen. Default to bottom-left because
+  // the picker lives in the right rail; on mount we re-measure and correct
+  // before paint via useLayoutEffect.
+  const [placement, setPlacement] = useState<{
+    v: "top" | "bottom";
+    h: "left" | "right";
+  }>({ v: "bottom", h: "left" });
 
   // Mirror the in-progress value into the session-local drafts map whenever
   // the picker is in edit mode. The draft override drives live preview on
@@ -149,6 +158,50 @@ export function ColorPicker({
     };
   }, [open]);
 
+  // Recompute placement whenever the popover opens, on window resize, and on
+  // ancestor scroll. We measure the trigger's viewport rect plus the
+  // popover's own height (using a fallback before it has rendered), then
+  // flip to top / right anchor when the preferred bottom-left would clip.
+  // Runs in useLayoutEffect so the corrected placement is applied before
+  // paint — no flash in the default position.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const POPOVER_WIDTH = 280;
+    const POPOVER_HEIGHT_FALLBACK = 420; // close to the picker's typical height
+    const MARGIN = 8;
+    const compute = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const popoverHeight =
+        popoverRef.current?.offsetHeight || POPOVER_HEIGHT_FALLBACK;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const v: "top" | "bottom" =
+        spaceBelow >= popoverHeight + MARGIN || spaceBelow >= spaceAbove
+          ? "bottom"
+          : "top";
+      const spaceRight = window.innerWidth - rect.left;
+      const spaceLeft = rect.right;
+      const h: "left" | "right" =
+        spaceRight >= POPOVER_WIDTH + MARGIN || spaceRight >= spaceLeft
+          ? "left"
+          : "right";
+      setPlacement((prev) =>
+        prev.v === v && prev.h === h ? prev : { v, h }
+      );
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    // Use capture so we catch scroll on any ancestor (e.g. the sidebar's
+    // overflow-y-auto container) — those don't bubble.
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [open]);
+
   // Clicking the pencil on a saved tile: enter edit mode, seed the editor
   // with the swatch's value, switch to Custom tab. The "we're editing X"
   // is carried in `prompt.kind === "edit"`, so the Save button at the top
@@ -179,7 +232,11 @@ export function ColorPicker({
       {open && (
         <div
           ref={popoverRef}
-          className="absolute right-0 z-40 mt-2 w-[280px] rounded-xl border border-theme bg-theme-secondary shadow-2xl"
+          className={cn(
+            "absolute z-40 w-[280px] rounded-xl border border-theme bg-theme-secondary shadow-2xl",
+            placement.v === "bottom" ? "top-full mt-2" : "bottom-full mb-2",
+            placement.h === "left" ? "left-0" : "right-0"
+          )}
           role="dialog"
           aria-label={label || "Color picker"}
         >

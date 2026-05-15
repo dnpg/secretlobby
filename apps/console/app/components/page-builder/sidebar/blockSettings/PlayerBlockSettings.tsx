@@ -114,12 +114,12 @@ export function PlayerBlockSettings({
       <div>
         <label
           htmlFor={`player-${blockId}-playlist`}
-          className="block text-sm font-medium text-white mb-2"
+          className="block text-sm font-medium text-theme-primary mb-2"
         >
           Playlist
         </label>
         {playlists.length === 0 ? (
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-theme-secondary">
             No playlists yet — create one from the playlist manager.
           </p>
         ) : (
@@ -127,7 +127,7 @@ export function PlayerBlockSettings({
             id={`player-${blockId}-playlist`}
             value={effectivePlaylistId}
             onChange={(e) => onUpdate({ playlistId: e.target.value })}
-            className="w-full px-2 py-2 text-sm rounded-lg border border-theme bg-theme-secondary text-white cursor-pointer"
+            className="w-full px-2 py-2 text-sm rounded-lg border border-theme bg-theme-secondary text-theme-primary cursor-pointer"
           >
             {playlists.map((p) => (
               <option key={p.id} value={p.id}>
@@ -148,7 +148,7 @@ export function PlayerBlockSettings({
         )}
       </div>
       <div>
-        <label className="block text-sm font-medium text-white mb-2">Variant</label>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Variant</label>
         <div className="flex gap-2">
           {(["full", "compact", "minimal"] as const).map((variant) => (
             <button
@@ -159,7 +159,7 @@ export function PlayerBlockSettings({
                 "flex-1 px-2 py-2 text-xs rounded-lg border transition-colors cursor-pointer capitalize",
                 content.variant === variant
                   ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                  : "border-theme text-gray-300 hover:bg-theme-tertiary"
+                  : "border-theme text-theme-secondary hover:bg-theme-tertiary"
               )}
             >
               {variant}
@@ -175,7 +175,7 @@ export function PlayerBlockSettings({
             onChange={(e) => onUpdate({ showVisualizer: e.target.checked })}
             className="accent-[var(--color-brand-red)]"
           />
-          <span className="text-sm text-gray-300">Show Visualizer</span>
+          <span className="text-sm text-theme-secondary">Show Visualizer</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -184,7 +184,7 @@ export function PlayerBlockSettings({
             onChange={(e) => onUpdate({ showPlaylist: e.target.checked })}
             className="accent-[var(--color-brand-red)]"
           />
-          <span className="text-sm text-gray-300">Show Playlist</span>
+          <span className="text-sm text-theme-secondary">Show Playlist</span>
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -193,7 +193,7 @@ export function PlayerBlockSettings({
             onChange={(e) => onUpdate({ autoplay: e.target.checked })}
             className="accent-[var(--color-brand-red)]"
           />
-          <span className="text-sm text-gray-300">Autoplay</span>
+          <span className="text-sm text-theme-secondary">Autoplay</span>
         </label>
       </div>
       <BlockColorOverrides blockId={blockId} fields={PLAYER_OVERRIDE_FIELDS} />

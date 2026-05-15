@@ -39,10 +39,10 @@ export function BlockRenderer({
     [state.theme, block.themeOverrides]
   );
 
-  // Visibility plumbing: in preview mode skip entirely; in edit mode dim the
-  // block so the user can still see + toggle it from the sidebar.
+  // Visibility: a hidden block is fully removed from the canvas in every
+  // mode. The sidebar still surfaces it so the user can toggle it back on.
   const blockHidden = block.hidden === true;
-  if (blockHidden && !isEditing) return null;
+  if (blockHidden) return null;
 
   const renderBlockContent = () => {
     switch (block.type) {
@@ -87,14 +87,8 @@ export function BlockRenderer({
           ? "ring-2 ring-[var(--color-brand-red)] ring-offset-2 ring-offset-[var(--color-bg-primary)]"
           : isEditing
             ? "hover:ring-1 hover:ring-gray-500"
-            : "",
-        blockHidden && "opacity-40"
+            : ""
       )}
-      title={
-        blockHidden
-          ? "Hidden — toggle the eye in the sidebar to show"
-          : undefined
-      }
     >
       {renderBlockContent()}
 

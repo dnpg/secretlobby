@@ -57,10 +57,10 @@ export function ColumnComponent({
   // Blocks inside the column still render normally — only the column wrapper
   // becomes invisible.
   const showColumnUi = isEditing && showLayoutEdit;
-  // Visibility plumbing: skip the column entirely in preview mode; in edit
-  // mode dim it so the user can still find + toggle from the sidebar.
+  // Visibility: a hidden column is fully removed from the canvas in every
+  // mode. The sidebar still surfaces it so the user can toggle it back on.
   const columnHidden = column.hidden === true;
-  if (columnHidden && !isEditing) return null;
+  if (columnHidden) return null;
   // Make column a drop target for blocks
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -83,7 +83,7 @@ export function ColumnComponent({
           : undefined
       }
       className={cn(
-        "rounded transition-all min-h-[80px] p-2",
+        "rounded transition-all min-h-[80px]",
         showColumnUi && "cursor-pointer",
         isSlider && isMobile ? "min-w-[150px] flex-shrink-0" : "",
         isSelected && showColumnUi
@@ -98,14 +98,8 @@ export function ColumnComponent({
             : cn(
                 "border border-transparent",
                 isOver && "border-indigo-400 bg-indigo-500/5"
-              ),
-        columnHidden && "opacity-40"
+              )
       )}
-      title={
-        columnHidden
-          ? "Hidden — toggle the eye in the sidebar to show"
-          : undefined
-      }
       style={{
         minWidth: isSlider && isMobile ? "150px" : undefined,
       }}

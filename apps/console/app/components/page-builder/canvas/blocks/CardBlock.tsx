@@ -100,10 +100,47 @@ export function CardBlock({ content, theme }: CardBlockProps) {
       ? {
           border: border.style,
           ...(border.borderImage
-            ? { borderImageSlice: 1, borderImage: border.borderImage }
+            ? {
+                borderImage: border.borderImage,
+                borderImageSlice: border.borderImageSlice ?? 1,
+                ...(border.borderImageWidth
+                  ? { borderImageWidth: border.borderImageWidth }
+                  : {}),
+                ...(border.borderImageOutset
+                  ? { borderImageOutset: border.borderImageOutset }
+                  : {}),
+                ...(border.borderImageRepeat
+                  ? { borderImageRepeat: border.borderImageRepeat }
+                  : {}),
+              }
+            : {}),
+          // Per-side overrides — only present when the user has diverged from
+          // uniform. Spread directly into the style object; React's CSS prop
+          // accepts these camelCase per-side fields.
+          ...(border.widths
+            ? {
+                borderTopWidth: border.widths.top,
+                borderRightWidth: border.widths.right,
+                borderBottomWidth: border.widths.bottom,
+                borderLeftWidth: border.widths.left,
+              }
+            : {}),
+          ...(border.styles
+            ? {
+                borderTopStyle: border.styles.top,
+                borderRightStyle: border.styles.right,
+                borderBottomStyle: border.styles.bottom,
+                borderLeftStyle: border.styles.left,
+              }
             : {}),
         }
       : { border: "none" }),
+    // Outline + box-shadow are independent of `content.showBorder` — a
+    // borderless card can still cast a shadow or wear an outline.
+    ...(border.outline
+      ? { outline: border.outline, outlineOffset: border.outlineOffset }
+      : {}),
+    ...(border.boxShadow ? { boxShadow: border.boxShadow } : {}),
   };
 
   return (

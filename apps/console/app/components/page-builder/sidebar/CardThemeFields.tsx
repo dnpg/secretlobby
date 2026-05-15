@@ -25,13 +25,18 @@ import {
   CardBackdropFilterSubgroup,
   FieldRow,
   HexPickerRow,
-  NumberRow,
-  SelectRow,
   TextColorRow,
-  TextRow,
-  ToggleRow,
 } from "./ThemeFieldRows";
 import { BorderRadiusInput } from "~/components/border-radius-input";
+import {
+  BorderEditor,
+  type BorderEditorValue,
+} from "~/components/border-editor";
+import {
+  formatHexWithAlpha,
+  parseHexWithAlpha,
+} from "~/components/color-picker/utils";
+import { useSwatches } from "../PageBuilderRoot";
 
 interface CardThemeFieldsProps {
   /** Effective theme — for the global section this is `state.theme`; for
@@ -72,6 +77,161 @@ function isDifferent(a: unknown, b: unknown): boolean {
   }
 }
 
+// =============================================================================
+// Border-editor adapters
+// -----------------------------------------------------------------------------
+// The BorderEditor speaks a single `BorderEditorValue` shape; the underlying
+// theme stores a flat set of legacy fields PLUS new optional structured
+// fields. These functions translate between them in both directions so the
+// editor can stay UI-friendly and reusable while persisted JSON stays
+// backwards-compatible.
+//
+// Read side (themeToBorderEditorValue):
+//   - Splits cardBorderColor (#RRGGBBAA) + cardBorderOpacity into a single
+//     hex+alpha string for the editor's `colorHex`.
+//   - Prefers the new structured fields (cardBorderImage / cardBorderStyle /
+//     cardBorderSide{Widths,Styles} / cardOutline / cardBoxShadow). When the
+//     new image field is absent but the legacy fields say `type === "gradient"`,
+//     synthesizes a `cardBorderImage` so the user sees their existing gradient
+//     in the new editor.
+//
+// Write side (borderEditorValueToTheme):
+//   - Always writes the legacy fields too so older consumers keep rendering.
+//   - cardBorderType collapses to "gradient" when an image of type "gradient"
+//     is present; "solid" otherwise (image of type "image" doesn't fit the
+//     legacy enum, so consumers that only read the legacy fields fall back
+//     to the solid color path).
+// =============================================================================
+
+const CARD_BORDER_KEYS: (keyof ThemeSettings)[] = [
+  "cardBorderShow",
+  "cardBorderType",
+  "cardBorderColor",
+  "cardBorderGradientFrom",
+  "cardBorderGradientTo",
+  "cardBorderGradientAngle",
+  "cardBorderOpacity",
+  "cardBorderWidth",
+  "cardBorderStyle",
+  "cardBorderSideWidths",
+  "cardBorderSideStyles",
+  "cardBorderImage",
+  "cardOutline",
+  "cardBoxShadow",
+];
+
+function themeToBorderEditorValue(theme: ThemeSettings): BorderEditorValue {
+  // Compose the legacy color + opacity into a single hex+alpha string.
+  const opacity = theme.cardBorderOpacity ?? 100;
+  const baseColor = theme.cardBorderColor || "#374151";
+  const colorHex = formatHexWithAlpha(
+    parseHexWithAlpha(baseColor)?.color ?? baseColor,
+    Math.min(
+      opacity,
+      parseHexWithAlpha(baseColor)?.opacity ?? 100
+    )
+  );
+
+  // Synthesize a gradient border-image from the legacy fields when the new
+  // structured cardBorderImage is absent — keeps existing gradient borders
+  // visible inside the new editor without forcing migration.
+  let image = theme.cardBorderImage;
+  if (!image && theme.cardBorderType === "gradient") {
+    image = {
+      source: {
+        type: "gradient",
+        gradient: {
+          kind: "linear",
+          angle: theme.cardBorderGradientAngle ?? 135,
+          stops: [
+            {
+              id: "legacy-stop-0",
+              position: 0,
+              color: theme.cardBorderGradientFrom,
+              opacity: 100,
+            },
+            {
+              id: "legacy-stop-100",
+              position: 100,
+              color: theme.cardBorderGradientTo,
+              opacity: 100,
+            },
+          ],
+        },
+      },
+      slice: 1,
+      width: "1",
+      outset: "0",
+      repeat: "stretch",
+    };
+  }
+
+  return {
+    show: theme.cardBorderShow,
+    style: theme.cardBorderStyle ?? "solid",
+    width: theme.cardBorderWidth ?? "1px",
+    colorHex,
+    sideWidths: theme.cardBorderSideWidths,
+    sideStyles: theme.cardBorderSideStyles,
+    image,
+    outline: theme.cardOutline,
+    boxShadow: theme.cardBoxShadow,
+  };
+}
+
+function borderEditorValueToTheme(
+  next: BorderEditorValue,
+  prev: ThemeSettings
+): Partial<ThemeSettings> {
+  // Split colorHex back into color + opacity for the legacy fields.
+  const parsed = parseHexWithAlpha(next.colorHex) ?? {
+    color: next.colorHex,
+    opacity: 100,
+  };
+
+  // Legacy cardBorderType — keep "gradient" only when the new image is a
+  // gradient AND there's no other higher-precedence source. Image-type
+  // border-images don't map to the legacy enum, so we fall back to "solid"
+  // (legacy consumers ignore the new field anyway).
+  const legacyType: "solid" | "gradient" =
+    next.image?.source.type === "gradient" ? "gradient" : "solid";
+
+  // When the new image is a gradient, mirror its first/last stops + angle
+  // back into the legacy fields so older renderers keep painting the
+  // gradient. Image-type sources can't be expressed in the legacy fields, so
+  // those keep their previous values untouched.
+  let legacyGradient: Partial<ThemeSettings> = {};
+  if (next.image?.source.type === "gradient") {
+    const g = next.image.source.gradient;
+    if (g.kind === "linear") {
+      const sorted = [...g.stops].sort((a, b) => a.position - b.position);
+      legacyGradient = {
+        cardBorderGradientFrom: sorted[0]?.color ?? prev.cardBorderGradientFrom,
+        cardBorderGradientTo:
+          sorted[sorted.length - 1]?.color ?? prev.cardBorderGradientTo,
+        cardBorderGradientAngle: g.angle,
+      };
+    }
+  }
+
+  return {
+    // Legacy mirrors — always written so back-compat consumers stay healthy.
+    cardBorderShow: next.show,
+    cardBorderType: legacyType,
+    cardBorderColor: parsed.color,
+    cardBorderOpacity: parsed.opacity,
+    cardBorderWidth: next.width,
+    ...legacyGradient,
+    // New structured fields.
+    cardBorderStyle: next.style,
+    cardBorderSideWidths: next.sideWidths,
+    cardBorderSideStyles: next.sideStyles,
+    cardBorderImage: next.image,
+    cardOutline: next.outline,
+    cardBoxShadow: next.boxShadow,
+  };
+}
+
 export function CardThemeFields({
   value,
   baseTheme,
@@ -79,6 +239,18 @@ export function CardThemeFields({
   onResetField,
   showResetButtons = false,
 }: CardThemeFieldsProps) {
+  // Swatch context — BorderEditor forwards these into its nested ColorPickers
+  // (border color, border-image gradient). HexPickerRow / TextColorRow pull
+  // the same context internally, so this hook is the single source for the
+  // BorderEditor pass-through.
+  const {
+    swatches,
+    saveSwatch,
+    updateSwatch,
+    deleteSwatch,
+    setDraft,
+    clearDraft,
+  } = useSwatches();
   // Helper: build the modified flag for one or more theme keys.
   const isModified = (keys: (keyof ThemeSettings)[]): boolean => {
     if (!showResetButtons) return false;
@@ -201,120 +373,65 @@ export function CardThemeFields({
         />
       )}
 
-      {/* Show border — toggle. ToggleRow is a single inline row already (label
-          on the left, checkbox on the right), so when in override mode we
-          slot the dot + reset into the same line via FieldRow with a custom
-          right-hand strip. ToggleRow renders its own label too, so suppress
-          via wrap+pass-through: the FieldRow's label IS the toggle label. */}
-      {showResetButtons ? (
-        <FieldRow
-          label="Show border"
-          modified={isModified(["cardBorderShow"])}
-          onReset={makeReset(["cardBorderShow"])}
-        >
-          <input
-            type="checkbox"
-            checked={value.cardBorderShow}
-            onChange={(e) => onChange({ cardBorderShow: e.target.checked })}
-            className="accent-[var(--color-brand-red)] cursor-pointer"
-          />
-        </FieldRow>
-      ) : (
-        <ToggleRow
-          label="Show border"
-          value={value.cardBorderShow}
-          onChange={(v) => onChange({ cardBorderShow: v })}
-        />
-      )}
+      {/* Border editor — replaces the previous inline rows. The new component
+          handles CSS3 borders end-to-end: per-side widths/styles, border-image
+          (gradient OR uploaded image with slice/width/outset/repeat), outline,
+          box-shadow, and a one-click Glass mode preset.
 
-      {value.cardBorderShow && (
-        <>
-          {wrap(
-            "Border type",
-            ["cardBorderType"],
-            <SelectRow
-              label="Border type"
-              value={value.cardBorderType}
-              options={[
-                { value: "solid", label: "Solid" },
-                { value: "gradient", label: "Gradient" },
-              ]}
-              onChange={(v) => onChange({ cardBorderType: v })}
-              renderLabel={!showResetButtons}
-            />
-          )}
-          {value.cardBorderType === "solid" ? (
-            wrap(
-              "Border color",
-              ["cardBorderColor"],
-              <HexPickerRow
-                label="Border color"
-                value={value.cardBorderColor}
-                onChange={(v) => onChange({ cardBorderColor: v })}
-                renderLabel={!showResetButtons}
-              />
-            )
-          ) : (
-            <>
-              {wrap(
-                "Border gradient from",
-                ["cardBorderGradientFrom"],
-                <HexPickerRow
-                  label="Border gradient from"
-                  value={value.cardBorderGradientFrom}
-                  onChange={(v) => onChange({ cardBorderGradientFrom: v })}
-                  renderLabel={!showResetButtons}
-                />
-              )}
-              {wrap(
-                "Border gradient to",
-                ["cardBorderGradientTo"],
-                <HexPickerRow
-                  label="Border gradient to"
-                  value={value.cardBorderGradientTo}
-                  onChange={(v) => onChange({ cardBorderGradientTo: v })}
-                  renderLabel={!showResetButtons}
-                />
-              )}
-              {wrap(
-                "Border gradient angle",
-                ["cardBorderGradientAngle"],
-                <NumberRow
-                  label="Border gradient angle"
-                  value={value.cardBorderGradientAngle}
-                  min={0}
-                  max={360}
-                  suffix="°"
-                  onChange={(v) => onChange({ cardBorderGradientAngle: v })}
-                />
-              )}
-            </>
-          )}
-          {wrap(
-            "Border opacity",
-            ["cardBorderOpacity"],
-            <NumberRow
-              label="Border opacity"
-              value={value.cardBorderOpacity}
-              min={0}
-              max={100}
-              slider
-              suffix="%"
-              onChange={(v) => onChange({ cardBorderOpacity: v })}
-            />
-          )}
-          {wrap(
-            "Border width",
-            ["cardBorderWidth"],
-            <TextRow
-              label="Border width"
-              value={value.cardBorderWidth}
-              onChange={(v) => onChange({ cardBorderWidth: v })}
-              renderLabel={!showResetButtons}
-            />
-          )}
-        </>
-      )}
+          The CARD_BORDER_KEYS list below tracks every theme key the editor
+          may write — used by the override Modified/Reset row above the
+          component AND by CardBlockSettings' "Reset all overrides" button. */}
+      {showResetButtons && (() => {
+        const modifiedKeys = CARD_BORDER_KEYS.filter((k) =>
+          isDifferent(value[k], baseTheme[k])
+        );
+        if (modifiedKeys.length === 0) return null;
+        return (
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-xs text-theme-secondary flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-brand-red)] flex-shrink-0" />
+              <span>Border modified ({modifiedKeys.length})</span>
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                onResetField && onResetField(modifiedKeys)
+              }
+              className="text-[10px] text-theme-muted hover:text-theme-primary cursor-pointer underline"
+              title="Reset all border fields to theme value"
+            >
+              Reset
+            </button>
+          </div>
+        );
+      })()}
+      <BorderEditor
+        value={themeToBorderEditorValue(value)}
+        onChange={(next) => onChange(borderEditorValueToTheme(next, value))}
+        swatches={swatches}
+        onSaveSwatch={saveSwatch}
+        onUpdateSwatch={updateSwatch}
+        onDeleteSwatch={deleteSwatch}
+        setDraft={setDraft}
+        clearDraft={clearDraft}
+        onApplyGlassCompanion={(companion) =>
+          onChange({
+            cardBackdropFilter: [
+              {
+                id: `glass-blur-${Date.now()}`,
+                kind: "blur",
+                px: companion.backdropBlurPx,
+              },
+            ],
+            cardBgOpacity: companion.cardBgOpacity,
+          })
+        }
+      />
+      {/* Legacy flat rows removed — BorderEditor owns the same theme keys
+          (cardBorderShow, cardBorderType, cardBorderColor, the cardBorderGradient
+          fields, cardBorderOpacity, cardBorderWidth) plus the new structured
+          keys (cardBorderStyle, cardBorderSideWidths, cardBorderSideStyles,
+          cardBorderImage, cardOutline, cardBoxShadow). */}
 
       {/* Border radius — BorderRadiusInput owns its label/legend internally.
           The FieldRow wrapper would double up labels and break its corner UI,
