@@ -32,6 +32,8 @@ export async function updateTrack(
     artist?: string | null;
     filename?: string;
     mediaId?: string;
+    // `null` clears the cover; `undefined` leaves it untouched.
+    coverMediaId?: string | null;
     position?: number;
   }
 ) {

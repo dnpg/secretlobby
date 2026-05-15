@@ -96,7 +96,7 @@ export function CardBlock({ content, theme }: CardBlockProps) {
           WebkitBackdropFilter: backdropFilterCSS,
         }
       : {}),
-    ...(content.showBorder
+    ...(theme.cardBorderShow
       ? {
           border: border.style,
           ...(border.borderImage

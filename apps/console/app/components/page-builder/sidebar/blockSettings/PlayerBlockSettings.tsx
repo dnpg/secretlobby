@@ -98,7 +98,7 @@ export function PlayerBlockSettings({
       : defaultPlaylistId;
 
   // Look up the lobby id from the active playlist so the "Manage playlists"
-  // link points back to /lobby/{id}/playlist?playlistId=. We don't have the
+  // link points back to /lobby/{id}/playlists/{playlistId}. We don't have the
   // lobby id directly in builder state, so we read it off LeftRail's parent
   // route via document.location (avoiding extra prop drilling). The build
   // route for the playlist manager is the same console origin.
@@ -140,7 +140,7 @@ export function PlayerBlockSettings({
         )}
         {lobbyId && (
           <Link
-            to={`/lobby/${lobbyId}/playlist?playlistId=${effectivePlaylistId}`}
+            to={`/lobby/${lobbyId}/playlists/${effectivePlaylistId}`}
             className="inline-block mt-2 text-xs text-[var(--color-brand-red)] hover:underline cursor-pointer"
           >
             Manage playlists →

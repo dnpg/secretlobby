@@ -8,8 +8,10 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -275,6 +277,23 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
     [sections]
   );
 
+  // Custom collision detection: prefer ANY droppable the pointer is currently
+  // inside, and only fall back to `closestCorners` when the pointer is outside
+  // every droppable. `closestCorners` alone has a sharp failure mode for empty
+  // columns — their wrapper rect is small and content-less, so blocks in
+  // adjacent (non-empty) columns end up with corners closer to the dragged
+  // item, and the empty column never wins the drop target. `pointerWithin`
+  // honours the cursor strictly, which is what users expect when they hover
+  // over an empty column to drop into it.
+  const collisionDetectionStrategy: CollisionDetection = useCallback(
+    (args) => {
+      const pointerCollisions = pointerWithin(args);
+      if (pointerCollisions.length > 0) return pointerCollisions;
+      return closestCorners(args);
+    },
+    []
+  );
+
   // Unified drag-end handler. We use ONE DndContext for both section and block
   // drags because nested DndContexts let the innermost capture all pointer
   // events for elements in its tree — when sections were inside the block
@@ -491,7 +510,7 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
             return (
               <DndContext
                 sensors={sensors}
-                collisionDetection={closestCorners}
+                collisionDetection={collisionDetectionStrategy}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
               >

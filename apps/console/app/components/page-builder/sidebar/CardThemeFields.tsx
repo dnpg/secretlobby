@@ -459,7 +459,7 @@ export function CardThemeFields({
             label="Border radius"
             value={value.cardBorderRadius}
             min={0}
-            max={64}
+            max={9999}
             onChange={(v) => onChange({ cardBorderRadius: v })}
           />
         </div>
@@ -468,7 +468,7 @@ export function CardThemeFields({
           label="Border radius"
           value={value.cardBorderRadius}
           min={0}
-          max={64}
+          max={9999}
           onChange={(v) => onChange({ cardBorderRadius: v })}
         />
       )}

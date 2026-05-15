@@ -24,6 +24,7 @@ export async function getPlaylistByIdWithTracks(id: string) {
           lobbyId: true,
           playlistId: true,
           mediaId: true,
+          coverMediaId: true,
           createdAt: true,
           updatedAt: true,
           media: {
@@ -37,6 +38,16 @@ export async function getPlaylistByIdWithTracks(id: string) {
               waveformPeaks: true,
               createdAt: true,
               updatedAt: true,
+            },
+          },
+          coverMedia: {
+            select: {
+              id: true,
+              key: true,
+              filename: true,
+              type: true,
+              width: true,
+              height: true,
             },
           },
         },
@@ -71,6 +82,7 @@ export async function getPlaylistsByLobbyIdWithTracks(lobbyId: string) {
           lobbyId: true,
           playlistId: true,
           mediaId: true,
+          coverMediaId: true,
           createdAt: true,
           updatedAt: true,
           media: {
@@ -84,6 +96,16 @@ export async function getPlaylistsByLobbyIdWithTracks(lobbyId: string) {
               waveformPeaks: true,
               createdAt: true,
               updatedAt: true,
+            },
+          },
+          coverMedia: {
+            select: {
+              id: true,
+              key: true,
+              filename: true,
+              type: true,
+              width: true,
+              height: true,
             },
           },
         },

@@ -50,7 +50,7 @@ export interface PageBuilderState {
   themeLastSavedAt: number | null;
   // Phase 6: lobby playlists, surfaced read-only to the canvas + sidebar.
   // Updated only when the loader re-runs; mutating playlists happens on the
-  // dedicated /lobby/{id}/playlist?playlistId= route, not from here.
+  // dedicated /lobby/{id}/playlists/{playlistId} route, not from here.
   playlists: PlaylistSummary[];
   // ID of the lobby's default playlist (always present after Phase 6 — the
   // loader auto-creates a default one if none exist). PlayerBlocks fall back

@@ -363,6 +363,9 @@ model Track {
   // Media reference (new)
   mediaId String?
 
+  // Optional cover image (FK to Media) — separate from the audio mediaId.
+  coverMediaId String?
+
   // Ordering (within playlist; lobbyId kept as denormalized cache for
   // legacy queries and convenience joins).
   position Int @default(0)
@@ -372,15 +375,17 @@ model Track {
   updatedAt DateTime @updatedAt
 
   // Relations
-  lobby    Lobby     @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
-  playlist Playlist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
-  media    Media?    @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  lobby      Lobby     @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  playlist   Playlist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  media      Media?    @relation("TrackAudioMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  coverMedia Media?    @relation("TrackCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
 
   @@index([lobbyId])
   @@index([lobbyId, position])
   @@index([playlistId])
   @@index([playlistId, position])
   @@index([mediaId])
+  @@index([coverMediaId])
 }
 
 // ============================================================================
@@ -458,8 +463,9 @@ model Media {
   lobbyProfiles        Lobby[] @relation("LobbyProfile")
   lobbyProfileDarks    Lobby[] @relation("LobbyProfileDark")
 
-  // Inverse relation (Tracks using this media)
-  tracks    Track[]
+  // Inverse relations (Tracks using this media as audio or cover)
+  tracks       Track[] @relation("TrackAudioMedia")
+  trackCovers  Track[] @relation("TrackCoverMedia")
 
   @@index([accountId, type])
   @@index([accountId, createdAt])

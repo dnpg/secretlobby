@@ -5,37 +5,6 @@ import { usePageBuilder } from "../../state/provider";
 import { useThemeOverlay } from "../../PageBuilderRoot";
 import { CardThemeFields } from "../CardThemeFields";
 
-// Theme keys this panel manages. Used to count active overrides for the
-// "Reset all overrides" affordance — overrides outside this list (if any
-// future block kind ever stores them on a Card block) survive the bulk reset.
-const CARD_THEME_KEYS = new Set<keyof ThemeSettings>([
-  "cardBgColor",
-  "cardBgType",
-  "cardBgOpacity",
-  "cardBackdropFilter",
-  "cardHeadingColor",
-  "cardHeadingColorRich",
-  "cardContentColor",
-  "cardContentColorRich",
-  // Border — legacy flat fields kept for back-compat consumers.
-  "cardBorderShow",
-  "cardBorderType",
-  "cardBorderColor",
-  "cardBorderGradientFrom",
-  "cardBorderGradientTo",
-  "cardBorderGradientAngle",
-  "cardBorderOpacity",
-  "cardBorderWidth",
-  // Border — new CSS3 structured fields owned by BorderEditor.
-  "cardBorderStyle",
-  "cardBorderSideWidths",
-  "cardBorderSideStyles",
-  "cardBorderImage",
-  "cardOutline",
-  "cardBoxShadow",
-  "cardBorderRadius",
-]);
-
 interface CardBlockSettingsProps {
   blockId: string;
   content: CardBlockContent;
@@ -111,22 +80,16 @@ export function CardBlockSettings({
           features={["bold", "italic", "underline", "link", "bulletList", "orderedList", "textAlign"]}
         />
       </div>
-      <label className="flex items-center gap-2 cursor-pointer">
-        <input
-          type="checkbox"
-          checked={content.showBorder}
-          onChange={(e) => onUpdate({ showBorder: e.target.checked })}
-          className="accent-[var(--color-brand-red)]"
-        />
-        <span className="text-sm text-theme-secondary">Show Border</span>
-      </label>
       {block && (() => {
-        // Count overrides that belong to the Card panel — used to decide
-        // whether the "Reset all" button is meaningful.
-        const cardOverrideKeys = (
-          Object.keys(overrides) as (keyof ThemeSettings)[]
-        ).filter((k) => CARD_THEME_KEYS.has(k));
-        const hasCardOverrides = cardOverrideKeys.length > 0;
+        // "Reset all overrides" wipes the block's entire themeOverrides map
+        // via the dedicated reducer action. We deliberately do NOT filter by
+        // a curated key list here — that allowlist drifted out of sync any
+        // time a new theme field was added, leaving orphan override keys
+        // that survived the reset and caused two "reset" cards to diverge.
+        // Whatever ends up on `block.themeOverrides` is, by definition, an
+        // override this block carries; a full clear is the only way to
+        // guarantee the block fully inherits the global theme afterwards.
+        const hasAnyOverrides = Object.keys(overrides).length > 0;
         return (
           <div className="pt-3 border-t border-theme space-y-3">
             <div className="flex items-center justify-between gap-2">
@@ -142,10 +105,12 @@ export function CardBlockSettings({
                 Global styles →
               </button>
             </div>
-            {hasCardOverrides && (
+            {hasAnyOverrides && (
               <button
                 type="button"
-                onClick={() => resetFields(cardOverrideKeys)}
+                onClick={() =>
+                  dispatch({ type: "clearBlockThemeOverrides", blockId })
+                }
                 className="w-full px-2 py-1 text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 rounded cursor-pointer"
                 title="Clear every Card override on this block and inherit the global theme"
               >

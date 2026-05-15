@@ -1,12 +1,25 @@
 import type { CSSProperties } from "react";
+import { useImageTransform } from "@secretlobby/ui";
 import { borderRadiusToCSS } from "~/lib/theme";
 import { ImageIcon } from "../../icons";
+import { usePageBuilder } from "../../state/provider";
 import type { ImageBlockContent, ThemeSettings } from "../../state/types";
 
 interface ImageBlockProps {
   content: ImageBlockContent;
   theme: ThemeSettings;
 }
+
+// Width ladders tuned to typical page-builder column widths.
+const MOBILE_WIDTHS = [320, 480, 640, 768];
+const TABLET_WIDTHS = [640, 768, 1024];
+const DESKTOP_WIDTHS = [640, 960, 1280, 1600, 1920];
+
+// `sizes` defaults: a page-builder column is full-width on mobile, often
+// halves at tablet, and goes back to whatever flow on desktop.
+const MOBILE_SIZES = "100vw";
+const TABLET_SIZES = "(min-width: 768px) 50vw, 100vw";
+const DESKTOP_SIZES = "100vw";
 
 // Renders an image block onto the canvas. Uses a <picture> element when
 // responsive overrides are present (tablet/mobile), otherwise a plain <img>.
@@ -21,7 +34,32 @@ interface ImageBlockProps {
 // override (set in ImageBlockSettings) which, when present, wins over the
 // theme value.
 export function ImageBlock({ content, theme }: ImageBlockProps) {
+  const { generateSrcSet, transformUrl } = useImageTransform();
+  const { state } = usePageBuilder();
+  const simulatedViewport = state.viewport;
   const hasResponsiveImages = content.tabletMediaUrl || content.mobileMediaUrl;
+
+  // The canvas's "preview viewport" is just a resized container on a desktop
+  // browser. <source media="(max-width: 767px)"> never matches because the
+  // real browser is still 1440px wide. To honour the simulated viewport we
+  // emit one extra <source> with `media="(min-width: 0px)"` — always matches,
+  // first <source> wins — that points at the override for whichever viewport
+  // the user is currently previewing. When the canvas is on Desktop we skip
+  // this entirely and let the normal responsive sources work.
+  const simulatedOverride =
+    simulatedViewport === "mobile" && content.mobileMediaUrl
+      ? {
+          url: content.mobileMediaUrl,
+          widths: MOBILE_WIDTHS,
+          sizes: MOBILE_SIZES,
+        }
+      : simulatedViewport === "tablet" && content.tabletMediaUrl
+        ? {
+            url: content.tabletMediaUrl,
+            widths: TABLET_WIDTHS,
+            sizes: TABLET_SIZES,
+          }
+        : null;
 
   // Both `imageBorderRadius` (block-level override) and `theme.cardBorderRadius`
   // (fallback) are a `BorderRadius` — a plain number for uniform corners or a
@@ -39,7 +77,6 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
     borderRadius,
   };
 
-  // Render image with picture element for responsive images
   const renderImage = () => {
     if (!content.mediaUrl) {
       return (
@@ -55,27 +92,50 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
       );
     }
 
+    // Fallback (desktop) srcSet + a high-width src so older browsers ignoring
+    // srcSet still get a reasonable resolution.
+    const desktopSrcSet = generateSrcSet(content.mediaUrl, DESKTOP_WIDTHS);
+    const desktopSrc = transformUrl(content.mediaUrl, {
+      width: DESKTOP_WIDTHS[DESKTOP_WIDTHS.length - 1],
+    });
+
     if (hasResponsiveImages) {
-      // Use picture element for responsive images (SEO & performance optimized).
-      // The outer <picture> still inherits the natural sizing of whichever
-      // <source>/<img> is selected, so applying `imgStyle` to the <img> is
-      // enough — the picture element wraps it transparently.
+      // Real responsive <picture>: each <source> carries a multi-width srcSet
+      // with `w` descriptors plus a `sizes` attribute so the browser can pick
+      // the right asset for the viewport/DPR. The `simulatedOverride` source
+      // sits first with an always-matching media query so the canvas honours
+      // the page-builder's previewed viewport (Mobile / Tablet) regardless of
+      // the real browser width.
       return (
         <picture>
+          {simulatedOverride && (
+            <source
+              media="(min-width: 0px)"
+              srcSet={generateSrcSet(
+                simulatedOverride.url,
+                simulatedOverride.widths
+              )}
+              sizes={simulatedOverride.sizes}
+            />
+          )}
           {content.mobileMediaUrl && (
             <source
               media="(max-width: 767px)"
-              srcSet={content.mobileMediaUrl}
+              srcSet={generateSrcSet(content.mobileMediaUrl, MOBILE_WIDTHS)}
+              sizes={MOBILE_SIZES}
             />
           )}
           {content.tabletMediaUrl && (
             <source
-              media="(max-width: 1023px)"
-              srcSet={content.tabletMediaUrl}
+              media="(min-width: 768px) and (max-width: 1023px)"
+              srcSet={generateSrcSet(content.tabletMediaUrl, TABLET_WIDTHS)}
+              sizes={TABLET_SIZES}
             />
           )}
           <img
-            src={content.mediaUrl}
+            src={desktopSrc}
+            srcSet={desktopSrcSet}
+            sizes={DESKTOP_SIZES}
             alt={content.alt || ""}
             style={imgStyle}
             loading="lazy"
@@ -87,7 +147,9 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
 
     return (
       <img
-        src={content.mediaUrl}
+        src={desktopSrc}
+        srcSet={desktopSrcSet}
+        sizes={DESKTOP_SIZES}
         alt={content.alt || ""}
         style={imgStyle}
         loading="lazy"
@@ -110,24 +172,5 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
     </a>
   ) : imageContent;
 
-  return (
-    <div className="w-full relative">
-      {wrappedContent}
-      {/* Indicator for responsive images in editor */}
-      {hasResponsiveImages && content.mediaUrl && (
-        <div className="absolute bottom-1 right-1 flex gap-1">
-          {content.tabletMediaUrl && (
-            <span className="px-1.5 py-0.5 text-[10px] bg-black/60 text-white rounded" title="Has tablet image">
-              T
-            </span>
-          )}
-          {content.mobileMediaUrl && (
-            <span className="px-1.5 py-0.5 text-[10px] bg-black/60 text-white rounded" title="Has mobile image">
-              M
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return <div className="w-full relative">{wrappedContent}</div>;
 }

@@ -207,7 +207,7 @@ export function ImageBlockSettings({ content, onUpdate }: ImageBlockSettingsProp
           value={effectiveBorderRadius}
           onChange={(next) => onUpdate({ imageBorderRadius: next })}
           min={0}
-          max={64}
+          max={9999}
         />
       </div>
 

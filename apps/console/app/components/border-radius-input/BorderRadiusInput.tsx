@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   borderRadiusToCSS,
   type BorderRadius,
@@ -9,15 +9,16 @@ import {
 // BorderRadiusInput
 // -----------------------------------------------------------------------------
 // Figma-style border-radius control. Default (collapsed) view is a single
-// number input that writes all four corners uniformly. A corners-toggle button
-// expands the control into a 2x2 grid of per-corner inputs (TL/TR/BR/BL),
-// each defaulting to the current uniform value.
+// number input whose in-field glyph doubles as a drag-to-scrub handle and
+// writes all four corners uniformly. A right-side button toggles a 2x2 grid
+// of per-corner inputs (TL/TR/BL/BR). Each per-corner field also exposes a
+// drag-scrub handle scoped to that corner.
 //
 // Uniformity is derived from `value` itself — when `value` is a number OR
 // every corner of the object matches, the collapsed view shows that number;
 // otherwise the collapsed input shows the placeholder "Mixed" (italic, muted)
-// but typing a number still writes to all four corners and collapses back to
-// uniform mode.
+// but typing a number / dragging its handle still writes to all four corners
+// and collapses back to uniform mode.
 // =============================================================================
 
 interface BorderRadiusInputProps {
@@ -28,7 +29,7 @@ interface BorderRadiusInputProps {
   label?: string;
 }
 
-// Helpers — pure, exported as locals.
+// Helpers — pure, local.
 function isUniform(value: BorderRadius): boolean {
   if (typeof value === "number") return true;
   return (
@@ -51,14 +52,115 @@ function asCorners(value: BorderRadius): RadiusCorners {
   return value;
 }
 
-// Clamp a number into [min, max].
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
-// SVG corner glyphs — small open-shape paths showing which corner is rounded.
-// All four corners share the same `M2 14 L2 6 A4 4 0 0 1 6 2 L14 2` base path
-// (top-left rounded) and rotate via the `transform` prop.
+// =============================================================================
+// useDragScrub — pointer-events based scrubbing for a Figma-style number drag.
+// -----------------------------------------------------------------------------
+// Returns props to spread onto a handle element. On pointerdown we capture the
+// pointer, remember the starting client X and the starting numeric value, then
+// translate horizontal motion into integer deltas (with Shift = fine, Alt =
+// coarse). Movement under DRAG_THRESHOLD px is treated as a click (no-op for
+// onChange) so the handle can co-exist with other gestures.
+// =============================================================================
+const DRAG_THRESHOLD = 3; // px
+const BASE_SENSITIVITY = 0.5; // 2px ≈ 1 unit
+const FINE_SENSITIVITY = 0.1;
+const COARSE_SENSITIVITY = 2;
+
+interface UseDragScrubArgs {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (next: number) => void;
+}
+
+function useDragScrub({ value, min, max, onChange }: UseDragScrubArgs) {
+  // Refs so handlers stay stable and always see the freshest start state.
+  const startXRef = useRef(0);
+  const startValueRef = useRef(0);
+  const draggingRef = useRef(false);
+  const movedRef = useRef(false);
+  const prevBodyUserSelectRef = useRef<string | null>(null);
+  const prevBodyCursorRef = useRef<string | null>(null);
+
+  const beginBodyDragStyles = () => {
+    prevBodyUserSelectRef.current = document.body.style.userSelect;
+    prevBodyCursorRef.current = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ew-resize";
+  };
+
+  const endBodyDragStyles = () => {
+    document.body.style.userSelect = prevBodyUserSelectRef.current ?? "";
+    document.body.style.cursor = prevBodyCursorRef.current ?? "";
+    prevBodyUserSelectRef.current = null;
+    prevBodyCursorRef.current = null;
+  };
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
+    // Only respond to primary button / single-touch / pen.
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startXRef.current = e.clientX;
+    startValueRef.current = value;
+    draggingRef.current = true;
+    movedRef.current = false;
+    beginBodyDragStyles();
+  };
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
+    if (!draggingRef.current) return;
+    const dx = e.clientX - startXRef.current;
+    if (!movedRef.current && Math.abs(dx) < DRAG_THRESHOLD) return;
+    movedRef.current = true;
+    const sensitivity = e.shiftKey
+      ? FINE_SENSITIVITY
+      : e.altKey
+        ? COARSE_SENSITIVITY
+        : BASE_SENSITIVITY;
+    const next = clamp(
+      Math.round(startValueRef.current + dx * sensitivity),
+      min,
+      max
+    );
+    if (next !== value) onChange(next);
+  };
+
+  const onPointerUp = (e: ReactPointerEvent<HTMLElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // pointer may have already been released; ignore.
+    }
+    endBodyDragStyles();
+  };
+
+  const onPointerCancel = (e: ReactPointerEvent<HTMLElement>) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    endBodyDragStyles();
+  };
+
+  return {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+  };
+}
+
+// SVG corner glyph — small open-shape path showing which corner is rounded.
+// Rotates via the `transform` prop to address each of the four corners.
 function CornerGlyph({ rotate }: { rotate: 0 | 90 | 180 | 270 }) {
   return (
     <svg
@@ -78,8 +180,7 @@ function CornerGlyph({ rotate }: { rotate: 0 | 90 | 180 | 270 }) {
   );
 }
 
-// Toggle icon — four small dots in a 2x2 arrangement when the control is
-// uniform; a single rounded-rectangle when expanded (signals "collapse").
+// Right-side toggle icon — four small dots in a 2x2 arrangement.
 function CornersToggleIcon() {
   return (
     <svg
@@ -97,56 +198,93 @@ function CornersToggleIcon() {
   );
 }
 
-function CollapseIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.5}
-      aria-hidden="true"
-    >
-      <rect x="2" y="2" width="12" height="12" rx="3" />
-    </svg>
-  );
-}
-
-interface CornerFieldProps {
+// =============================================================================
+// ScrubField — a single number input with a drag-scrub glyph on its left edge.
+// Used both for the main (uniform) row and each per-corner cell.
+// =============================================================================
+interface ScrubFieldProps {
   rotate: 0 | 90 | 180 | 270;
-  value: number;
+  value: number | null; // null → render as "Mixed" placeholder
+  scrubValue: number; // value used as the start of a drag (e.g. 0 when mixed)
   min: number;
   max: number;
   onChange: (next: number) => void;
   ariaLabel: string;
+  handleAriaLabel: string;
 }
 
-function CornerField({
+function ScrubField({
   rotate,
   value,
+  scrubValue,
   min,
   max,
   onChange,
   ariaLabel,
-}: CornerFieldProps) {
+  handleAriaLabel,
+}: ScrubFieldProps) {
+  // Local string buffer so the user can type freely (clears "Mixed").
+  const [draft, setDraft] = useState<string | null>(null);
+  const isMixed = value === null;
+
+  const commit = (raw: string) => {
+    setDraft(null);
+    const n = Number(raw);
+    if (raw.trim() === "" || Number.isNaN(n)) return;
+    onChange(clamp(n, min, max));
+  };
+
+  const scrub = useDragScrub({
+    value: scrubValue,
+    min,
+    max,
+    onChange,
+  });
+
+  const inputValue =
+    draft !== null ? draft : isMixed ? "" : (value as number);
+
   return (
-    <div className="flex items-center gap-1 rounded border border-theme bg-theme-tertiary px-1.5 py-1">
-      <span className="text-theme-muted flex-shrink-0">
+    <div className="flex items-center gap-1.5 rounded border border-theme bg-theme-tertiary px-2 py-1 flex-1 min-w-0">
+      <button
+        type="button"
+        // Drag-scrub handle. It's a button so it's keyboard-reachable and gets
+        // the standard focus ring, but its primary affordance is the pointer
+        // drag — a plain click does nothing (the click vs. drag threshold in
+        // useDragScrub handles this).
+        className="flex items-center justify-center text-theme-muted hover:text-theme-primary flex-shrink-0 cursor-ew-resize touch-none"
+        style={{ touchAction: "none" }}
+        aria-label={handleAriaLabel}
+        title="Drag to adjust (Shift: fine, Alt: coarse)"
+        tabIndex={-1}
+        {...scrub}
+      >
         <CornerGlyph rotate={rotate} />
-      </span>
+      </button>
       <input
         type="number"
-        value={value}
+        value={inputValue}
+        placeholder={isMixed ? "Mixed" : undefined}
         min={min}
         max={max}
         step={1}
-        onChange={(e) => {
-          const raw = Number(e.target.value);
-          if (Number.isNaN(raw)) return;
-          onChange(clamp(raw, min, max));
+        onFocus={(e) => {
+          if (draft === null) setDraft(e.target.value);
         }}
-        className="w-full min-w-0 bg-transparent text-xs text-theme-primary outline-none"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className={`w-full min-w-0 bg-transparent text-xs text-theme-primary outline-none ${
+          isMixed && draft === null
+            ? "italic placeholder:italic placeholder:text-theme-muted"
+            : ""
+        }`}
         aria-label={ariaLabel}
       />
     </div>
@@ -157,7 +295,7 @@ export function BorderRadiusInput({
   value,
   onChange,
   min = 0,
-  max = 64,
+  max = 9999,
   label,
 }: BorderRadiusInputProps) {
   // Whether the expanded (4-corner grid) view is open. Independent of value
@@ -165,25 +303,21 @@ export function BorderRadiusInput({
   // corner object intact while showing the "Mixed" placeholder.
   const [expanded, setExpanded] = useState(false);
 
-  // Local string buffer for the uniform input so the user can type freely
-  // (clears on focus when "Mixed"). On commit (Enter / blur) we parse and
-  // write to all four corners.
   const uniform = uniformValue(value);
-  const [uniformDraft, setUniformDraft] = useState<string | null>(null);
-
   const corners = asCorners(value);
-  const isMixed = uniform === null;
   const displayCSS = borderRadiusToCSS(value);
 
-  const commitUniform = (raw: string) => {
-    setUniformDraft(null);
-    const n = Number(raw);
-    if (raw.trim() === "" || Number.isNaN(n)) return; // ignore non-numeric
+  // Uniform writer — used by both the main input's typing path and its drag-
+  // scrub handle. Stores a plain `number` so persisted JSON stays small.
+  const setUniform = (n: number) => {
     onChange(clamp(n, min, max));
   };
 
   const setCorner = (key: keyof RadiusCorners, next: number) => {
-    const updated: RadiusCorners = { ...corners, [key]: next };
+    const updated: RadiusCorners = {
+      ...corners,
+      [key]: clamp(next, min, max),
+    };
     // Collapse back to a plain number when all four corners match — keeps
     // persisted JSON minimal for the common uniform case.
     if (
@@ -215,6 +349,42 @@ export function BorderRadiusInput({
     }
   };
 
+  // Shared top row — always rendered, even when expanded. Per the brief the
+  // expanded view simply adds the 2x2 corner grid underneath.
+  const topRow = (
+    <div className="flex items-center gap-1.5">
+      <ScrubField
+        rotate={0}
+        value={uniform}
+        // When mixed, base the scrub on the average so dragging from "Mixed"
+        // doesn't snap to 0 — feels more natural and matches Figma.
+        scrubValue={
+          uniform ??
+          Math.round((corners.tl + corners.tr + corners.br + corners.bl) / 4)
+        }
+        min={min}
+        max={max}
+        onChange={setUniform}
+        ariaLabel={label ? `${label} (uniform)` : "Border radius"}
+        handleAriaLabel="Drag to adjust border radius"
+      />
+      <button
+        type="button"
+        onClick={handleToggle}
+        className={`p-1.5 rounded border border-theme cursor-pointer flex-shrink-0 ${
+          expanded
+            ? "bg-theme-tertiary text-theme-primary"
+            : "text-theme-muted hover:text-theme-primary hover:bg-theme-tertiary"
+        }`}
+        title={expanded ? "Collapse corners" : "Edit corners individually"}
+        aria-label={expanded ? "Collapse corners" : "Expand corners"}
+        aria-pressed={expanded}
+      >
+        <CornersToggleIcon />
+      </button>
+    </div>
+  );
+
   return (
     <div>
       {(label || displayCSS) && (
@@ -225,100 +395,52 @@ export function BorderRadiusInput({
       )}
       {expanded ? (
         <div className="space-y-1.5">
+          {topRow}
           <div className="grid grid-cols-2 gap-1.5">
-            <CornerField
+            <ScrubField
               rotate={0}
               value={corners.tl}
+              scrubValue={corners.tl}
               min={min}
               max={max}
               onChange={(n) => setCorner("tl", n)}
               ariaLabel="Top-left corner radius"
+              handleAriaLabel="Drag to adjust top-left corner"
             />
-            <CornerField
+            <ScrubField
               rotate={90}
               value={corners.tr}
+              scrubValue={corners.tr}
               min={min}
               max={max}
               onChange={(n) => setCorner("tr", n)}
               ariaLabel="Top-right corner radius"
+              handleAriaLabel="Drag to adjust top-right corner"
             />
-            <CornerField
+            <ScrubField
               rotate={270}
               value={corners.bl}
+              scrubValue={corners.bl}
               min={min}
               max={max}
               onChange={(n) => setCorner("bl", n)}
               ariaLabel="Bottom-left corner radius"
+              handleAriaLabel="Drag to adjust bottom-left corner"
             />
-            <CornerField
+            <ScrubField
               rotate={180}
               value={corners.br}
+              scrubValue={corners.br}
               min={min}
               max={max}
               onChange={(n) => setCorner("br", n)}
               ariaLabel="Bottom-right corner radius"
+              handleAriaLabel="Drag to adjust bottom-right corner"
             />
-          </div>
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleToggle}
-              className="p-1 rounded text-theme-muted hover:text-theme-primary hover:bg-theme-tertiary cursor-pointer"
-              title="Collapse to a single value"
-              aria-label="Collapse corners"
-              aria-pressed={true}
-            >
-              <CollapseIcon />
-            </button>
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            value={
-              uniformDraft !== null
-                ? uniformDraft
-                : isMixed
-                  ? ""
-                  : (uniform as number)
-            }
-            placeholder={isMixed ? "Mixed" : undefined}
-            min={min}
-            max={max}
-            step={1}
-            onFocus={(e) => {
-              // Start a fresh typing buffer so the user can replace the value
-              // without having to clear "Mixed" manually.
-              if (uniformDraft === null) setUniformDraft(e.target.value);
-            }}
-            onChange={(e) => setUniformDraft(e.target.value)}
-            onBlur={(e) => commitUniform(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitUniform((e.target as HTMLInputElement).value);
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-            className={`flex-1 min-w-0 px-2 py-1 text-xs bg-theme-tertiary border border-theme rounded text-theme-primary ${
-              isMixed && uniformDraft === null
-                ? "italic placeholder:italic placeholder:text-theme-muted"
-                : ""
-            }`}
-            aria-label={label ? `${label} (uniform)` : "Border radius"}
-          />
-          <button
-            type="button"
-            onClick={handleToggle}
-            className="p-1.5 rounded border border-theme text-theme-muted hover:text-theme-primary hover:bg-theme-tertiary cursor-pointer flex-shrink-0"
-            title="Edit corners individually"
-            aria-label="Expand corners"
-            aria-pressed={false}
-          >
-            <CornersToggleIcon />
-          </button>
-        </div>
+        topRow
       )}
     </div>
   );

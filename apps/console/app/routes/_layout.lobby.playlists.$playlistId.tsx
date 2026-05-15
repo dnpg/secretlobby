@@ -1,6 +1,6 @@
 import { Form, Link, useLoaderData, useActionData, useNavigation, useSubmit, redirect } from "react-router";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import type { Route } from "./+types/_layout.lobby.playlist";
+import type { Route } from "./+types/_layout.lobby.playlists.$playlistId";
 import { MediaPicker, cn, type MediaItem } from "@secretlobby/ui";
 import { toast } from "sonner";
 import {
@@ -23,19 +23,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 
 export function meta({ data }: Route.MetaArgs) {
-  return [{ title: `Playlist - ${data?.lobbyName || "Lobby"} - Admin` }];
+  return [{ title: `${data?.currentPlaylist?.name ?? "Playlist"} - ${data?.lobbyName || "Lobby"} - Admin` }];
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { getSession, isAdmin, getCsrfToken } = await import("@secretlobby/auth");
+  const { getPublicUrl } = await import("@secretlobby/storage");
   const { getLobbyById } = await import("~/models/queries/lobby.server");
-  const {
-    getPlaylistsByLobbyIdWithTracks,
-    getPlaylistByIdWithTracks,
-  } = await import("~/models/queries/playlist.server");
-  const { ensureDefaultPlaylistExists } = await import(
-    "~/models/mutations/playlist.server"
-  );
+  const { getPlaylistByIdWithTracks } = await import("~/models/queries/playlist.server");
 
   const { session } = await getSession(request);
   if (!isAdmin(session)) {
@@ -44,48 +39,30 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       autoplayTrackId: null,
       lobbyName: "",
       lobbyId: "",
-      playlists: [],
       currentPlaylist: null,
       csrfToken: "",
     };
   }
 
   const accountId = session.currentAccountId;
-  if (!accountId) {
-    throw redirect("/login");
-  }
+  if (!accountId) throw redirect("/login");
 
-  const { lobbyId } = params;
-  if (!lobbyId) {
-    throw redirect("/lobbies");
-  }
+  const { lobbyId, playlistId } = params;
+  if (!lobbyId) throw redirect("/lobbies");
+  if (!playlistId) throw redirect(`/lobby/${lobbyId}/playlists`);
 
   const lobby = await getLobbyById(lobbyId);
-  if (!lobby || lobby.accountId !== accountId) {
-    throw redirect("/lobbies");
-  }
+  if (!lobby || lobby.accountId !== accountId) throw redirect("/lobbies");
 
-  // Resolve the active playlist from ?playlistId=...; if missing, redirect to
-  // the default playlist's URL so the rest of the page logic always has an
-  // explicit playlist to render against.
-  const url = new URL(request.url);
-  const requestedPlaylistId = url.searchParams.get("playlistId");
-
-  if (!requestedPlaylistId) {
-    const defaultPlaylist = await ensureDefaultPlaylistExists(lobbyId);
-    throw redirect(`${url.pathname}?playlistId=${defaultPlaylist.id}`);
-  }
-
-  const [playlists, currentPlaylist, csrfToken] = await Promise.all([
-    getPlaylistsByLobbyIdWithTracks(lobbyId),
-    getPlaylistByIdWithTracks(requestedPlaylistId),
+  const [currentPlaylist, csrfToken] = await Promise.all([
+    getPlaylistByIdWithTracks(playlistId),
     getCsrfToken(request),
   ]);
 
-  // If the playlistId is unknown/foreign, redirect to default.
+  // If the playlistId is unknown or belongs to a different lobby, bounce back
+  // to the list page.
   if (!currentPlaylist || currentPlaylist.lobbyId !== lobbyId) {
-    const defaultPlaylist = await ensureDefaultPlaylistExists(lobbyId);
-    throw redirect(`${url.pathname}?playlistId=${defaultPlaylist.id}`);
+    throw redirect(`/lobby/${lobbyId}/playlists`);
   }
 
   const playlist = currentPlaylist.tracks.map((track) => ({
@@ -97,6 +74,8 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     hlsReady: track.media?.hlsReady ?? false,
     position: track.position,
     mediaId: track.mediaId,
+    coverMediaId: track.coverMediaId,
+    coverUrl: track.coverMedia ? getPublicUrl(track.coverMedia.key) : null,
   }));
 
   const lobbySettings = (lobby?.settings as Record<string, unknown>) || {};
@@ -107,13 +86,6 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     autoplayTrackId,
     lobbyName: lobby.name,
     lobbyId,
-    playlists: playlists.map((p) => ({
-      id: p.id,
-      name: p.name,
-      isDefault: p.isDefault,
-      position: p.position,
-      trackCount: p.tracks.length,
-    })),
     currentPlaylist: {
       id: currentPlaylist.id,
       name: currentPlaylist.name,
@@ -133,67 +105,44 @@ export async function action({ request, params }: Route.ActionArgs) {
   const { createTrack, updateTrack, deleteTrack, reorderTracks, swapTrackPositions } = await import("~/models/mutations/track.server");
   const { mergeLobbySettings } = await import("~/models/mutations/lobby.server");
   const {
-    createPlaylist,
     updatePlaylist,
     deletePlaylist,
     setDefaultPlaylist,
-    ensureDefaultPlaylistExists,
   } = await import("~/models/mutations/playlist.server");
   const { getPlaylistById } = await import("~/models/queries/playlist.server");
 
-  // CSRF validation up front — reject before we touch any state.
   await csrfProtect(request);
 
   const { session } = await getSession(request);
-  if (!isAdmin(session)) {
-    return { error: "Unauthorized" };
-  }
+  if (!isAdmin(session)) return { error: "Unauthorized" };
 
   const accountId = session.currentAccountId;
-  if (!accountId) {
-    return { error: "Not authenticated" };
-  }
+  if (!accountId) return { error: "Not authenticated" };
 
-  const { lobbyId } = params;
-  if (!lobbyId) {
-    return { error: "Lobby ID required" };
-  }
+  const { lobbyId, playlistId } = params;
+  if (!lobbyId) return { error: "Lobby ID required" };
+  if (!playlistId) return { error: "Playlist ID required" };
 
   const lobby = await getLobbyById(lobbyId);
-  if (!lobby || lobby.accountId !== accountId) {
-    return { error: "Lobby not found" };
+  if (!lobby || lobby.accountId !== accountId) return { error: "Lobby not found" };
+
+  // The current playlist must belong to this lobby — guard once at the top.
+  const currentPlaylist = await getPlaylistById(playlistId);
+  if (!currentPlaylist || currentPlaylist.lobbyId !== lobbyId) {
+    return { error: "Playlist not found" };
   }
 
   const formData = await request.formData();
   const intent = formData.get("intent");
 
-  // Helper to validate that a playlistId belongs to this lobby before mutating.
-  const ensurePlaylistInLobby = async (playlistId: string) => {
-    const pl = await getPlaylistById(playlistId);
-    if (!pl || pl.lobbyId !== lobbyId) {
-      return null;
-    }
-    return pl;
-  };
-
   try {
     switch (intent) {
       case "add-tracks": {
-        const playlistId = formData.get("playlistId") as string;
-        const playlist = playlistId
-          ? await ensurePlaylistInLobby(playlistId)
-          : await ensureDefaultPlaylistExists(lobbyId);
-        if (!playlist) return { error: "Playlist not found" };
-
         const mediaIds = (formData.get("mediaIds") as string || "").split(",").filter(Boolean);
-        if (mediaIds.length === 0) {
-          return { error: "No tracks selected" };
-        }
+        if (mediaIds.length === 0) return { error: "No tracks selected" };
 
         const mediaItems = await getMediaByIds(mediaIds, accountId);
-        if (mediaItems.length === 0) {
-          return { error: "No valid media found" };
-        }
+        if (mediaItems.length === 0) return { error: "No valid media found" };
 
         const lastTrack = await getLastTrackByLobbyId(lobbyId);
         let nextPosition = (lastTrack?.position ?? -1) + 1;
@@ -203,7 +152,7 @@ export async function action({ request, params }: Route.ActionArgs) {
           const title = media.filename.replace(/\.[^/.]+$/, "");
           await createTrack({
             lobbyId,
-            playlistId: playlist.id,
+            playlistId,
             title,
             artist: null,
             filename: media.key,
@@ -263,46 +212,43 @@ export async function action({ request, params }: Route.ActionArgs) {
       case "change-track-file": {
         const id = formData.get("id") as string;
         const mediaId = formData.get("mediaId") as string;
-        if (!id || !mediaId) {
-          return { error: "Missing track or media" };
-        }
-
+        if (!id || !mediaId) return { error: "Missing track or media" };
         const media = await getMediaByIdAndAccountId(mediaId, accountId);
-        if (!media) {
-          return { error: "Media not found" };
-        }
-
+        if (!media) return { error: "Media not found" };
         await updateTrack(id, { mediaId: media.id, filename: media.key });
         return { success: "Track file updated" };
       }
 
-      case "create_playlist": {
-        const name = (formData.get("name") as string)?.trim();
-        if (!name) {
-          return { error: "Playlist name is required" };
-        }
-        const created = await createPlaylist({ lobbyId, name });
-        return { success: "Playlist created", createdPlaylistId: created.id };
+      case "set-track-cover": {
+        const id = formData.get("id") as string;
+        const mediaId = formData.get("mediaId") as string;
+        if (!id || !mediaId) return { error: "Missing track or media" };
+        const media = await getMediaByIdAndAccountId(mediaId, accountId);
+        if (!media || media.type !== "IMAGE") return { error: "Cover must be an image" };
+        await updateTrack(id, { coverMediaId: media.id });
+        return { success: "Cover updated" };
+      }
+
+      case "remove-track-cover": {
+        const id = formData.get("id") as string;
+        if (!id) return { error: "Missing track" };
+        await updateTrack(id, { coverMediaId: null });
+        return { success: "Cover removed" };
       }
 
       case "rename_playlist": {
-        const playlistId = formData.get("playlistId") as string;
         const name = (formData.get("name") as string)?.trim();
-        const playlist = await ensurePlaylistInLobby(playlistId);
-        if (!playlist) return { error: "Playlist not found" };
         if (!name) return { error: "Playlist name is required" };
         await updatePlaylist(playlistId, { name });
         return { success: "Playlist renamed" };
       }
 
       case "delete_playlist": {
-        const playlistId = formData.get("playlistId") as string;
-        const playlist = await ensurePlaylistInLobby(playlistId);
-        if (!playlist) return { error: "Playlist not found" };
         try {
           await deletePlaylist(playlistId);
-          return { success: "Playlist deleted", deletedPlaylistId: playlistId };
+          throw redirect(`/lobby/${lobbyId}/playlists`);
         } catch (err) {
+          if (err instanceof Response) throw err;
           return {
             error: err instanceof Error ? err.message : "Could not delete playlist",
           };
@@ -310,14 +256,12 @@ export async function action({ request, params }: Route.ActionArgs) {
       }
 
       case "set_default_playlist": {
-        const playlistId = formData.get("playlistId") as string;
-        const playlist = await ensurePlaylistInLobby(playlistId);
-        if (!playlist) return { error: "Playlist not found" };
         await setDefaultPlaylist(lobbyId, playlistId);
         return { success: "Default playlist updated" };
       }
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof Response) throw err;
     return { error: "Operation failed" };
   }
 
@@ -333,14 +277,8 @@ type PlaylistTrack = {
   hlsReady: boolean;
   position: number;
   mediaId: string | null;
-};
-
-type PlaylistChip = {
-  id: string;
-  name: string;
-  isDefault: boolean;
-  position: number;
-  trackCount: number;
+  coverMediaId: string | null;
+  coverUrl: string | null;
 };
 
 function formatDuration(seconds: number | null): string {
@@ -348,6 +286,81 @@ function formatDuration(seconds: number | null): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function CoverPlaceholder() {
+  // Neutral fallback for tracks without a custom cover.
+  return (
+    <svg
+      className="w-full h-full text-theme-muted"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+    </svg>
+  );
+}
+
+function TrackCover({
+  track,
+  onPick,
+  onRemove,
+}: {
+  track: PlaylistTrack;
+  onPick: (trackId: string, media: MediaItem) => void;
+  onRemove: (trackId: string) => void;
+}) {
+  return (
+    <div className="relative shrink-0 group/cover">
+      <div className="w-9 h-9 rounded-md bg-theme-secondary border border-theme overflow-hidden flex items-center justify-center">
+        {track.coverUrl ? (
+          <img
+            src={track.coverUrl}
+            alt=""
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-5 h-5">
+            <CoverPlaceholder />
+          </div>
+        )}
+      </div>
+      <MediaPicker
+        accept={["image/*"]}
+        tabs={["library", "upload"]}
+        onSelect={(media) => onPick(track.id, media)}
+      >
+        <button
+          type="button"
+          title={track.coverUrl ? "Change cover" : "Add cover"}
+          aria-label={track.coverUrl ? "Change cover" : "Add cover"}
+          className="absolute inset-0 rounded-md bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center text-white opacity-0 hover:opacity-100 cursor-pointer"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        </button>
+      </MediaPicker>
+      {track.coverUrl && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove(track.id);
+          }}
+          title="Remove cover"
+          aria-label="Remove cover"
+          className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover/cover:opacity-100 transition-opacity cursor-pointer"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 }
 
 function SortableTrackRow({
@@ -367,6 +380,8 @@ function SortableTrackRow({
   onEditTitleChange,
   onEditArtistChange,
   onChangeFile,
+  onChangeCover,
+  onRemoveCover,
   onMoveUp,
   onMoveDown,
   onSetAutoplay,
@@ -387,6 +402,8 @@ function SortableTrackRow({
   onEditTitleChange: (v: string) => void;
   onEditArtistChange: (v: string) => void;
   onChangeFile: (trackId: string, media: MediaItem) => void;
+  onChangeCover: (trackId: string, media: MediaItem) => void;
+  onRemoveCover: (trackId: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onSetAutoplay: (id: string | null) => void;
@@ -478,6 +495,7 @@ function SortableTrackRow({
                 <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
               </svg>
             </button>
+            <TrackCover track={track} onPick={onChangeCover} onRemove={onRemoveCover} />
             <span className="w-8 h-8 rounded-full btn-primary flex items-center justify-center text-sm">{index + 1}</span>
             <div>
               <p className="font-medium text-theme-primary">{track.title}</p>
@@ -520,105 +538,13 @@ function SortableTrackRow({
   );
 }
 
-interface PlaylistChipsProps {
-  playlists: PlaylistChip[];
-  currentPlaylistId: string;
+interface CurrentPlaylistHeaderProps {
+  current: { id: string; name: string; isDefault: boolean };
   lobbyId: string;
   csrfToken: string;
 }
 
-function PlaylistChips({ playlists, currentPlaylistId, lobbyId, csrfToken }: PlaylistChipsProps) {
-  const submit = useSubmit();
-  const [isCreating, setIsCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-
-  const handleCreate = useCallback(() => {
-    const trimmed = newName.trim();
-    if (!trimmed) return;
-    submit({ _csrf: csrfToken, intent: "create_playlist", name: trimmed }, { method: "post" });
-    setIsCreating(false);
-    setNewName("");
-  }, [newName, submit, csrfToken]);
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 mb-4">
-      {playlists.map((p) => {
-        const active = p.id === currentPlaylistId;
-        return (
-          <Link
-            key={p.id}
-            to={`/lobby/${lobbyId}/playlist?playlistId=${p.id}`}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-sm border transition-colors cursor-pointer",
-              active
-                ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                : "border-theme text-theme-secondary hover:bg-theme-tertiary"
-            )}
-          >
-            <span>{p.name}</span>
-            {p.isDefault && (
-              <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">Default</span>
-            )}
-            <span className="ml-2 text-xs opacity-70">{p.trackCount}</span>
-          </Link>
-        );
-      })}
-      {isCreating ? (
-        <div className="flex items-center gap-1">
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Playlist name"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleCreate();
-              } else if (e.key === "Escape") {
-                setIsCreating(false);
-                setNewName("");
-              }
-            }}
-            className="px-3 py-1.5 text-sm rounded-full border border-theme bg-theme-secondary text-theme-primary"
-          />
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="px-3 py-1.5 text-sm btn-primary rounded-full cursor-pointer"
-          >
-            Add
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsCreating(false);
-              setNewName("");
-            }}
-            className="px-3 py-1.5 text-sm rounded-full border border-theme text-theme-secondary cursor-pointer"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setIsCreating(true)}
-          className="px-3 py-1.5 rounded-full text-sm border border-dashed border-theme text-theme-secondary hover:bg-theme-tertiary transition-colors cursor-pointer"
-        >
-          + New playlist
-        </button>
-      )}
-    </div>
-  );
-}
-
-interface CurrentPlaylistHeaderProps {
-  current: { id: string; name: string; isDefault: boolean };
-  csrfToken: string;
-}
-
-function CurrentPlaylistHeader({ current, csrfToken }: CurrentPlaylistHeaderProps) {
+function CurrentPlaylistHeader({ current, lobbyId, csrfToken }: CurrentPlaylistHeaderProps) {
   const submit = useSubmit();
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(current.name);
@@ -634,45 +560,36 @@ function CurrentPlaylistHeader({ current, csrfToken }: CurrentPlaylistHeaderProp
       return;
     }
     submit(
-      {
-        _csrf: csrfToken,
-        intent: "rename_playlist",
-        playlistId: current.id,
-        name: trimmed,
-      },
+      { _csrf: csrfToken, intent: "rename_playlist", name: trimmed },
       { method: "post" }
     );
     setEditingName(false);
-  }, [draftName, current.id, current.name, submit, csrfToken]);
+  }, [draftName, current.name, submit, csrfToken]);
 
   const handleSetDefault = useCallback(() => {
     if (current.isDefault) return;
-    submit(
-      {
-        _csrf: csrfToken,
-        intent: "set_default_playlist",
-        playlistId: current.id,
-      },
-      { method: "post" }
-    );
-  }, [current.id, current.isDefault, submit, csrfToken]);
+    submit({ _csrf: csrfToken, intent: "set_default_playlist" }, { method: "post" });
+  }, [current.isDefault, submit, csrfToken]);
 
   const handleDelete = useCallback(() => {
     if (current.isDefault) return;
     if (!confirm(`Delete playlist "${current.name}"? Tracks will be detached but kept.`)) return;
-    submit(
-      {
-        _csrf: csrfToken,
-        intent: "delete_playlist",
-        playlistId: current.id,
-      },
-      { method: "post" }
-    );
-  }, [current.id, current.isDefault, current.name, submit, csrfToken]);
+    submit({ _csrf: csrfToken, intent: "delete_playlist" }, { method: "post" });
+  }, [current.isDefault, current.name, submit, csrfToken]);
 
   return (
     <div className="flex items-center justify-between mb-4">
       <div className="flex items-center gap-2 flex-1 min-w-0">
+        <Link
+          to={`/lobby/${lobbyId}/playlists`}
+          className="p-1.5 -ml-1.5 rounded-lg hover:bg-theme-tertiary text-theme-muted hover:text-theme-primary transition cursor-pointer"
+          title="Back to playlists"
+          aria-label="Back to playlists"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
         {editingName ? (
           <input
             type="text"
@@ -735,14 +652,14 @@ function CurrentPlaylistHeader({ current, csrfToken }: CurrentPlaylistHeaderProp
   );
 }
 
-export default function LobbyPlaylistPage() {
+export default function LobbyPlaylistEditor() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
   const submit = useSubmit();
 
-  const { playlist, autoplayTrackId, playlists, currentPlaylist, lobbyId, csrfToken } = data;
+  const { playlist, autoplayTrackId, currentPlaylist, lobbyId, csrfToken } = data;
 
   const [localPlaylist, setLocalPlaylist] = useState<PlaylistTrack[]>(playlist);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -820,19 +737,28 @@ export default function LobbyPlaylistPage() {
     if (ids.length === 0) return;
     setPendingTrackNames(mediaItems.map((m) => m.filename.replace(/\.[^/.]+$/, "")));
     submit(
-      {
-        _csrf: csrfToken,
-        intent: "add-tracks",
-        mediaIds: ids.join(","),
-        playlistId: currentPlaylist?.id ?? "",
-      },
+      { _csrf: csrfToken, intent: "add-tracks", mediaIds: ids.join(",") },
       { method: "post" }
     );
-  }, [submit, csrfToken, currentPlaylist]);
+  }, [submit, csrfToken]);
 
   const handleChangeFile = useCallback((trackId: string, media: MediaItem) => {
     submit(
       { _csrf: csrfToken, intent: "change-track-file", id: trackId, mediaId: media.id },
+      { method: "post" }
+    );
+  }, [submit, csrfToken]);
+
+  const handleChangeCover = useCallback((trackId: string, media: MediaItem) => {
+    submit(
+      { _csrf: csrfToken, intent: "set-track-cover", id: trackId, mediaId: media.id },
+      { method: "post" }
+    );
+  }, [submit, csrfToken]);
+
+  const handleRemoveCover = useCallback((trackId: string) => {
+    submit(
+      { _csrf: csrfToken, intent: "remove-track-cover", id: trackId },
       { method: "post" }
     );
   }, [submit, csrfToken]);
@@ -868,14 +794,7 @@ export default function LobbyPlaylistPage() {
   return (
     <div className="space-y-8">
       <section className="bg-theme-secondary rounded-xl p-6 border border-theme">
-        <PlaylistChips
-          playlists={playlists}
-          currentPlaylistId={currentPlaylist.id}
-          lobbyId={lobbyId}
-          csrfToken={csrfToken}
-        />
-
-        <CurrentPlaylistHeader current={currentPlaylist} csrfToken={csrfToken} />
+        <CurrentPlaylistHeader current={currentPlaylist} lobbyId={lobbyId} csrfToken={csrfToken} />
 
         <div className="flex justify-end mb-4">
           {isAddingTracks ? (
@@ -918,6 +837,8 @@ export default function LobbyPlaylistPage() {
                     onEditTitleChange={setEditTitle}
                     onEditArtistChange={setEditArtist}
                     onChangeFile={handleChangeFile}
+                    onChangeCover={handleChangeCover}
+                    onRemoveCover={handleRemoveCover}
                     onMoveUp={handleMoveUp}
                     onMoveDown={handleMoveDown}
                     onSetAutoplay={handleSetAutoplay}
@@ -933,6 +854,13 @@ export default function LobbyPlaylistPage() {
                     <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
                       <path d="M7 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 8a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM13 14a2 2 0 1 0 0 4 2 2 0 0 0 0-4z" />
                     </svg>
+                  </div>
+                  <div className="w-9 h-9 rounded-md bg-theme-secondary border border-theme overflow-hidden flex items-center justify-center shrink-0">
+                    {track.coverUrl ? (
+                      <img src={track.coverUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <div className="w-5 h-5"><CoverPlaceholder /></div>
+                    )}
                   </div>
                   <span className="w-8 h-8 rounded-full btn-primary flex items-center justify-center text-sm">{index + 1}</span>
                   <div>

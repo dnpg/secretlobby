@@ -310,7 +310,7 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
             label="Border radius"
             value={theme.visualizerBorderRadius}
             min={0}
-            max={64}
+            max={9999}
             onChange={(v) => set("visualizerBorderRadius", v)}
           />
           <SelectRow
@@ -344,14 +344,14 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
             label="Button border radius"
             value={theme.buttonBorderRadius}
             min={0}
-            max={64}
+            max={9999}
             onChange={(v) => set("buttonBorderRadius", v)}
           />
           <BorderRadiusInput
             label="Play button border radius"
             value={theme.playButtonBorderRadius}
             min={0}
-            max={64}
+            max={9999}
             onChange={(v) => set("playButtonBorderRadius", v)}
           />
         </CollapsibleSection>

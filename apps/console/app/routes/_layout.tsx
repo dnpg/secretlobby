@@ -279,7 +279,7 @@ const mainNavItems = [
 // Lobby-specific navigation items (shown when editing a lobby)
 const lobbyNavItems = [
   { to: "", label: "Content", end: true, icon: "content" as const },
-  { to: "playlist", label: "Playlist", icon: "playlist" as const },
+  { to: "playlists", label: "Playlists", icon: "playlist" as const },
   { to: "theme", label: "Theme", icon: "theme" as const },
   { to: "social", label: "Social Links", icon: "social" as const },
   { to: "technical-info", label: "Tech Info", icon: "techInfo" as const },

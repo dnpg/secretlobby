@@ -11,6 +11,91 @@ import { SocialLinks, type SocialLinksSettings } from "./SocialLinks";
 const logger = createLogger({ service: "lobby:player" });
 
 /**
+ * Single-line title with optional ping-pong marquee.
+ *
+ * - Idle (`playing=false`) or text fits: truncated with ellipsis on one line.
+ * - Playing AND overflowing: animates the text leftward to expose the hidden
+ *   tail, pauses, then slides back to the start — and loops. The exact shift
+ *   is measured (`scrollWidth - clientWidth`), pushed in as a CSS variable,
+ *   and read by the `playerview-marquee-pingpong` keyframes.
+ *
+ * Overflow detection is a `ResizeObserver` on both the clipping container
+ * and the inner text span; the measurement effect re-runs on `text` and
+ * `playing` changes (track switches, play/pause).
+ *
+ * Renders as a `<span>` so this can sit inside heading elements (e.g. an
+ * `<h2>` around the now-playing title) without violating heading content
+ * rules.
+ */
+interface TrackTitleProps {
+  text: string;
+  playing: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+function TrackTitle({ text, playing, className, style }: TrackTitleProps) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [shift, setShift] = useState(0);
+
+  useEffect(() => {
+    if (!playing) {
+      setShift(0);
+      return;
+    }
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Measure off the OUTER container — its scrollWidth holds the unclipped
+    // natural text width regardless of whether the inner span is plain inline
+    // (idle) or inline-block (animating).
+    const measure = () => {
+      const overflow = container.scrollWidth - container.clientWidth;
+      setShift(overflow > 1 ? overflow : 0);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [text, playing]);
+
+  const animating = playing && shift > 0;
+  // Slower for longer shifts so the cadence feels consistent at any width.
+  const durationSec = animating ? Math.max(8, shift * 0.04 + 6) : 0;
+
+  return (
+    <span
+      ref={containerRef}
+      className={`block max-w-full overflow-hidden whitespace-nowrap ${
+        animating ? "" : "text-ellipsis"
+      } ${className ?? ""}`}
+      style={style}
+    >
+      {animating ? (
+        // inline-block on the inner span so the marquee transform applies to
+        // the whole text block. text-overflow:ellipsis doesn't render against
+        // an inline-block child anyway, so we drop it from the parent above
+        // while animating.
+        <span
+          className="inline-block"
+          style={{
+            animation: `playerview-marquee-pingpong ${durationSec}s ease-in-out infinite`,
+            ["--marquee-shift" as unknown as string]: `-${shift}px`,
+          } as React.CSSProperties}
+        >
+          {text}
+        </span>
+      ) : (
+        // Plain inline content so the outer container's text-ellipsis can
+        // render the "…" at the clip point.
+        text
+      )}
+    </span>
+  );
+}
+
+/**
  * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
  */
 function trackEvent(eventName: string, params: Record<string, any>) {
@@ -121,6 +206,7 @@ function CardContainer({ cardStyles, children, className }: CardContainerProps) 
       : radiusCSS;
     return (
       <div
+        className="max-w-full overflow-hidden"
         style={{
           borderRadius: radiusCSS,
           background: cardStyles.borderGradient,
@@ -142,7 +228,7 @@ function CardContainer({ cardStyles, children, className }: CardContainerProps) 
 
   return (
     <div
-      className={className}
+      className={`max-w-full ${className ?? ""}`}
       style={{
         borderRadius: radiusCSS,
         ...contentBg,
@@ -811,6 +897,17 @@ export function PlayerView({
       className={embedded ? "relative" : "relative min-h-screen"}
       onContextMenu={(e) => e.preventDefault()}
     >
+      {/* Keyframes for the track-title marquee. Ping-pong: hold-start →
+          slide-left to expose the tail (right-to-left) → hold-end → slide
+          back to the start (left-to-right) → repeat. The shift distance is
+          measured per-instance and injected as `--marquee-shift`. */}
+      <style>{`
+        @keyframes playerview-marquee-pingpong {
+          0%, 15% { transform: translateX(0); }
+          50%, 65% { transform: translateX(var(--marquee-shift, 0)); }
+          100% { transform: translateX(0); }
+        }
+      `}</style>
       {/* Background Image — fullscreen lobby treatment, skipped when the
           player is embedded as a block inside another layout. */}
       {!embedded && imageUrls.background && (
@@ -920,8 +1017,15 @@ export function PlayerView({
           </div>
         )}
 
-        <div className={`grid gap-8 ${hasSidebar ? "lg:grid-cols-[1fr_300px]" : ""}`}>
-          <div className="space-y-6">
+        <div
+          className={`grid gap-8 ${
+            hasSidebar ? "lg:grid-cols-[minmax(0,1fr)_300px]" : ""
+          }`}
+        >
+          {/* min-w-0 is critical on the main column: a CSS grid track defaults
+              to `auto` (= min-content), so unbreakable text inside the playlist
+              would otherwise widen the track past the viewport on mobile. */}
+          <div className="space-y-6 min-w-0 max-w-full">
             {socialLinksSettings &&
               socialLinksSettings.placement === "above-left" &&
               (socialLinksSettings.links.length > 0 || socialLinksSettings.title || socialLinksSettings.contentBefore || socialLinksSettings.contentAfter) && (
@@ -968,10 +1072,17 @@ export function PlayerView({
             })()}
 
             {currentTrack && (
-              <div className="text-center">
-                <h2 className="text-2xl font-bold">{currentTrack.title}</h2>
+              <div className="text-center max-w-full overflow-hidden">
+                <h2 className="text-2xl font-bold">
+                  <TrackTitle text={currentTrack.title} playing={isPlaying} />
+                </h2>
                 {currentTrack.artist && (
-                  <p style={{ color: "var(--color-text-secondary)" }}>{currentTrack.artist}</p>
+                  <p
+                    className="truncate"
+                    style={{ color: "var(--color-text-secondary)" }}
+                  >
+                    {currentTrack.artist}
+                  </p>
                 )}
               </div>
             )}
@@ -1138,8 +1249,14 @@ export function PlayerView({
               </button>
             </div>
 
-            <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">
-              <h3 id="playlist-heading" className="text-lg font-semibold mb-4" style={{ color: cardStyles?.headingColor }}>Playlist</h3>
+            <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4 max-w-full overflow-hidden">
+              <h3
+                id="playlist-heading"
+                className="text-lg font-semibold mb-4 ml-3"
+                style={{ color: cardStyles?.headingColor }}
+              >
+                Playlist
+              </h3>
               <div className="flex flex-col" role="list" aria-labelledby="playlist-heading">
                 {tracks.map((track, index) => {
                   const isCurrent = currentTrack?.id === track.id;
@@ -1201,7 +1318,7 @@ export function PlayerView({
                       }}
                       onMouseEnter={() => setHoveredTrackId(track.id)}
                       onMouseLeave={() => setHoveredTrackId(null)}
-                      className="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-3 group cursor-pointer"
+                      className="w-full max-w-full text-left py-2 pr-3 rounded-lg transition flex items-center gap-3 group cursor-pointer text-[13px] md:text-base"
                       style={{
                         backgroundColor: isCurrent
                           ? "color-mix(in srgb, var(--color-accent) 10%, transparent)"
@@ -1228,7 +1345,7 @@ export function PlayerView({
                           </svg>
                         ) : (
                           <span
-                            className="text-sm tabular-nums"
+                            className="text-[13px] md:text-sm tabular-nums"
                             style={{ color: isCurrent ? "var(--color-accent)" : cardStyles?.mutedColor }}
                           >
                             {index + 1}
@@ -1236,18 +1353,27 @@ export function PlayerView({
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p
-                          className="font-medium truncate"
-                          style={{ color: isCurrent ? "var(--color-accent)" : cardStyles?.contentColor }}
-                        >
-                          {track.title}
-                        </p>
+                        <TrackTitle
+                          text={track.title}
+                          playing={isCurrentPlaying}
+                          className="font-medium"
+                          style={{
+                            color: isCurrent
+                              ? "var(--color-accent)"
+                              : cardStyles?.contentColor,
+                          }}
+                        />
                         {track.artist && track.artist !== "" && (
-                          <p className="text-sm truncate" style={{ color: cardStyles?.mutedColor }}>{track.artist}</p>
+                          <p
+                            className="text-[13px] md:text-sm truncate max-w-full"
+                            style={{ color: cardStyles?.mutedColor }}
+                          >
+                            {track.artist}
+                          </p>
                         )}
                       </div>
                       {track.duration && track.duration > 0 && (
-                        <span className="text-sm shrink-0" style={{ color: cardStyles?.mutedColor }}>
+                        <span className="text-[13px] md:text-sm shrink-0" style={{ color: cardStyles?.mutedColor }}>
                           {formatTime(track.duration)}
                         </span>
                       )}
