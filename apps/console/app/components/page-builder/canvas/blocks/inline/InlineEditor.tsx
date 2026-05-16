@@ -67,8 +67,6 @@ export function InlineEditor({
   const onEnterRef = useRef(onEnter);
   onSlashRef.current = onSlash;
   onEnterRef.current = onEnter;
-  const wrapperRefForCallback = useRef<HTMLDivElement | null>(null);
-  wrapperRefForCallback.current = wrapperRef.current;
 
   const editor = useEditor(
     {
@@ -158,6 +156,20 @@ export function InlineEditor({
     onFocusConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, pendingFocus]);
+
+  // Auto-focus when the editor flips to editable (user selected this block).
+  // Without this the user has to click a second time to put the caret inside
+  // the ProseMirror view — and `handleKeyDown` doesn't fire until the view
+  // is focused, so slash + Enter interception would be broken on first
+  // click. Skipping when pendingFocus is true (handled above) avoids double-
+  // focusing.
+  useEffect(() => {
+    if (!editor || !isSelected || !isEditing || pendingFocus) return;
+    if (!editor.isFocused) {
+      editor.commands.focus("end");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, isSelected, isEditing]);
 
   if (!editor) return null;
 
