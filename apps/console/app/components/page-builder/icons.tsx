@@ -148,6 +148,18 @@ export function CardIcon({ className = "w-5 h-5" }: { className?: string }) {
   );
 }
 
+// Gallery icon — three overlapping framed rectangles to read as a stack of
+// photos. Distinct from ImageIcon's single-rectangle-with-mountain motif.
+export function GalleryIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 8.25A1.5 1.5 0 0 1 6 6.75h9A1.5 1.5 0 0 1 16.5 8.25v9A1.5 1.5 0 0 1 15 18.75H6A1.5 1.5 0 0 1 4.5 17.25v-9z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 6.75V5.25A1.5 1.5 0 0 1 9 3.75h9A1.5 1.5 0 0 1 19.5 5.25v9A1.5 1.5 0 0 1 18 15.75h-1.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 14.25l3-3 3 3 2.25-2.25 3 3" />
+    </svg>
+  );
+}
+
 // Block-movement arrows used in the layout-edit overlay
 export function ArrowUpIcon() {
   return (
@@ -241,6 +253,12 @@ export const BLOCK_TYPES: {
     label: "Image",
     icon: ImageIcon,
     description: "Hero image or photo",
+  },
+  {
+    type: "gallery",
+    label: "Gallery",
+    icon: GalleryIcon,
+    description: "Gallery of photos",
   },
   {
     type: "player",

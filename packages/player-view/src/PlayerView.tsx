@@ -354,6 +354,26 @@ interface PlayerViewProps {
    * the same-origin behavior.
    */
   apiBaseUrl?: string;
+  /**
+   * Layout variant. `"full"` (default) renders the full hero + playlist
+   * layout. `"compact"` renders a vertically stacked card with a 96px
+   * visualizer banner. `"minimal"` renders a dense three-row "wave strip"
+   * (controls · title + mini-viz · progress · horizontal track chips).
+   * All three variants honour `showVisualizer`, `showPlaylist`, and
+   * `autoplay`.
+   */
+  variant?: "full" | "compact" | "minimal";
+  /** When false the visualizer / mini-visualizer is omitted. Defaults true. */
+  showVisualizer?: boolean;
+  /** When false the playlist (or compact-variant track strip) is omitted.
+   *  Defaults true. The current-track header / controls / progress always
+   *  render so a single-track player still works with the list hidden. */
+  showPlaylist?: boolean;
+  /** Auto-play the initial track on mount. Skipped while `isDesignerMode`
+   *  is true so the page-builder canvas doesn't blast audio while the user
+   *  is editing. Browser autoplay policies may still block the call when
+   *  there's no prior user gesture — the rejection is caught silently. */
+  autoplay?: boolean;
 }
 
 export function PlayerView({
@@ -373,6 +393,10 @@ export function PlayerView({
   isDesignerMode = false,
   embedded = false,
   apiBaseUrl: _apiBaseUrl,
+  variant = "full",
+  showVisualizer = true,
+  showPlaylist = true,
+  autoplay = false,
 }: PlayerViewProps) {
   // apiBaseUrl is plumbed through props for API symmetry but is consumed by
   // the caller via `useHlsAudio` directly — PlayerView never sets `<audio
@@ -612,7 +636,18 @@ export function PlayerView({
         control: 'pause',
       });
     } else {
-      audio.play().catch(() => {});
+      // If the <audio> element has no source attached yet (canvas-mode mount
+      // without a parent-driven initial loadTrack), kick off a full load via
+      // `playTrack`. This mirrors the rescue path in the playlist row click
+      // handler and keeps the big play button working without requiring the
+      // host to pre-load the initial track. On the lobby route, `currentSrc`
+      // is always populated by the mount-time loadTrack effect, so this
+      // branch never fires there.
+      if (!audio.currentSrc && currentTrack) {
+        playTrack(currentTrack);
+      } else {
+        audio.play().catch(() => {});
+      }
 
       trackEvent('player_control_click', {
         event_category: 'player',
@@ -620,6 +655,11 @@ export function PlayerView({
         control: 'play',
       });
     }
+    // `playTrack` and `currentTrack` are intentionally read from closure so
+    // we don't churn the callback identity (the keyboard-shortcut effect
+    // depends on this callback). They're stable enough for this path —
+    // togglePlay is invoked imperatively at click/key time, not stored.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cancelAutoPlay]);
 
   useEffect(() => {
@@ -689,12 +729,12 @@ export function PlayerView({
     seekLoadingRef.current = false;
     setSeekLoading(false);
 
-    // In designer mode we don't pull audio from the network — we still flip
-    // the UI to "selected" so the canvas reflects the click.
-    if (isDesignerMode) {
-      return;
-    }
-
+    // `playTrack` does the full HLS attach. Previously this branched on
+    // `isDesignerMode` and short-circuited the loader, which broke clicks
+    // in the page-builder canvas (no `src` ever got attached → bare
+    // `play()` resolved against an empty media element silently). The
+    // designer-mode flag now only affects visualizer demo mode and the
+    // header badge — playback itself works identically in both hosts.
     const success = await loadSegmentedTrack(track.id, undefined, {
       hlsReady: track.hlsReady ?? false,
       duration: track.duration,
@@ -892,6 +932,608 @@ export function PlayerView({
   const hasSocialLinks = socialLinksSettings && socialLinksSettings.links.length > 0;
   const hasSidebar = imageUrls.profile || bandDescription || hasSocialLinks;
 
+  // Autoplay on mount — fires once per currentTrack id when the consumer asks
+  // for it and we're not in the page-builder canvas's edit mode. We capture
+  // `playTrack` through a ref so this effect doesn't churn on every render.
+  // Browser autoplay policies may still reject the play() call when there's
+  // no prior user gesture; the rejection is caught silently inside playTrack.
+  const playTrackRef = useRef(playTrack);
+  useEffect(() => {
+    playTrackRef.current = playTrack;
+  });
+  const autoplayedTrackIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoplay) return;
+    if (isDesignerMode) return;
+    if (!currentTrack) return;
+    if (autoplayedTrackIdRef.current === currentTrack.id) return;
+    autoplayedTrackIdRef.current = currentTrack.id;
+    // Tiny defer so any mount-time load* / DOM wiring is in place first.
+    const t = setTimeout(() => {
+      playTrackRef.current(currentTrack);
+    }, 50);
+    return () => clearTimeout(t);
+  }, [autoplay, isDesignerMode, currentTrack]);
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Minimal variant — three-row "wave strip":
+  //   Row 1: prev / play / next  ·  title (marquee) + artist + time  ·  mini-viz
+  //   Row 2: thin click-to-seek progress bar
+  //   Row 3: horizontal-scrolling track pills
+  // Reuses every audio handler and state slot from the full layout; no new
+  // hooks, no separate refs.
+  // ──────────────────────────────────────────────────────────────────────
+  if (variant === "minimal") {
+    const compactVisualizerProps = {
+      audioElement,
+      isPlaying,
+      currentTime,
+      duration,
+      waveformPeaks: audio.waveformPeaks ?? currentTrack?.waveformPeaks ?? null,
+      borderShow: cardStyles?.visualizerBorderShow,
+      borderColor: cardStyles?.visualizerBorderColor,
+      borderRadius: cardStyles?.visualizerBorderRadius,
+      blendMode: cardStyles?.visualizerBlendMode,
+    };
+    const compactVisualizer = effectiveVisualizerType === "waveform" ? (
+      <WaveformProgress
+        {...compactVisualizerProps}
+        className="w-full h-full"
+      />
+    ) : (
+      <AudioVisualizer
+        {...compactVisualizerProps}
+        pcmAnalyser={pcmAnalyser}
+        demoMode={false}
+        className="w-full h-full"
+      />
+    );
+    const playBtnRadius = (() => {
+      const r = cardStyles?.playButtonBorderRadius ?? 50;
+      if (typeof r === "number") return `${r}%`;
+      return `${r.tl}% ${r.tr}% ${r.br}% ${r.bl}%`;
+    })();
+    const totalDurForSeek = duration || estimatedDuration;
+    return (
+      <div
+        className={embedded ? "relative" : "relative min-h-screen"}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <style>{`
+          @keyframes playerview-marquee-pingpong {
+            0%, 15% { transform: translateX(0); }
+            50%, 65% { transform: translateX(var(--marquee-shift, 0)); }
+            100% { transform: translateX(0); }
+          }
+        `}</style>
+        <CardContainer
+          cardStyles={cardStyles}
+          className="overflow-hidden max-w-full"
+        >
+          {/* Row 1 — controls / title + meta / mini visualizer */}
+          <div className="flex items-center gap-3 px-3 py-2.5 min-w-0">
+            <div className="flex items-center gap-0.5 shrink-0">
+              <button
+                type="button"
+                onClick={playPrev}
+                aria-label="Previous track"
+                className="p-1.5 transition hover:opacity-80 cursor-pointer"
+                style={{
+                  color: cardStyles?.contentColor,
+                  borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
+                }}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={togglePlay}
+                aria-label={isLoading || seekLoading ? "Loading" : isPlaying ? "Pause" : "Play"}
+                aria-busy={isLoading || seekLoading}
+                className="p-2 hover:scale-105 transition cursor-pointer"
+                style={{
+                  borderRadius: playBtnRadius,
+                  backgroundColor: "var(--color-primary)",
+                  color: "var(--color-primary-text)",
+                }}
+              >
+                {isLoading || seekLoading ? (
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : isPlaying ? (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={playNext}
+                aria-label="Next track"
+                className="p-1.5 transition hover:opacity-80 cursor-pointer"
+                style={{
+                  color: cardStyles?.contentColor,
+                  borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
+                }}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 min-w-0">
+              {currentTrack ? (
+                <>
+                  <div
+                    className="text-sm font-semibold"
+                    style={{ color: cardStyles?.headingColor }}
+                  >
+                    <TrackTitle text={currentTrack.title} playing={isPlaying} />
+                  </div>
+                  <p
+                    className="text-xs truncate max-w-full mt-0.5"
+                    style={{ color: cardStyles?.mutedColor }}
+                  >
+                    {currentTrack.artist ? `${currentTrack.artist} · ` : ""}
+                    {formatTime(currentTime)} / {formatTime(totalDurForSeek)}
+                  </p>
+                </>
+              ) : (
+                <div className="text-sm" style={{ color: cardStyles?.mutedColor }}>
+                  No track selected
+                </div>
+              )}
+            </div>
+            {showVisualizer && (
+              <div
+                className="w-28 sm:w-36 h-12 shrink-0 overflow-hidden"
+                style={{
+                  borderRadius: borderRadiusToCSS(
+                    cardStyles?.visualizerBorderRadius,
+                    8
+                  ),
+                }}
+                aria-hidden="true"
+              >
+                {compactVisualizer}
+              </div>
+            )}
+          </div>
+          {/* Row 2 — thin click-to-seek progress bar */}
+          <div
+            role="slider"
+            tabIndex={0}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress)}
+            aria-label="Audio progress"
+            className="relative h-1 cursor-pointer"
+            style={{ backgroundColor: "color-mix(in srgb, var(--color-accent) 18%, transparent)" }}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              if (totalDurForSeek > 0) {
+                seekLoadingRef.current = true;
+                setSeekLoading(true);
+                void seekTo(totalDurForSeek * percent).finally(() => {
+                  seekLoadingRef.current = false;
+                  setSeekLoading(false);
+                });
+              }
+            }}
+          >
+            <div
+              className="absolute top-0 bottom-0 left-0"
+              style={{ width: `${progress}%`, backgroundColor: "var(--color-accent)" }}
+            />
+          </div>
+          {/* Row 3 — horizontal track pills */}
+          {showPlaylist && tracks.length > 0 && (
+            <div className="flex gap-1.5 px-3 py-2 overflow-x-auto no-scrollbar">
+              {tracks.map((track, idx) => {
+                const isCurrent = currentTrack?.id === track.id;
+                const isCurrentPlaying = isCurrent && isPlaying;
+                return (
+                  <button
+                    key={track.id}
+                    type="button"
+                    onClick={() => {
+                      if (isCurrentPlaying) {
+                        audioRef.current?.pause();
+                        onPlayingChange(false);
+                      } else if (
+                        isCurrent &&
+                        !isPlaying &&
+                        !isLoading &&
+                        !!audioRef.current?.currentSrc
+                      ) {
+                        audioRef.current
+                          ?.play()
+                          .then(() => onPlayingChange(true))
+                          .catch(() => {});
+                      } else {
+                        playTrack(track);
+                      }
+                    }}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full transition cursor-pointer"
+                    style={{
+                      backgroundColor: isCurrent
+                        ? "color-mix(in srgb, var(--color-accent) 16%, transparent)"
+                        : "color-mix(in srgb, var(--color-text-primary) 6%, transparent)",
+                      color: isCurrent
+                        ? "var(--color-accent)"
+                        : cardStyles?.contentColor,
+                    }}
+                    title={track.title}
+                    aria-current={isCurrent ? "true" : undefined}
+                  >
+                    <span className="tabular-nums opacity-70">{idx + 1}</span>
+                    <span className="truncate max-w-[140px]">{track.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </CardContainer>
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Compact variant — vertically stacked card sized for sidebars / hero
+  // strips. Sits between the minimal "wave strip" and the full hero:
+  //   • A 96px-tall visualizer banner at the top.
+  //   • Title + artist + total time row.
+  //   • Click-to-seek progress bar (4px) with current-time anchor.
+  //   • Centered prev / play / next cluster.
+  //   • Single-column dense playlist (no thumbnails) when there's >1 track.
+  // Reuses the same handlers as the full layout. The visualizer's height
+  // ladder is intentionally smaller (h-24) than the full hero so the block
+  // can live in a narrow column without dominating the page.
+  // ──────────────────────────────────────────────────────────────────────
+  if (variant === "compact") {
+    const compactVizProps = {
+      audioElement,
+      isPlaying,
+      currentTime,
+      duration,
+      waveformPeaks: audio.waveformPeaks ?? currentTrack?.waveformPeaks ?? null,
+      borderShow: cardStyles?.visualizerBorderShow,
+      borderColor: cardStyles?.visualizerBorderColor,
+      borderRadius: cardStyles?.visualizerBorderRadius,
+      blendMode: cardStyles?.visualizerBlendMode,
+    };
+    const compactVizEl =
+      effectiveVisualizerType === "waveform" ? (
+        <WaveformProgress {...compactVizProps} className="w-full h-full" />
+      ) : (
+        <AudioVisualizer
+          {...compactVizProps}
+          pcmAnalyser={pcmAnalyser}
+          demoMode={false}
+          className="w-full h-full"
+        />
+      );
+    const compactPlayBtnRadius = (() => {
+      const r = cardStyles?.playButtonBorderRadius ?? 50;
+      if (typeof r === "number") return `${r}%`;
+      return `${r.tl}% ${r.tr}% ${r.br}% ${r.bl}%`;
+    })();
+    const compactTotalDur = duration || estimatedDuration;
+    return (
+      <div
+        className={embedded ? "relative" : "relative min-h-screen"}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <style>{`
+          @keyframes playerview-marquee-pingpong {
+            0%, 15% { transform: translateX(0); }
+            50%, 65% { transform: translateX(var(--marquee-shift, 0)); }
+            100% { transform: translateX(0); }
+          }
+        `}</style>
+        <CardContainer
+          cardStyles={cardStyles}
+          className="overflow-hidden max-w-full p-4 space-y-3"
+        >
+          {/* Visualizer banner — shorter than the full hero's, still
+              respects the theme's visualizer border radius. */}
+          {showVisualizer && (
+            <div
+              className="h-24 overflow-hidden"
+              style={{
+                borderRadius: borderRadiusToCSS(
+                  cardStyles?.visualizerBorderRadius,
+                  8
+                ),
+              }}
+            >
+              {compactVizEl}
+            </div>
+          )}
+
+          {/* Title + artist + total time */}
+          <div className="flex items-start justify-between gap-3 min-w-0">
+            <div className="flex-1 min-w-0">
+              {currentTrack ? (
+                <>
+                  <div
+                    className="text-base font-semibold"
+                    style={{ color: cardStyles?.headingColor }}
+                  >
+                    <TrackTitle text={currentTrack.title} playing={isPlaying} />
+                  </div>
+                  {currentTrack.artist && (
+                    <p
+                      className="text-xs truncate max-w-full mt-0.5"
+                      style={{ color: cardStyles?.mutedColor }}
+                    >
+                      {currentTrack.artist}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div
+                  className="text-sm"
+                  style={{ color: cardStyles?.mutedColor }}
+                >
+                  No track selected
+                </div>
+              )}
+            </div>
+            <span
+              className="text-xs tabular-nums shrink-0 mt-0.5"
+              style={{ color: cardStyles?.mutedColor }}
+            >
+              {formatTime(compactTotalDur)}
+            </span>
+          </div>
+
+          {/* Progress bar — taller than the minimal variant's hairline.
+              Click-to-seek (drag handled by the full layout only). */}
+          <div className="space-y-1">
+            <div
+              role="slider"
+              tabIndex={0}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              aria-label="Audio progress"
+              className="relative h-1.5 rounded-full cursor-pointer"
+              style={{
+                backgroundColor:
+                  "color-mix(in srgb, var(--color-accent) 18%, transparent)",
+              }}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const percent = Math.max(
+                  0,
+                  Math.min(1, (e.clientX - rect.left) / rect.width)
+                );
+                if (compactTotalDur > 0) {
+                  seekLoadingRef.current = true;
+                  setSeekLoading(true);
+                  void seekTo(compactTotalDur * percent).finally(() => {
+                    seekLoadingRef.current = false;
+                    setSeekLoading(false);
+                  });
+                }
+              }}
+            >
+              <div
+                className="absolute top-0 bottom-0 left-0 rounded-full"
+                style={{
+                  width: `${progress}%`,
+                  backgroundColor: "var(--color-accent)",
+                }}
+              />
+            </div>
+            <div
+              className="flex justify-between text-[11px] tabular-nums"
+              style={{ color: cardStyles?.mutedColor }}
+            >
+              <span>{formatTime(currentTime)}</span>
+              <span>{compactTotalDur > 0 ? `-${formatTime(Math.max(0, compactTotalDur - currentTime))}` : ""}</span>
+            </div>
+          </div>
+
+          {/* Centered controls cluster */}
+          <div className="flex items-center justify-center gap-4">
+            <button
+              type="button"
+              onClick={playPrev}
+              aria-label="Previous track"
+              className="p-2 transition hover:opacity-80 cursor-pointer"
+              style={{
+                color: cardStyles?.contentColor,
+                borderRadius: borderRadiusToCSS(
+                  cardStyles?.buttonBorderRadius,
+                  24
+                ),
+              }}
+            >
+              <svg
+                className="w-6 h-6"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={
+                isLoading || seekLoading
+                  ? "Loading"
+                  : isPlaying
+                    ? "Pause"
+                    : "Play"
+              }
+              aria-busy={isLoading || seekLoading}
+              className="p-3 hover:scale-105 transition cursor-pointer"
+              style={{
+                borderRadius: compactPlayBtnRadius,
+                backgroundColor: "var(--color-primary)",
+                color: "var(--color-primary-text)",
+              }}
+            >
+              {isLoading || seekLoading ? (
+                <svg
+                  className="w-7 h-7 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
+                </svg>
+              ) : isPlaying ? (
+                <svg
+                  className="w-7 h-7"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
+                </svg>
+              ) : (
+                <svg
+                  className="w-7 h-7"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={playNext}
+              aria-label="Next track"
+              className="p-2 transition hover:opacity-80 cursor-pointer"
+              style={{
+                color: cardStyles?.contentColor,
+                borderRadius: borderRadiusToCSS(
+                  cardStyles?.buttonBorderRadius,
+                  24
+                ),
+              }}
+            >
+              <svg
+                className="w-6 h-6"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Dense single-column playlist — only when there's >1 track. */}
+          {showPlaylist && tracks.length > 1 && (
+            <div
+              className="pt-3 border-t flex flex-col"
+              style={{
+                borderColor:
+                  "color-mix(in srgb, var(--color-text-primary) 8%, transparent)",
+              }}
+              role="list"
+            >
+              {tracks.map((track, idx) => {
+                const isCurrent = currentTrack?.id === track.id;
+                const isCurrentPlaying = isCurrent && isPlaying;
+                return (
+                  <button
+                    key={track.id}
+                    type="button"
+                    role="listitem"
+                    onClick={() => {
+                      if (isCurrentPlaying) {
+                        audioRef.current?.pause();
+                        onPlayingChange(false);
+                      } else if (
+                        isCurrent &&
+                        !isPlaying &&
+                        !isLoading &&
+                        !!audioRef.current?.currentSrc
+                      ) {
+                        audioRef.current
+                          ?.play()
+                          .then(() => onPlayingChange(true))
+                          .catch(() => {});
+                      } else {
+                        playTrack(track);
+                      }
+                    }}
+                    className="w-full text-left flex items-center gap-2 px-1.5 py-1.5 rounded transition cursor-pointer"
+                    style={{
+                      backgroundColor: isCurrent
+                        ? "color-mix(in srgb, var(--color-accent) 10%, transparent)"
+                        : "transparent",
+                    }}
+                    aria-current={isCurrent ? "true" : undefined}
+                  >
+                    <span
+                      className="w-5 text-xs tabular-nums shrink-0 text-center"
+                      style={{
+                        color: isCurrent
+                          ? "var(--color-accent)"
+                          : cardStyles?.mutedColor,
+                      }}
+                    >
+                      {idx + 1}
+                    </span>
+                    <span
+                      className="flex-1 min-w-0 truncate text-sm"
+                      style={{
+                        color: isCurrent
+                          ? "var(--color-accent)"
+                          : cardStyles?.contentColor,
+                      }}
+                    >
+                      {track.title}
+                    </span>
+                    {track.duration && track.duration > 0 && (
+                      <span
+                        className="text-[11px] tabular-nums shrink-0"
+                        style={{ color: cardStyles?.mutedColor }}
+                      >
+                        {formatTime(track.duration)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </CardContainer>
+      </div>
+    );
+  }
+
   return (
     <div
       className={embedded ? "relative" : "relative min-h-screen"}
@@ -1038,38 +1680,44 @@ export function PlayerView({
               </CardContainer>
             )}
 
-            {(() => {
-              const visualizerProps = {
-                audioElement,
-                isPlaying,
-                currentTime,
-                duration,
-                waveformPeaks: audio.waveformPeaks ?? currentTrack?.waveformPeaks ?? null,
-                borderShow: cardStyles?.visualizerBorderShow,
-                borderColor: cardStyles?.visualizerBorderColor,
-                borderRadius: cardStyles?.visualizerBorderRadius,
-                blendMode: cardStyles?.visualizerBlendMode,
-              };
-              const VisualizerEl = effectiveVisualizerType === "waveform" ? (
-                <WaveformProgress {...visualizerProps} />
-              ) : (
-                <AudioVisualizer
-                  {...visualizerProps}
-                  pcmAnalyser={pcmAnalyser}
-                  demoMode={isDesignerMode}
-                />
-              );
+            {showVisualizer &&
+              (() => {
+                const visualizerProps = {
+                  audioElement,
+                  isPlaying,
+                  currentTime,
+                  duration,
+                  waveformPeaks: audio.waveformPeaks ?? currentTrack?.waveformPeaks ?? null,
+                  borderShow: cardStyles?.visualizerBorderShow,
+                  borderColor: cardStyles?.visualizerBorderColor,
+                  borderRadius: cardStyles?.visualizerBorderRadius,
+                  blendMode: cardStyles?.visualizerBlendMode,
+                };
+                const VisualizerEl = effectiveVisualizerType === "waveform" ? (
+                  <WaveformProgress {...visualizerProps} />
+                ) : (
+                  <AudioVisualizer
+                    {...visualizerProps}
+                    pcmAnalyser={pcmAnalyser}
+                    // Always read from the real audio element. The page-builder
+                    // canvas previously forced `demoMode={isDesignerMode}`, but
+                    // now that designer playback is fully wired (PlayerBlock no
+                    // longer mutes the <audio>), the visualizer should react to
+                    // the actual track. Matches the lobby's behaviour.
+                    demoMode={false}
+                  />
+                );
 
-              return cardStyles?.visualizerUseCardBg ? (
-                <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
-                  {VisualizerEl}
-                </CardContainer>
-              ) : (
-                <div className="overflow-hidden">
-                  {VisualizerEl}
-                </div>
-              );
-            })()}
+                return cardStyles?.visualizerUseCardBg ? (
+                  <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
+                    {VisualizerEl}
+                  </CardContainer>
+                ) : (
+                  <div className="overflow-hidden">
+                    {VisualizerEl}
+                  </div>
+                );
+              })()}
 
             {currentTrack && (
               <div className="text-center max-w-full overflow-hidden">
@@ -1249,6 +1897,7 @@ export function PlayerView({
               </button>
             </div>
 
+            {showPlaylist && (
             <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4 max-w-full overflow-hidden">
               <h3
                 id="playlist-heading"
@@ -1292,7 +1941,22 @@ export function PlayerView({
                             action: 'pause',
                             position: index + 1,
                           });
-                        } else if (isCurrent && !isPlaying && !isLoading) {
+                        } else if (
+                          isCurrent &&
+                          !isPlaying &&
+                          !isLoading &&
+                          // Only attempt a bare `play()` resume if the <audio>
+                          // element already has a source attached. In the
+                          // page-builder canvas the parent doesn't pre-load
+                          // the initial track (unlike the lobby route, which
+                          // has a `useEffect` that calls `loadTrack` on mount),
+                          // so the very first click on the default-selected
+                          // current track would otherwise hit `play()` on an
+                          // empty media element and produce no audio. Falling
+                          // through to `playTrack(track)` makes the click
+                          // bulletproof in both rendering hosts.
+                          !!audioRef.current?.currentSrc
+                        ) {
                           audioRef.current?.play().then(() => onPlayingChange(true)).catch(() => {});
 
                           trackEvent('track_click', {
@@ -1382,6 +2046,7 @@ export function PlayerView({
                 })}
               </div>
             </CardContainer>
+            )}
 
             {technicalInfo && (technicalInfo.title || technicalInfo.content) && (
               <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">

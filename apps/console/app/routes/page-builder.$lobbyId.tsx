@@ -87,6 +87,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     throw redirect("/lobbies");
   }
 
+  // Which layout the canvas should edit — main lobby page (default) or the
+  // separate login page. Both live in `Lobby.settings` JSON.
+  const pageKind: "lobby" | "login" =
+    new URL(request.url).searchParams.get("page") === "login" ? "login" : "lobby";
+
   const [lobby, account, csrfToken, theme, lobbySettings, swatchesRaw] =
     await Promise.all([
       getLobbyById(lobbyId),
@@ -126,10 +131,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     })),
   }));
 
-  const storedLayout = parseStoredPageLayout(
-    lobbySettings.pageLayout,
-    defaultPlaylist.id
-  );
+  // Pull the layout matching the current page kind. `loginPageLayout` is
+  // absent on lobbies that haven't customized it yet — that's fine, the
+  // reducer seeds an empty default in PageBuilderRoot.
+  const rawLayout =
+    pageKind === "login"
+      ? lobbySettings.loginPageLayout
+      : lobbySettings.pageLayout;
+  const storedLayout = parseStoredPageLayout(rawLayout, defaultPlaylist.id);
 
   // Coerce stored swatch rows into the shape the ColorPicker expects.
   // The JSON value column matches the picker's `ColorValue` discriminated
@@ -181,6 +190,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     lobbyOrigin,
     lobbyPreviewToken,
     pageLayout: storedLayout,
+    pageKind,
     csrfToken,
     theme,
     playlists: playlistSummaries,
@@ -224,6 +234,12 @@ export async function action({ request, params }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = formData.get("intent");
 
+  // Action mirrors the loader: `?page=login` writes to `loginPageLayout`,
+  // everything else writes to the main `pageLayout`. Theme/swatch intents are
+  // shared across both layouts and stay on their existing global fields.
+  const pageKind: "lobby" | "login" =
+    new URL(request.url).searchParams.get("page") === "login" ? "login" : "lobby";
+
   if (intent === "update_page_layout") {
     const sectionsRaw = formData.get("sections");
     if (typeof sectionsRaw !== "string") {
@@ -240,8 +256,9 @@ export async function action({ request, params }: Route.ActionArgs) {
       return { error: "Invalid sections JSON" };
     }
     try {
+      const layoutKey = pageKind === "login" ? "loginPageLayout" : "pageLayout";
       await mergeLobbySettings(lobbyId, {
-        pageLayout: { sections, version: PAGE_LAYOUT_VERSION },
+        [layoutKey]: { sections, version: PAGE_LAYOUT_VERSION },
       });
       return { success: true as const };
     } catch (err) {

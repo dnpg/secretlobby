@@ -7,7 +7,8 @@ export type { ThemeSettings };
 
 export type ViewportSize = "desktop" | "tablet" | "mobile";
 export type MobileLayout = "stack" | "keep" | "slider";
-export type BlockType = "image" | "player" | "card";
+export type BlockType = "image" | "player" | "card" | "gallery";
+export type GalleryStyle = "slider" | "grid" | "masonry";
 
 // Block content types ---------------------------------------------------------
 
@@ -69,10 +70,32 @@ export interface CardBlockContent {
   backgroundColor?: string;
 }
 
+// Single image record inside a gallery. `id` is a stable client-generated
+// uuid so dnd-kit + delete-by-id work without depending on array position.
+export interface GalleryImage {
+  id: string;
+  mediaId?: string;
+  mediaUrl?: string;
+  alt?: string;
+  linkUrl?: string;
+}
+
+export interface GalleryBlockContent {
+  images: GalleryImage[];
+  style: GalleryStyle;
+  columns?: number; // 2..6; only meaningful for grid + masonry; ignored by slider
+  gap?: number; // px; default 8
+  imageBorderRadius?: BorderRadius;
+  autoplay?: boolean; // slider only; default false
+  autoplayIntervalMs?: number; // slider only; default 4000
+  showArrows?: boolean; // slider only; default true
+}
+
 export type BlockContent =
   | ImageBlockContent
   | PlayerBlockContent
-  | CardBlockContent;
+  | CardBlockContent
+  | GalleryBlockContent;
 
 export interface Block {
   id: string;

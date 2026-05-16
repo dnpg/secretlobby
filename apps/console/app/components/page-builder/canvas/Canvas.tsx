@@ -443,6 +443,7 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
           backgroundSize: "var(--bg-size, auto)",
           backgroundPosition: "var(--bg-position, center)",
           backgroundRepeat: "var(--bg-repeat, no-repeat)",
+          backgroundAttachment: "var(--bg-attachment, scroll)",
           // Inject the live theme CSS variables so child blocks get the
           // current theme without a server round-trip.
           ...themeStyle,
@@ -509,6 +510,7 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
             // drags to be swallowed by the inner block context.
             return (
               <DndContext
+                id="page-builder-canvas"
                 sensors={sensors}
                 collisionDetection={collisionDetectionStrategy}
                 onDragStart={handleDragStart}

@@ -4,6 +4,7 @@ import type {
   BlockType,
   CardBlockContent,
   Column,
+  GalleryBlockContent,
   ImageBlockContent,
   PlayerBlockContent,
   Section,
@@ -71,6 +72,16 @@ export function getDefaultBlockContent(type: BlockType): BlockContent {
         content: "<p>Add your content here...</p>",
         showBorder: true,
       } as CardBlockContent;
+    case "gallery":
+      return {
+        images: [],
+        style: "grid",
+        columns: 3,
+        gap: 8,
+        autoplay: false,
+        autoplayIntervalMs: 4000,
+        showArrows: true,
+      } satisfies GalleryBlockContent;
   }
 }
 

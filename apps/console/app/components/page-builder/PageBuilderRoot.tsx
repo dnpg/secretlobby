@@ -36,6 +36,8 @@ interface PageBuilderLoaderData {
     isDefault: boolean;
   };
   pageLayout: StoredPageLayout | null;
+  // Which layout the loader returned — main lobby page or the login page.
+  pageKind: "lobby" | "login";
   csrfToken: string;
   theme: ThemeSettings;
   playlists: PlaylistSummary[];
@@ -144,6 +146,7 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
   const {
     lobby,
     pageLayout,
+    pageKind,
     csrfToken,
     theme,
     playlists,
@@ -185,6 +188,7 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
       defaultPlaylistId,
       lobbyOrigin,
       lobbyPreviewToken,
+      pageKind,
     };
     // We intentionally seed only once; subsequent URL changes are handled by
     // selection/viewport effects inside the inner component.
@@ -194,7 +198,7 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
   return (
     <PageBuilderProvider initialState={initialState}>
       <SwatchProvider initialSwatches={initialSwatches} csrfToken={csrfToken}>
-        <PageBuilderInner lobby={lobby} csrfToken={csrfToken} />
+        <PageBuilderInner lobby={lobby} csrfToken={csrfToken} pageKind={pageKind} />
       </SwatchProvider>
     </PageBuilderProvider>
   );
@@ -444,6 +448,7 @@ function SwatchProvider({ initialSwatches, csrfToken, children }: SwatchProvider
 interface PageBuilderInnerProps {
   lobby: { id: string; name: string; slug: string; title: string | null; isDefault: boolean };
   csrfToken: string;
+  pageKind: "lobby" | "login";
 }
 
 // Hidden form payload typing for the autosave fetcher. Returned data shape is
@@ -452,7 +457,7 @@ type SaveActionData = { success: true } | { error: string };
 
 // Autosave + URL-sync wrapper. Reads from the reducer-backed context, owns the
 // fetcher used for `update_page_layout`, and renders the layout shell.
-function PageBuilderInner({ lobby, csrfToken }: PageBuilderInnerProps) {
+function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps) {
   const { state, dispatch } = usePageBuilder();
   const {
     sections,
@@ -664,6 +669,7 @@ function PageBuilderInner({ lobby, csrfToken }: PageBuilderInnerProps) {
     <div className="fixed inset-0 bg-theme-primary flex flex-col z-50">
       <TopHeader
         lobby={lobby}
+        pageKind={pageKind}
         themeOverlayOpen={themeOverlayOpen}
         onToggleThemeOverlay={toggleThemeOverlay}
         showLayoutEdit={showLayoutEdit}

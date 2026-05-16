@@ -64,6 +64,10 @@ export interface PageBuilderState {
   // requests against unpublished lobbies without minting a lobby session.
   // Always supplied (1-hour TTL); ignored harmlessly by published lobbies.
   lobbyPreviewToken: string;
+  // Which page-builder layout the canvas is currently editing — main lobby
+  // page or the dedicated login page. Sourced from the `?page=` query param;
+  // routes the autosave action to the correct settings field.
+  pageKind: "lobby" | "login";
 }
 
 export type PageBuilderAction =

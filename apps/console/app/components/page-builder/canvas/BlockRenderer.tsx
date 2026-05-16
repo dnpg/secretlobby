@@ -3,6 +3,7 @@ import { cn } from "@secretlobby/ui";
 import type {
   Block,
   CardBlockContent,
+  GalleryBlockContent,
   ImageBlockContent,
   PlayerBlockContent,
   ThemeSettings,
@@ -11,6 +12,7 @@ import { usePageBuilder } from "../state/provider";
 import { ImageBlock } from "./blocks/ImageBlock";
 import { PlayerBlock } from "./blocks/PlayerBlock";
 import { CardBlock } from "./blocks/CardBlock";
+import { GalleryBlock } from "./blocks/GalleryBlock";
 
 interface BlockRendererProps {
   block: Block;
@@ -67,6 +69,13 @@ export function BlockRenderer({
             theme={effectiveTheme}
           />
         );
+      case "gallery":
+        return (
+          <GalleryBlock
+            content={block.content as GalleryBlockContent}
+            theme={effectiveTheme}
+          />
+        );
     }
   };
 
@@ -91,22 +100,10 @@ export function BlockRenderer({
       )}
     >
       {renderBlockContent()}
-
-      {/* Delete button — only shown in edit mode and when selected. */}
-      {isEditing && isSelected && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="absolute -top-2 -right-2 p-1 bg-red-500 rounded-full text-white hover:bg-red-600 transition-colors cursor-pointer"
-          title="Delete block"
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      )}
+      {/* Per-block delete affordance lives in the left rail (trash icon on
+          the layer row) and at the bottom of the SettingsOverlay. The canvas
+          stays clean. `onDelete` is still accepted as a prop in case future
+          surfaces want it. */}
     </div>
   );
 }

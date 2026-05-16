@@ -2,12 +2,14 @@ import type {
   Block,
   BlockContent,
   CardBlockContent,
+  GalleryBlockContent,
   ImageBlockContent,
   PlayerBlockContent,
 } from "../state/types";
 import { ImageBlockSettings } from "./blockSettings/ImageBlockSettings";
 import { PlayerBlockSettings } from "./blockSettings/PlayerBlockSettings";
 import { CardBlockSettings } from "./blockSettings/CardBlockSettings";
+import { GalleryBlockSettings } from "./blockSettings/GalleryBlockSettings";
 
 // Inline Block Settings Panel (rendered inside the SettingsOverlay).
 // Dispatches to a per-type settings component based on `block.type`.
@@ -40,6 +42,14 @@ export function BlockSettings({ block, onUpdate }: BlockSettingsProps) {
           <CardBlockSettings
             blockId={block.id}
             content={block.content as CardBlockContent}
+            onUpdate={onUpdate}
+          />
+        );
+      case "gallery":
+        return (
+          <GalleryBlockSettings
+            blockId={block.id}
+            content={block.content as GalleryBlockContent}
             onUpdate={onUpdate}
           />
         );

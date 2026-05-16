@@ -180,11 +180,13 @@ export function PlayerBlock({ content, theme }: PlayerBlockProps) {
       {/* Hidden audio element — useHlsAudio attaches MSE/native HLS here.
           `crossOrigin="anonymous"` keeps the audio CORS-clean so the Web
           Audio visualizer can read frequency data from a cross-origin
-          source (page-builder canvas pulls audio from the lobby host). */}
+          source (page-builder canvas pulls audio from the lobby host).
+          NOT muted in edit mode — the designer needs to hear playback when
+          they click a track in the canvas; that's how the live lobby will
+          render it too. */}
       <audio
         ref={audioRef}
         preload="none"
-        muted={!isPreview}
         crossOrigin="anonymous"
       />
       <PlayerView
@@ -209,6 +211,10 @@ export function PlayerBlock({ content, theme }: PlayerBlockProps) {
         // dark overlay, the outer header, and the heavy `container py-8`
         // page padding.
         embedded
+        variant={content.variant}
+        showVisualizer={content.showVisualizer}
+        showPlaylist={content.showPlaylist}
+        autoplay={content.autoplay}
         apiBaseUrl={lobbyOrigin}
       />
     </div>

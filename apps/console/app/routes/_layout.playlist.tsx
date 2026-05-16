@@ -681,6 +681,7 @@ export default function AdminPlaylist() {
             </p>
           ) : isMounted ? (
             <DndContext
+              id="account-playlist"
               sensors={sensors}
               collisionDetection={closestCenter}
               modifiers={[restrictToVerticalAxis]}

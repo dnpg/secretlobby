@@ -489,6 +489,24 @@ function ImageEditor({ image, onChange, onRemove }: ImageEditorProps) {
           className="mt-2 w-full px-2 py-1 text-xs bg-theme-tertiary border border-theme rounded text-theme-primary"
           aria-label="Custom position"
         />
+        {/* Pin the image to the viewport so it doesn't scroll with the page
+            (parallax effect). Maps to CSS `background-attachment: fixed`. */}
+        <label className="mt-2 flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={image.attachment === "fixed"}
+            onChange={(e) =>
+              onChange({
+                ...image,
+                attachment: e.target.checked ? "fixed" : "scroll",
+              })
+            }
+            className="accent-[var(--color-brand-red)] cursor-pointer"
+          />
+          <span className="text-xs text-theme-secondary">
+            Fixed (image stays in place while scrolling)
+          </span>
+        </label>
       </div>
 
       <div>

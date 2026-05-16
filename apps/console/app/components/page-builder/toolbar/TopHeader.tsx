@@ -1,9 +1,11 @@
-import { Link } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 import { ColorModeToggle, cn } from "@secretlobby/ui";
 import { getDefaultThemeForMode } from "~/lib/theme";
 import type { ViewportSize } from "../state/types";
 import { usePageBuilder } from "../state/provider";
 import {
+  ChevronDownIcon,
   ChevronLeftIcon,
   DashedSquareIcon,
   EyeIcon,
@@ -32,6 +34,7 @@ interface TopHeaderProps {
     title: string | null;
     isDefault: boolean;
   };
+  pageKind: "lobby" | "login";
   themeOverlayOpen: boolean;
   onToggleThemeOverlay: () => void;
   showLayoutEdit: boolean;
@@ -44,6 +47,7 @@ interface TopHeaderProps {
 
 export function TopHeader({
   lobby,
+  pageKind,
   themeOverlayOpen,
   onToggleThemeOverlay,
   showLayoutEdit,
@@ -72,6 +76,50 @@ export function TopHeader({
       theme: getDefaultThemeForMode(theme.colorMode),
     });
   };
+
+  // Page-kind dropdown — switches the canvas between editing the lobby's
+  // main page layout and the dedicated login-page layout via `?page=` on the
+  // current path. Click-outside / Esc close the menu.
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
+  const pageMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!pageMenuOpen) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!pageMenuRef.current) return;
+      if (!pageMenuRef.current.contains(e.target as Node)) {
+        setPageMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPageMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pageMenuOpen]);
+
+  const selectPageKind = (next: "lobby" | "login") => {
+    setPageMenuOpen(false);
+    if (next === pageKind) return;
+    const params = new URLSearchParams(location.search);
+    if (next === "login") {
+      params.set("page", "login");
+    } else {
+      params.delete("page");
+    }
+    // Drop selection/tab params so the new layout starts in a clean state.
+    params.delete("selected");
+    params.delete("tab");
+    const qs = params.toString();
+    navigate(`${location.pathname}${qs ? `?${qs}` : ""}`, { replace: true });
+  };
+
+  const pageKindLabel = pageKind === "login" ? "Login page" : "Lobby page";
 
   return (
     <header className="flex-shrink-0 h-12 bg-theme-secondary border-b border-theme flex items-center pr-4">
@@ -144,10 +192,74 @@ export function TopHeader({
           )}
         </button>
 
-        <div className="px-4 min-w-0">
-          <div className="text-sm font-medium text-theme-primary truncate leading-tight">
-            {lobby.title || lobby.name}
-          </div>
+        <div ref={pageMenuRef} className="relative h-full">
+          <button
+            type="button"
+            onClick={() => setPageMenuOpen((v) => !v)}
+            className={cn(
+              "h-full px-3 flex items-center gap-2 border-r border-theme transition-colors cursor-pointer min-w-0",
+              pageMenuOpen
+                ? "bg-theme-tertiary text-theme-primary"
+                : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
+            )}
+            aria-haspopup="menu"
+            aria-expanded={pageMenuOpen}
+            aria-label="Switch page layout"
+            title="Switch page layout"
+          >
+            <div className="text-left min-w-0">
+              <div className="text-sm font-medium text-theme-primary truncate leading-tight">
+                {pageKindLabel}
+              </div>
+              <div className="text-[11px] text-theme-muted truncate leading-tight">
+                {lobby.title || lobby.name}
+              </div>
+            </div>
+            <ChevronDownIcon />
+          </button>
+          {pageMenuOpen && (
+            <div
+              role="menu"
+              className="absolute left-0 top-full mt-1 min-w-[200px] bg-theme-secondary border border-theme rounded-md shadow-lg py-1 z-50"
+            >
+              {(["lobby", "login"] as const).map((kind) => {
+                const label = kind === "login" ? "Login page" : "Lobby page";
+                const active = pageKind === kind;
+                return (
+                  <button
+                    key={kind}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={active}
+                    onClick={() => selectPageKind(kind)}
+                    className={cn(
+                      "w-full text-left px-3 py-1.5 text-sm flex items-center justify-between gap-2 cursor-pointer transition-colors",
+                      active
+                        ? "text-[var(--color-brand-red)] bg-[var(--color-brand-red-muted)]"
+                        : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
+                    )}
+                  >
+                    <span>{label}</span>
+                    {active && (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

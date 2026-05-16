@@ -18,6 +18,32 @@ interface CardBlockProps {
   theme: ThemeSettings;
 }
 
+// Parse a CSS length string ("1px", "0.5rem", "0", " 2px ") into its leading
+// numeric value. Returns 0 for empty / undefined / non-numeric input — which
+// is the correct "no width" behaviour for the border on/off check below.
+function parseCSSLengthNumeric(value: string | undefined): number {
+  if (!value) return 0;
+  const match = String(value).trim().match(/^-?[\d.]+/);
+  if (!match) return 0;
+  const n = parseFloat(match[0]);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// True when the effective border width is positive on at least one side. The
+// page-builder no longer has a "show border" toggle — width alone gates it.
+function hasPositiveBorderWidth(theme: ThemeSettings): boolean {
+  const sides = theme.cardBorderSideWidths;
+  if (sides) {
+    return (
+      parseCSSLengthNumeric(sides.top) > 0 ||
+      parseCSSLengthNumeric(sides.right) > 0 ||
+      parseCSSLengthNumeric(sides.bottom) > 0 ||
+      parseCSSLengthNumeric(sides.left) > 0
+    );
+  }
+  return parseCSSLengthNumeric(theme.cardBorderWidth) > 0;
+}
+
 // Resolve a text-role field down to a CSSProperties object that handles both
 // solid and gradient text. For gradients we apply background-clip:text so the
 // gradient shows through the glyphs; the same `style` object also sets the
@@ -71,6 +97,11 @@ export function CardBlock({ content, theme }: CardBlockProps) {
   const { swatches, drafts } = useSwatches();
 
   const border = getCardBorderCSS(theme);
+  // Whether the card paints a border now follows the width alone — there is
+  // no separate `cardBorderShow` toggle. We compute "has positive width" from
+  // the effective per-side widths first (when set), then fall back to the
+  // uniform `cardBorderWidth`. Invalid / 0 / "0px" → no border.
+  const showBorder = hasPositiveBorderWidth(theme);
   // Compute the backdrop-filter from THIS card's effective theme (global merged
   // with block.themeOverrides upstream). Reading the global `--card-backdrop-
   // filter` CSS variable would force every card to share the global value and
@@ -96,24 +127,9 @@ export function CardBlock({ content, theme }: CardBlockProps) {
           WebkitBackdropFilter: backdropFilterCSS,
         }
       : {}),
-    ...(theme.cardBorderShow
+    ...(showBorder
       ? {
           border: border.style,
-          ...(border.borderImage
-            ? {
-                borderImage: border.borderImage,
-                borderImageSlice: border.borderImageSlice ?? 1,
-                ...(border.borderImageWidth
-                  ? { borderImageWidth: border.borderImageWidth }
-                  : {}),
-                ...(border.borderImageOutset
-                  ? { borderImageOutset: border.borderImageOutset }
-                  : {}),
-                ...(border.borderImageRepeat
-                  ? { borderImageRepeat: border.borderImageRepeat }
-                  : {}),
-              }
-            : {}),
           // Per-side overrides — only present when the user has diverged from
           // uniform. Spread directly into the style object; React's CSS prop
           // accepts these camelCase per-side fields.
@@ -135,11 +151,8 @@ export function CardBlock({ content, theme }: CardBlockProps) {
             : {}),
         }
       : { border: "none" }),
-    // Outline + box-shadow are independent of `content.showBorder` — a
-    // borderless card can still cast a shadow or wear an outline.
-    ...(border.outline
-      ? { outline: border.outline, outlineOffset: border.outlineOffset }
-      : {}),
+    // Box-shadow is independent of border width — a borderless card can still
+    // cast a shadow.
     ...(border.boxShadow ? { boxShadow: border.boxShadow } : {}),
   };
 

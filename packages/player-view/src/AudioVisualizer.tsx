@@ -5,6 +5,47 @@ import type { PcmAnalyser } from "./usePcmAnalyser";
 
 const logger = createLogger({ service: "lobby:visualizer" });
 
+// AudioContext + MediaElementSource + AnalyserNode cache, keyed by the
+// underlying `<audio>` DOM node. The Web Audio API only allows ONE
+// `MediaElementAudioSourceNode` per audio element — a second
+// `createMediaElementSource` call against the same element throws an
+// `InvalidStateError`. Without this cache, every remount of the visualizer
+// (e.g. when the page-builder switches between full / compact / minimal
+// variants) would create a fresh component instance, find its local refs
+// empty, and silently fail to attach a working analyser.
+//
+// WeakMap so the entries disappear when the audio element is GC'd.
+type AudioVisualizerRouting = {
+  ctx: AudioContext;
+  source: MediaElementAudioSourceNode;
+  analyser: AnalyserNode;
+};
+const audioVisualizerRoutings = new WeakMap<
+  HTMLAudioElement,
+  AudioVisualizerRouting
+>();
+
+function getOrCreateAudioRouting(
+  audioElement: HTMLAudioElement
+): AudioVisualizerRouting | null {
+  const existing = audioVisualizerRoutings.get(audioElement);
+  if (existing) return existing;
+  try {
+    const ctx = new AudioContext();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    const source = ctx.createMediaElementSource(audioElement);
+    source.connect(analyser);
+    analyser.connect(ctx.destination);
+    const routing: AudioVisualizerRouting = { ctx, source, analyser };
+    audioVisualizerRoutings.set(audioElement, routing);
+    return routing;
+  } catch (error) {
+    logger.error({ error }, "Audio context not working");
+    return null;
+  }
+}
+
 interface AudioVisualizerProps {
   audioElement: HTMLAudioElement | null;
   isPlaying: boolean;
@@ -23,6 +64,12 @@ interface AudioVisualizerProps {
    * style with the current theme.
    */
   demoMode?: boolean;
+  /** Tailwind / class override for the underlying canvas. Defaults to
+   *  `w-full h-32` (the full-hero height). The compact / minimal variants
+   *  in PlayerView pass `w-full h-full` so the canvas fills their smaller
+   *  wrappers and the bars (which draw from the canvas centre outward)
+   *  stay visible. */
+  className?: string;
 }
 
 function getThemeColor(element: Element | null, varName: string, fallback: string): string {
@@ -42,18 +89,20 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(255, 255, 255, ${alpha})`;
 }
 
-export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderColor, borderRadius, blendMode, pcmAnalyser, demoMode }: AudioVisualizerProps) {
+export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderColor, borderRadius, blendMode, pcmAnalyser, demoMode, className = "w-full h-32" }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
 
+  // The AudioContext lives in the module-level WeakMap (keyed by the audio
+  // element). We resume it from any user gesture, so look it up at gesture
+  // time rather than holding a stale ref.
   useEffect(() => {
     if (pcmAnalyser || demoMode) return;
+    if (!audioElement) return;
     const resume = () => {
-      if (audioContextRef.current?.state === "suspended") {
-        audioContextRef.current.resume();
+      const routing = audioVisualizerRoutings.get(audioElement);
+      if (routing?.ctx.state === "suspended") {
+        void routing.ctx.resume();
       }
     };
     document.addEventListener("click", resume, { capture: true });
@@ -62,7 +111,7 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
       document.removeEventListener("click", resume, { capture: true });
       document.removeEventListener("touchstart", resume, { capture: true });
     };
-  }, [pcmAnalyser, demoMode]);
+  }, [audioElement, pcmAnalyser, demoMode]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -94,23 +143,13 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
       bufferLength = pcmAnalyser.frequencyBinCount;
       getFrequencyData = (arr) => pcmAnalyser.getByteFrequencyData(arr);
     } else {
-      if (!audioContextRef.current) {
-        try {
-          audioContextRef.current = new AudioContext();
-          analyserRef.current = audioContextRef.current.createAnalyser();
-          analyserRef.current.fftSize = 256;
-          sourceRef.current = audioContextRef.current.createMediaElementSource(audioElement!);
-          sourceRef.current.connect(analyserRef.current);
-          analyserRef.current.connect(audioContextRef.current.destination);
-        } catch (error) {
-          logger.error({ error }, "Audio context not working");
-        }
-      }
-
-      const analyser = analyserRef.current;
-      if (!analyser) return;
-      bufferLength = analyser.frequencyBinCount;
-      getFrequencyData = (arr) => analyser.getByteFrequencyData(arr);
+      // Real audio path — look up (or lazily create) the per-audio-element
+      // routing in the module cache. Survives variant switches because the
+      // AudioContext + source are not tied to this component's lifetime.
+      const routing = getOrCreateAudioRouting(audioElement!);
+      if (!routing) return;
+      bufferLength = routing.analyser.frequencyBinCount;
+      getFrequencyData = (arr) => routing.analyser.getByteFrequencyData(arr);
     }
 
     const canvas = canvasRef.current;
@@ -182,8 +221,11 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
     }
 
     if (isPlaying || demoMode) {
-      if (!pcmAnalyser && !demoMode && audioContextRef.current?.state === "suspended") {
-        audioContextRef.current.resume();
+      if (!pcmAnalyser && !demoMode && audioElement) {
+        const routing = audioVisualizerRoutings.get(audioElement);
+        if (routing?.ctx.state === "suspended") {
+          void routing.ctx.resume();
+        }
       }
 
       const loop = () => {
@@ -210,7 +252,7 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
       ref={canvasRef}
       width={800}
       height={200}
-      className="w-full h-32"
+      className={className}
       style={{
         borderRadius: borderRadiusToCSS(borderRadius, 8),
         border: borderShow ? `1px solid ${borderColor || "#374151"}` : "none",

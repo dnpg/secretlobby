@@ -11,6 +11,10 @@ interface WaveformProgressProps {
   borderColor?: string;
   borderRadius?: BorderRadius;
   blendMode?: string;
+  /** Override the canvas sizing classes. Defaults to `w-full h-32`. The
+   *  compact / minimal player variants pass `w-full h-full` so the canvas
+   *  fills their reduced-height wrappers. */
+  className?: string;
 }
 
 function getThemeColor(element: Element | null, varName: string, fallback: string): string {
@@ -37,6 +41,7 @@ export function WaveformProgress({
   borderColor,
   borderRadius,
   blendMode,
+  className = "w-full h-32",
 }: WaveformProgressProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | null>(null);
@@ -133,7 +138,7 @@ export function WaveformProgress({
       ref={canvasRef}
       width={800}
       height={200}
-      className="w-full h-32"
+      className={className}
       style={{
         borderRadius: borderRadiusToCSS(borderRadius, 8),
         border: borderShow ? `1px solid ${borderColor || "#374151"}` : "none",

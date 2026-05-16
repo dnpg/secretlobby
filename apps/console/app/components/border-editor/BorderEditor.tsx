@@ -1,22 +1,15 @@
-import { useState } from "react";
-import { cn, MediaPicker, type MediaItem } from "@secretlobby/ui";
+import { useEffect, useRef, useState } from "react";
+import { cn } from "@secretlobby/ui";
 import type {
-  BorderImage,
-  BorderImageRepeat,
-  BorderImageSource,
   BorderSideStyles,
   BorderSideWidths,
   BorderStyle,
   BoxShadow,
-  Outline,
   ShadowStop,
-  ThemeGradient,
 } from "@secretlobby/theme";
-import { borderImageToCSS } from "@secretlobby/theme";
 import {
   ColorPicker,
   type ColorValue,
-  type GradientValue,
   type SavedSwatch,
 } from "~/components/color-picker";
 import {
@@ -24,39 +17,22 @@ import {
   parseHexWithAlpha,
   unlinkValue,
 } from "~/components/color-picker/utils";
-import {
-  applyGlassPresetToBorder,
-  isGlassPresetActive,
-  GLASS_PRESET,
-} from "./glass-preset";
 
 // =============================================================================
 // BorderEditor
 // -----------------------------------------------------------------------------
-// Reusable border-settings component for the page-builder sidebar. Modelled
-// on BackgroundPicker / ColorPicker / BorderRadiusInput — pure UI, caller owns
-// the value, saved swatches, and persistence handlers.
+// Reusable border-settings component for the page-builder sidebar. Pure UI —
+// the caller owns the value, saved swatches, and persistence handlers.
 //
 // Composition (top → bottom):
-//   1. Show toggle           — single checkbox that gates everything else.
-//   2. Glass-mode switch     — one-click preset (white-18% solid border +
-//                              soft drop-shadow). When the parent supplies
-//                              `onApplyGlassCompanion`, that callback runs
-//                              alongside the in-component preset so the
-//                              parent can set cross-cutting fields like
-//                              backdrop-filter / bg opacity.
-//   3. Border style          — full CSS border-style dropdown.
-//   4. Border width          — Figma-style uniform input with a per-side
-//                              expand (top/right/bottom/left), mirroring
-//                              BorderRadiusInput.
-//   5. Border color          — ColorPicker (solid only — gradients live in
-//                              border-image below). Hex+alpha round-trips
+//   1. Border style          — full CSS border-style dropdown (or per-side).
+//   2. Border width          — Figma-style uniform input with a per-side
+//                              expand (top/right/bottom/left). Width 0 / 0px
+//                              acts as the border on/off switch — no explicit
+//                              "show" toggle.
+//   3. Border color          — ColorPicker (solid only). Hex+alpha round-trips
 //                              through the underlying string field.
-//   6. Border image          — collapsible. Source = gradient (any kind) OR
-//                              uploaded image (MediaPicker). When set,
-//                              exposes border-image-slice/width/outset/repeat.
-//   7. Outline               — collapsible (color/style/width/offset).
-//   8. Box-shadow            — collapsible stack with inset toggle, +Add /
+//   4. Box-shadow            — collapsible stack with inset toggle, +Add /
 //                              remove per shadow.
 //
 // `BorderEditorValue` keeps the model UI-friendly:
@@ -69,10 +45,10 @@ import {
 // =============================================================================
 
 export interface BorderEditorValue {
-  show: boolean;
   style: BorderStyle;
   /** Uniform width (CSS length, e.g. "1px"). When `sideWidths` is set, the
-   *  uniform value still seeds the per-side inputs on first expand. */
+   *  uniform value still seeds the per-side inputs on first expand. A value
+   *  of `"0"` / `"0px"` means "no border" — there is no separate show flag. */
   width: string;
   /** Hex with optional alpha (#RRGGBB or #RRGGBBAA). */
   colorHex: string;
@@ -81,11 +57,6 @@ export interface BorderEditorValue {
   sideWidths?: BorderSideWidths;
   /** Per-side styles — populated when the user expands per-side. */
   sideStyles?: BorderSideStyles;
-  /** Border-image — gradient or uploaded image. Takes precedence over the
-   *  solid color when set. */
-  image?: BorderImage;
-  /** Outline (separate from border). */
-  outline?: Outline;
   /** Box-shadow stack. */
   boxShadow?: BoxShadow;
 }
@@ -100,9 +71,6 @@ export interface BorderEditorProps {
   onDeleteSwatch?: (id: string) => void;
   setDraft?: (id: string, value: ColorValue) => void;
   clearDraft?: (id: string) => void;
-  /** Hook invoked AFTER the in-component glass preset is applied. CardThemeFields
-   *  uses this to also set backdrop-filter + dim card-bg opacity. */
-  onApplyGlassCompanion?: (companion: typeof GLASS_PRESET.companion) => void;
 }
 
 const BORDER_STYLE_OPTIONS: { value: BorderStyle; label: string }[] = [
@@ -118,16 +86,6 @@ const BORDER_STYLE_OPTIONS: { value: BorderStyle; label: string }[] = [
   { value: "hidden", label: "Hidden" },
 ];
 
-const BORDER_IMAGE_REPEAT_OPTIONS: {
-  value: BorderImageRepeat;
-  label: string;
-}[] = [
-  { value: "stretch", label: "Stretch" },
-  { value: "repeat", label: "Repeat" },
-  { value: "round", label: "Round" },
-  { value: "space", label: "Space" },
-];
-
 export function BorderEditor({
   value,
   onChange,
@@ -137,85 +95,20 @@ export function BorderEditor({
   onDeleteSwatch,
   setDraft,
   clearDraft,
-  onApplyGlassCompanion,
 }: BorderEditorProps) {
-  const glassActive = isGlassPresetActive(value);
-
-  const handleGlassToggle = () => {
-    if (glassActive) {
-      // Clear the preset — restore a plain 1px solid neutral border.
-      onChange({
-        ...value,
-        style: "solid",
-        width: "1px",
-        colorHex: "#374151", // matches the legacy default cardBorderColor
-        boxShadow: undefined,
-      });
-      return;
-    }
-    onChange(applyGlassPresetToBorder(value));
-    if (onApplyGlassCompanion) onApplyGlassCompanion(GLASS_PRESET.companion);
-  };
-
   return (
     <div className="space-y-3">
-      {/* Show toggle + Glass mode strip */}
-      <div className="flex items-center justify-between gap-2">
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-theme-secondary">
-          <input
-            type="checkbox"
-            checked={value.show}
-            onChange={(e) => onChange({ ...value, show: e.target.checked })}
-            className="accent-[var(--color-brand-red)] cursor-pointer"
-          />
-          <span>Show border</span>
-        </label>
-        <button
-          type="button"
-          onClick={handleGlassToggle}
-          className={cn(
-            "px-2 py-0.5 text-[11px] rounded border cursor-pointer transition-colors",
-            glassActive
-              ? "border-[var(--color-brand-red)] bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
-              : "border-theme text-theme-muted hover:text-theme-primary hover:bg-theme-tertiary"
-          )}
-          title="One-click glassmorphism preset (1px translucent border + soft shadow)"
-          aria-pressed={glassActive}
-        >
-          {glassActive ? "✓ Glass" : "Glass mode"}
-        </button>
-      </div>
-
-      {value.show && (
-        <>
-          <StyleRow value={value} onChange={onChange} />
-          <WidthRow value={value} onChange={onChange} />
-          <ColorRow
-            value={value}
-            onChange={onChange}
-            swatches={swatches}
-            onSaveSwatch={onSaveSwatch}
-            onUpdateSwatch={onUpdateSwatch}
-            onDeleteSwatch={onDeleteSwatch}
-            setDraft={setDraft}
-            clearDraft={clearDraft}
-          />
-          <BorderImageSection
-            value={value.image}
-            onChange={(next) => onChange({ ...value, image: next })}
-            swatches={swatches}
-            onSaveSwatch={onSaveSwatch}
-            onUpdateSwatch={onUpdateSwatch}
-            onDeleteSwatch={onDeleteSwatch}
-            setDraft={setDraft}
-            clearDraft={clearDraft}
-          />
-        </>
-      )}
-
-      <OutlineSection
-        value={value.outline}
-        onChange={(next) => onChange({ ...value, outline: next })}
+      <StyleRow value={value} onChange={onChange} />
+      <WidthRow value={value} onChange={onChange} />
+      <ColorRow
+        value={value}
+        onChange={onChange}
+        swatches={swatches}
+        onSaveSwatch={onSaveSwatch}
+        onUpdateSwatch={onUpdateSwatch}
+        onDeleteSwatch={onDeleteSwatch}
+        setDraft={setDraft}
+        clearDraft={clearDraft}
       />
 
       <BoxShadowSection
@@ -247,16 +140,11 @@ function StyleRow({
 
   const togglePerSide = () => {
     if (isPerSide) {
-      // Collapse — if all four sides match, keep that as the uniform value;
-      // otherwise keep the first side as the new uniform (the per-side
-      // overrides are dropped).
-      const allMatch =
-        sides.top === sides.right &&
-        sides.right === sides.bottom &&
-        sides.bottom === sides.left;
+      // Collapse — keep the top side as the new uniform; the per-side
+      // overrides are dropped.
       onChange({
         ...value,
-        style: allMatch ? sides.top : sides.top,
+        style: sides.top,
         sideStyles: undefined,
       });
     } else {
@@ -341,7 +229,8 @@ function StyleSelect({
 }
 
 // =============================================================================
-// WidthRow — Figma-style uniform input with per-side expand.
+// WidthRow — Figma-style uniform input with per-side expand. Width 0 = no
+// border (the renderer hides the border whenever every effective width is 0).
 // =============================================================================
 
 function WidthRow({
@@ -361,13 +250,9 @@ function WidthRow({
 
   const togglePerSide = () => {
     if (isPerSide) {
-      const allMatch =
-        sides.top === sides.right &&
-        sides.right === sides.bottom &&
-        sides.bottom === sides.left;
       onChange({
         ...value,
-        width: allMatch ? sides.top : sides.top,
+        width: sides.top,
         sideWidths: undefined,
       });
     } else {
@@ -416,6 +301,19 @@ function WidthRow({
   );
 }
 
+// Parse a CSS length like "1px" / "0.5px" / "2" into its numeric part. We
+// always emit `${n}px` back, so non-px units are normalised on edit. Returns
+// 0 for unparseable input (matches "no border" semantics).
+function parseWidthPx(value: string): number {
+  const n = parseFloat(value);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+const WIDTH_MIN = 0;
+const WIDTH_MAX = 64;
+const WIDTH_DRAG_SENSITIVITY = 0.5; // 2px of cursor travel ≈ 1 unit
+const WIDTH_DRAG_THRESHOLD = 3; // ignore "wiggle on click" up to 3px
+
 function WidthInput({
   value,
   onChange,
@@ -427,21 +325,114 @@ function WidthInput({
   ariaLabel: string;
   prefix?: string;
 }) {
+  // Track the number portion locally so typing doesn't fight a parent
+  // re-render with the same parsed value. Re-sync on prop change when blurred.
+  const numeric = parseWidthPx(value);
+  const [draft, setDraft] = useState<string>(String(numeric));
+  const focusedRef = useRef(false);
+  useEffect(() => {
+    if (!focusedRef.current) setDraft(String(numeric));
+  }, [numeric]);
+
+  const commit = (raw: string) => {
+    const n = parseWidthPx(raw);
+    const clamped = Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, n));
+    setDraft(String(clamped));
+    onChange(`${clamped}px`);
+  };
+
+  // Drag-scrub the "px" unit handle on the right edge — pointer-events so
+  // touch / pen work, capture so the drag continues even if the cursor
+  // exits the handle, and a 3px threshold so a stray click is a no-op.
+  const dragStartXRef = useRef<number | null>(null);
+  const dragStartValueRef = useRef(0);
+  const dragMovedRef = useRef(false);
+  const onHandlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    (e.target as Element).setPointerCapture(e.pointerId);
+    dragStartXRef.current = e.clientX;
+    dragStartValueRef.current = parseWidthPx(value);
+    dragMovedRef.current = false;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ew-resize";
+  };
+  const onHandlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragStartXRef.current === null) return;
+    const dx = e.clientX - dragStartXRef.current;
+    if (Math.abs(dx) < WIDTH_DRAG_THRESHOLD) return;
+    dragMovedRef.current = true;
+    const step = e.shiftKey
+      ? 0.1
+      : e.altKey
+        ? 2
+        : WIDTH_DRAG_SENSITIVITY;
+    const next = Math.max(
+      WIDTH_MIN,
+      Math.min(
+        WIDTH_MAX,
+        Math.round(dragStartValueRef.current + dx * step)
+      )
+    );
+    setDraft(String(next));
+    onChange(`${next}px`);
+  };
+  const endDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (dragStartXRef.current === null) return;
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    dragStartXRef.current = null;
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+  };
+
   return (
-    <div className="flex items-center gap-1.5 rounded border border-theme bg-theme-tertiary px-1.5 py-1">
+    <div
+      className={cn(
+        "flex items-stretch rounded border border-theme bg-theme-tertiary text-theme-primary",
+        "focus-within:ring-2 focus-within:ring-blue-500/40"
+      )}
+    >
       {prefix && (
-        <span className="text-[10px] text-theme-muted flex-shrink-0 w-6">
+        <span className="px-1.5 py-1 text-[10px] text-theme-muted flex items-center w-7 flex-shrink-0">
           {prefix}
         </span>
       )}
       <input
-        type="text"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full min-w-0 bg-transparent text-xs text-theme-primary outline-none"
-        placeholder="1px"
+        type="number"
+        inputMode="numeric"
+        min={WIDTH_MIN}
+        max={WIDTH_MAX}
+        step={1}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => {
+          focusedRef.current = true;
+        }}
+        onBlur={(e) => {
+          focusedRef.current = false;
+          commit(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+        }}
+        className="flex-1 min-w-0 border-none bg-transparent focus:outline-none text-theme-primary px-1.5 py-1 text-xs"
+        placeholder="0"
         aria-label={ariaLabel}
       />
+      <button
+        type="button"
+        onPointerDown={onHandlePointerDown}
+        onPointerMove={onHandlePointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className={cn(
+          "px-2 text-[10px] text-theme-muted border-l border-theme select-none touch-none",
+          "hover:text-theme-primary cursor-ew-resize"
+        )}
+        tabIndex={-1}
+        title="Drag to adjust"
+        aria-label={`${ariaLabel} — drag to adjust`}
+      >
+        px
+      </button>
     </div>
   );
 }
@@ -514,406 +505,6 @@ function ColorRow({
 }
 
 // =============================================================================
-// BorderImageSection — collapsible. Source = gradient (any kind) OR uploaded
-// image (MediaPicker). When set, exposes slice / width / outset / repeat.
-// =============================================================================
-
-const DEFAULT_GRADIENT: ThemeGradient = {
-  kind: "linear",
-  angle: 135,
-  stops: [
-    { id: "stop-0", position: 0, color: "#ff7a59", opacity: 100 },
-    { id: "stop-100", position: 100, color: "#9d4eff", opacity: 100 },
-  ],
-};
-
-function BorderImageSection({
-  value,
-  onChange,
-  swatches,
-  onSaveSwatch,
-  onUpdateSwatch,
-  onDeleteSwatch,
-  setDraft,
-  clearDraft,
-}: {
-  value: BorderImage | undefined;
-  onChange: (next: BorderImage | undefined) => void;
-  swatches: SavedSwatch[];
-  onSaveSwatch?: BorderEditorProps["onSaveSwatch"];
-  onUpdateSwatch?: BorderEditorProps["onUpdateSwatch"];
-  onDeleteSwatch?: BorderEditorProps["onDeleteSwatch"];
-  setDraft?: BorderEditorProps["setDraft"];
-  clearDraft?: BorderEditorProps["clearDraft"];
-}) {
-  // Auto-open when an image is set so the user can edit immediately; collapsed
-  // by default for a clean starting state.
-  const [open, setOpen] = useState(!!value);
-
-  return (
-    <Collapsible
-      label="Border image"
-      badge={value ? "on" : undefined}
-      open={open}
-      onToggle={() => setOpen((o) => !o)}
-    >
-      {!value && (
-        <div className="space-y-2">
-          <p className="text-[11px] text-theme-muted">
-            Overlay the border with a gradient or uploaded image. Slice /
-            width / outset / repeat control how the artwork tiles around the
-            edges.
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                onChange({
-                  source: { type: "gradient", gradient: DEFAULT_GRADIENT },
-                  slice: 1,
-                  width: "1",
-                  outset: "0",
-                  repeat: "stretch",
-                })
-              }
-              className="flex-1 px-2 py-1.5 text-xs rounded border border-dashed border-theme bg-theme-tertiary/30 text-theme-secondary hover:bg-theme-tertiary hover:text-theme-primary cursor-pointer"
-            >
-              + Gradient
-            </button>
-            <MediaPicker
-              accept={["image/*"]}
-              tabs={["library", "upload"]}
-              onSelect={(media: MediaItem) =>
-                onChange({
-                  source: {
-                    type: "image",
-                    mediaId: media.id,
-                    mediaUrl: media.url,
-                  },
-                  slice: 30,
-                  width: "1",
-                  outset: "0",
-                  repeat: "round",
-                })
-              }
-            >
-              <button
-                type="button"
-                className="flex-1 px-2 py-1.5 text-xs rounded border border-dashed border-theme bg-theme-tertiary/30 text-theme-secondary hover:bg-theme-tertiary hover:text-theme-primary cursor-pointer"
-              >
-                + Image
-              </button>
-            </MediaPicker>
-          </div>
-        </div>
-      )}
-      {value && (
-        <BorderImageEditor
-          value={value}
-          onChange={onChange}
-          swatches={swatches}
-          onSaveSwatch={onSaveSwatch}
-          onUpdateSwatch={onUpdateSwatch}
-          onDeleteSwatch={onDeleteSwatch}
-          setDraft={setDraft}
-          clearDraft={clearDraft}
-        />
-      )}
-    </Collapsible>
-  );
-}
-
-function BorderImageEditor({
-  value,
-  onChange,
-  swatches,
-  onSaveSwatch,
-  onUpdateSwatch,
-  onDeleteSwatch,
-  setDraft,
-  clearDraft,
-}: {
-  value: BorderImage;
-  onChange: (next: BorderImage | undefined) => void;
-  swatches: SavedSwatch[];
-  onSaveSwatch?: BorderEditorProps["onSaveSwatch"];
-  onUpdateSwatch?: BorderEditorProps["onUpdateSwatch"];
-  onDeleteSwatch?: BorderEditorProps["onDeleteSwatch"];
-  setDraft?: BorderEditorProps["setDraft"];
-  clearDraft?: BorderEditorProps["clearDraft"];
-}) {
-  const handleSourceChange = (next: BorderImageSource) => {
-    onChange({ ...value, source: next });
-  };
-
-  // Preview tile — a small div with the live border-image applied so the user
-  // can see what they're configuring before it lands on the canvas.
-  const previewBorderCSS = borderImageToCSS(value);
-
-  return (
-    <div className="space-y-3">
-      <div
-        aria-hidden
-        className="h-12 w-full rounded bg-theme-tertiary"
-        style={{
-          border: "8px solid transparent",
-          borderImage: previewBorderCSS,
-          borderImageSlice: value.slice,
-        }}
-      />
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-wide text-theme-muted">
-          Source
-        </span>
-        <select
-          value={value.source.type}
-          onChange={(e) => {
-            const next = e.target.value as BorderImageSource["type"];
-            if (next === "gradient" && value.source.type !== "gradient") {
-              handleSourceChange({
-                type: "gradient",
-                gradient: DEFAULT_GRADIENT,
-              });
-            } else if (next === "image" && value.source.type !== "image") {
-              // Switching to image — clear mediaId/url; the picker re-prompts.
-              onChange(undefined);
-            }
-          }}
-          className="flex-1 px-2 py-1 text-xs bg-theme-tertiary border border-theme rounded text-theme-primary cursor-pointer"
-        >
-          <option value="gradient">Gradient</option>
-          <option value="image">Image</option>
-        </select>
-        <button
-          type="button"
-          onClick={() => onChange(undefined)}
-          className="px-2 py-1 text-[11px] text-theme-muted hover:text-red-400 cursor-pointer"
-          title="Remove border image"
-        >
-          Remove
-        </button>
-      </div>
-
-      {value.source.type === "gradient" && (
-        <GradientSourceEditor
-          gradient={value.source.gradient}
-          onChange={(g) =>
-            handleSourceChange({ type: "gradient", gradient: g })
-          }
-          swatches={swatches}
-          onSaveSwatch={onSaveSwatch}
-          onUpdateSwatch={onUpdateSwatch}
-          onDeleteSwatch={onDeleteSwatch}
-          setDraft={setDraft}
-          clearDraft={clearDraft}
-        />
-      )}
-
-      {value.source.type === "image" && (
-        <ImageSourceEditor
-          source={value.source}
-          onChange={handleSourceChange}
-        />
-      )}
-
-      <div className="grid grid-cols-2 gap-2">
-        <NumberField
-          label="Slice"
-          value={value.slice}
-          min={0}
-          max={500}
-          step={1}
-          onChange={(n) => onChange({ ...value, slice: n })}
-          title="border-image-slice — distance from the edge of the source to slice (numbers act as pixels for raster images, units for gradients)"
-        />
-        <TextField
-          label="Width"
-          value={value.width}
-          onChange={(s) => onChange({ ...value, width: s })}
-          placeholder="1"
-          title="border-image-width — CSS length, number (× border-width), or 'auto'"
-        />
-        <TextField
-          label="Outset"
-          value={value.outset}
-          onChange={(s) => onChange({ ...value, outset: s })}
-          placeholder="0"
-          title="border-image-outset — pushes the image outward from the box"
-        />
-        <SelectField
-          label="Repeat"
-          value={value.repeat}
-          options={BORDER_IMAGE_REPEAT_OPTIONS}
-          onChange={(r) => onChange({ ...value, repeat: r })}
-        />
-      </div>
-    </div>
-  );
-}
-
-function GradientSourceEditor({
-  gradient,
-  onChange,
-  swatches,
-  onSaveSwatch,
-  onUpdateSwatch,
-  onDeleteSwatch,
-  setDraft,
-  clearDraft,
-}: {
-  gradient: ThemeGradient;
-  onChange: (next: ThemeGradient) => void;
-  swatches: SavedSwatch[];
-  onSaveSwatch?: BorderEditorProps["onSaveSwatch"];
-  onUpdateSwatch?: BorderEditorProps["onUpdateSwatch"];
-  onDeleteSwatch?: BorderEditorProps["onDeleteSwatch"];
-  setDraft?: BorderEditorProps["setDraft"];
-  clearDraft?: BorderEditorProps["clearDraft"];
-}) {
-  // Wrap as a GradientValue so the ColorPicker can edit it. The picker emits
-  // a ColorValue; we coerce back to ThemeGradient on the way out.
-  const pickerValue: GradientValue = {
-    type: "gradient",
-    gradient,
-    fallback: gradient.stops[0]?.color ?? "#000000",
-  };
-
-  return (
-    <ColorPicker
-      label="Border gradient"
-      value={pickerValue}
-      onChange={(v) => {
-        if (v.type !== "gradient") return; // allowedTypes locks this
-        onChange(v.gradient);
-      }}
-      allowedTypes={["gradient"]}
-      swatches={swatches.filter((s) => s.kind === "gradient")}
-      onSaveSwatch={onSaveSwatch}
-      onUpdateSwatch={onUpdateSwatch}
-      onDeleteSwatch={onDeleteSwatch}
-      setDraft={setDraft}
-      clearDraft={clearDraft}
-    />
-  );
-}
-
-function ImageSourceEditor({
-  source,
-  onChange,
-}: {
-  source: Extract<BorderImageSource, { type: "image" }>;
-  onChange: (next: BorderImageSource) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="relative aspect-video overflow-hidden rounded border border-theme bg-theme-tertiary">
-        <img
-          src={source.mediaUrl}
-          alt=""
-          className="h-full w-full object-cover"
-        />
-      </div>
-      <MediaPicker
-        accept={["image/*"]}
-        tabs={["library", "upload"]}
-        onSelect={(media: MediaItem) =>
-          onChange({
-            type: "image",
-            mediaId: media.id,
-            mediaUrl: media.url,
-          })
-        }
-      >
-        <button
-          type="button"
-          className="w-full px-2 py-1 text-xs rounded border border-theme bg-theme-tertiary/40 text-theme-secondary hover:bg-theme-tertiary hover:text-theme-primary cursor-pointer"
-        >
-          Change image
-        </button>
-      </MediaPicker>
-    </div>
-  );
-}
-
-// =============================================================================
-// OutlineSection — collapsible. Separate from border (CSS outline doesn't
-// participate in box-sizing and can be offset positively or negatively).
-// =============================================================================
-
-const DEFAULT_OUTLINE: Outline = {
-  show: true,
-  width: "1px",
-  style: "solid",
-  color: "#374151",
-  offset: "2px",
-};
-
-function OutlineSection({
-  value,
-  onChange,
-}: {
-  value: Outline | undefined;
-  onChange: (next: Outline | undefined) => void;
-}) {
-  const [open, setOpen] = useState(!!value?.show);
-  const showing = !!value?.show;
-
-  return (
-    <Collapsible
-      label="Outline"
-      badge={showing ? "on" : undefined}
-      open={open}
-      onToggle={() => setOpen((o) => !o)}
-    >
-      <label className="flex items-center gap-2 cursor-pointer text-xs text-theme-secondary mb-2">
-        <input
-          type="checkbox"
-          checked={showing}
-          onChange={(e) => {
-            if (e.target.checked) {
-              onChange(value ?? DEFAULT_OUTLINE);
-            } else {
-              onChange(value ? { ...value, show: false } : undefined);
-            }
-          }}
-          className="accent-[var(--color-brand-red)] cursor-pointer"
-        />
-        <span>Show outline</span>
-      </label>
-      {showing && value && (
-        <div className="grid grid-cols-2 gap-2">
-          <TextField
-            label="Width"
-            value={value.width}
-            onChange={(s) => onChange({ ...value, width: s })}
-            placeholder="1px"
-          />
-          <SelectField
-            label="Style"
-            value={value.style}
-            options={BORDER_STYLE_OPTIONS}
-            onChange={(s) => onChange({ ...value, style: s })}
-          />
-          <TextField
-            label="Color"
-            value={value.color}
-            onChange={(s) => onChange({ ...value, color: s })}
-            placeholder="#374151"
-          />
-          <TextField
-            label="Offset"
-            value={value.offset}
-            onChange={(s) => onChange({ ...value, offset: s })}
-            placeholder="2px"
-            title="outline-offset — positive pushes the outline away from the border"
-          />
-        </div>
-      )}
-    </Collapsible>
-  );
-}
-
-// =============================================================================
 // BoxShadowSection — collapsible multi-shadow stack with inset toggle.
 // =============================================================================
 
@@ -926,9 +517,11 @@ function newShadowId(): string {
 const DEFAULT_SHADOW = (): ShadowStop => ({
   id: newShadowId(),
   inset: false,
+  // No visible offset / blur by default — the user opts into a real shadow
+  // by editing the row. Keeps cards shadowless until intentionally styled.
   x: 0,
-  y: 4,
-  blur: 12,
+  y: 0,
+  blur: 0,
   spread: 0,
   color: formatHexWithAlpha("#000000", 25),
 });
@@ -1164,37 +757,6 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-2 py-1 text-xs bg-theme-tertiary border border-theme rounded text-theme-primary"
       />
-    </label>
-  );
-}
-
-function SelectField<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-[10px] uppercase tracking-wide text-theme-muted mb-1">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="w-full px-2 py-1 text-xs bg-theme-tertiary border border-theme rounded text-theme-primary cursor-pointer"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
     </label>
   );
 }

@@ -816,7 +816,7 @@ export default function LobbyPlaylistEditor() {
           {localPlaylist.length === 0 && !isAddingTracks ? (
             <p className="text-theme-secondary text-center py-4">No tracks in playlist. Add some!</p>
           ) : isMounted ? (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
+            <DndContext id={`lobby-playlist-${currentPlaylist.id}`} sensors={sensors} collisionDetection={closestCenter} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
               <SortableContext items={trackIds} strategy={verticalListSortingStrategy}>
                 {localPlaylist.map((track, index) => (
                   <SortableTrackRow

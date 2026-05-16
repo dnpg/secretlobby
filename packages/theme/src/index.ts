@@ -82,6 +82,9 @@ export interface ImageBackground {
   size: "cover" | "contain" | "auto";
   position: string; // CSS background-position (e.g. "center", "top left", "50% 30%")
   repeat: "no-repeat" | "repeat" | "repeat-x" | "repeat-y";
+  /** CSS background-attachment. `fixed` pins the image to the viewport so it
+   *  doesn't scroll with the page (parallax-style). Defaults to `scroll`. */
+  attachment?: "scroll" | "fixed";
   /** Optional overlay layered on top of the image. `opacity` is 0–100 (0 = hidden). */
   overlay?: { color: string; opacity: number };
 }
@@ -489,6 +492,9 @@ export interface ThemeSettings {
   cardBgGradientTo: string;
   cardBgGradientAngle: number;
   cardBgOpacity: number;
+  /** @deprecated Page-builder UI no longer writes this — the renderer derives
+   *  "has border" from `cardBorderWidth > 0`. Field kept on the type for
+   *  back-compat with already-saved lobby JSON. */
   cardBorderShow: boolean;
   cardBorderType: "solid" | "gradient";
   cardBorderColor: string;
@@ -507,10 +513,12 @@ export interface ThemeSettings {
   cardBorderSideWidths?: BorderSideWidths;
   /** Per-side border styles. When set, overrides `cardBorderStyle` (uniform). */
   cardBorderSideStyles?: BorderSideStyles;
-  /** `border-image` source — gradient (any kind) or uploaded image. When set,
-   *  takes precedence over `cardBorderColor` + `cardBorderType=gradient`. */
+  /** @deprecated Page-builder UI no longer writes this — border-image was
+   *  removed because it doesn't compose cleanly with border-radius. Field
+   *  retained on the type for back-compat with already-saved lobby JSON. */
   cardBorderImage?: BorderImage;
-  /** Optional `outline` layer — independent of `border`. */
+  /** @deprecated Page-builder UI no longer writes this — outline section was
+   *  removed. Field retained on the type for back-compat. */
   cardOutline?: Outline;
   /** `box-shadow` stack — multi-layer with inset support. */
   cardBoxShadow?: BoxShadow;
@@ -787,6 +795,8 @@ function normalizeImageBackground(
     b.repeat === "repeat" || b.repeat === "repeat-x" || b.repeat === "repeat-y"
       ? b.repeat
       : "no-repeat";
+  const attachment: ImageBackground["attachment"] =
+    b.attachment === "fixed" ? "fixed" : "scroll";
   let overlay: ImageBackground["overlay"];
   if (b.overlay && typeof b.overlay === "object") {
     const o = b.overlay as Record<string, unknown>;
@@ -801,6 +811,7 @@ function normalizeImageBackground(
     size,
     position,
     repeat,
+    attachment,
     ...(overlay ? { overlay } : {}),
   };
 }
@@ -1201,10 +1212,23 @@ export interface CardBorderCSS {
   boxShadow?: string;
 }
 
+// Internal — parse the leading numeric out of a CSS length so the renderer
+// can gate "draw a border" on a positive width. Returns 0 for missing /
+// non-numeric input (which is the correct "off" answer).
+function cssLengthToNumber(value: string | undefined): number {
+  if (!value) return 0;
+  const match = String(value).trim().match(/^-?[\d.]+/);
+  if (!match) return 0;
+  const n = parseFloat(match[0]);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export function getCardBorderCSS(theme: ThemeSettings): CardBorderCSS {
-  // Outline + box-shadow are independent of `cardBorderShow` — a card can be
-  // borderless yet still cast a shadow or have an outline. Resolve them up
-  // front so we can attach them regardless of the border branch below.
+  // Outline + box-shadow are independent of the border on/off state — a card
+  // can be borderless yet still cast a shadow or have an outline. Resolve
+  // them up front so we can attach them regardless of the border branch
+  // below. (cardOutline reads stay for back-compat with already-saved themes;
+  // the page-builder UI no longer writes it.)
   const outlineDecls = outlineToCSS(theme.cardOutline);
   const boxShadow = theme.cardBoxShadow && theme.cardBoxShadow.length > 0
     ? boxShadowToCSS(theme.cardBoxShadow)
@@ -1219,7 +1243,20 @@ export function getCardBorderCSS(theme: ThemeSettings): CardBorderCSS {
     ...(boxShadow ? { boxShadow } : {}),
   };
 
-  if (!theme.cardBorderShow) {
+  // Width-based border gating — replaces the deprecated `cardBorderShow`
+  // toggle. The border paints when any effective width is > 0; otherwise we
+  // short-circuit to "none". Existing lobby JSON with `cardBorderShow: false`
+  // and a non-zero width will now paint — that's intentional (the user
+  // explicitly chose to retire the toggle).
+  const sides = theme.cardBorderSideWidths;
+  const anyPositiveSide = sides
+    ? cssLengthToNumber(sides.top) > 0 ||
+      cssLengthToNumber(sides.right) > 0 ||
+      cssLengthToNumber(sides.bottom) > 0 ||
+      cssLengthToNumber(sides.left) > 0
+    : false;
+  const positiveUniform = cssLengthToNumber(theme.cardBorderWidth) > 0;
+  if (!anyPositiveSide && !positiveUniform) {
     return { style: "none", ...decorations };
   }
 
@@ -1388,6 +1425,7 @@ export function generateThemeCSS(
   const bgSize = imageBg?.size ?? "auto";
   const bgPosition = imageBg?.position ?? "center";
   const bgRepeat = imageBg?.repeat ?? "no-repeat";
+  const bgAttachment = imageBg?.attachment ?? "scroll";
 
   // Backdrop filter — emit as both --card-backdrop-filter (unprefixed
   // standard) and via a duplicated declaration in the lobby's CSS layer.
@@ -1493,6 +1531,7 @@ export function generateThemeCSS(
     `--bg-size: ${bgSize}`,
     `--bg-position: ${bgPosition}`,
     `--bg-repeat: ${bgRepeat}`,
+    `--bg-attachment: ${bgAttachment}`,
     // Text colors — rich-aware. The `*-image` var pairs with the color var
     // and is `none` when the field is solid/unset.
     `--color-text-primary: ${textPrimaryCSS.color}`,

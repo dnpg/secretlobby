@@ -390,7 +390,11 @@ export function LeftRail({
     <aside className="relative w-[340px] flex-shrink-0 h-full bg-theme-secondary border-r border-theme flex flex-col overflow-hidden">
       {/* Sections list */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        {/* Explicit DndContext id keeps the dnd-kit aria-describedby attribute
+            deterministic between SSR and the client's first render. Without it,
+            the module-level useUniqueId("DndDescribedBy") counter diverges. */}
         <DndContext
+          id="left-rail-sections"
           sensors={sensors}
           collisionDetection={closestCenter}
           modifiers={[restrictToVerticalAxis]}
@@ -825,6 +829,7 @@ function SortableSidebarSection({
       {expanded && (
         <div className="mt-1 ml-4 pl-2 border-l border-violet-500/30 space-y-1">
           <DndContext
+            id={`left-rail-columns-${section.id}`}
             sensors={columnSensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
@@ -1039,6 +1044,7 @@ function SortableSidebarColumn({
       {expanded && (
         <div className="mt-1 ml-4 pl-2 border-l border-indigo-500/30 space-y-1">
           <DndContext
+            id={`left-rail-blocks-${column.id}`}
             sensors={blockSensors}
             collisionDetection={closestCenter}
             modifiers={[restrictToVerticalAxis]}
