@@ -28,8 +28,15 @@ import { PAGE_LAYOUT_VERSION } from "./types";
 // first render. Returning a fresh object each time avoids accidentally
 // sharing the same reference across multiple blocks (which would mutate
 // each other on edit).
-function emptyInlineDoc(): InlineDoc {
+export function emptyInlineDoc(): InlineDoc {
   return { type: "doc", content: [{ type: "paragraph" }] };
+}
+
+// Build a fresh, empty paragraph block. Columns and cards are never empty —
+// when the user deletes the last block the reducer immediately pushes one of
+// these back so the surface always has a "Press '/' for commands" hint.
+export function createEmptyParagraphBlock(): Block {
+  return createBlock("paragraph");
 }
 
 // Simple ID generator that works in all browsers.
@@ -45,12 +52,15 @@ export function getEqualColumnWidth(columnCount: number): string {
 }
 
 // Helper to create columns with equal widths.
+// Each new column is seeded with a single empty paragraph so the surface
+// always renders a "Press '/' for commands" placeholder line; the user can
+// type immediately without first having to click an "Add block" affordance.
 export function createColumns(count: number, _gap = "16px"): Column[] {
   const width = getEqualColumnWidth(count);
   return Array.from({ length: count }, () => ({
     id: generateId("col"),
     width,
-    blocks: [],
+    blocks: [createEmptyParagraphBlock()],
   }));
 }
 
@@ -88,10 +98,11 @@ export function getDefaultBlockContent(type: BlockType): BlockContent {
     case "card":
       // Post-overhaul: a Card is a nested container of blocks. No more
       // WYSIWYG `content` HTML; users add Heading / Paragraph / Image / etc.
-      // sub-blocks via the in-card slash menu. Empty by default so the
-      // canvas shows the in-card placeholder immediately on insert.
+      // sub-blocks via the in-card slash menu. Seeded with a single empty
+      // paragraph so the card surface always shows a "Press '/' for
+      // commands" line and the user can start typing right away.
       return {
-        blocks: [],
+        blocks: [createEmptyParagraphBlock()],
       } satisfies CardBlockContent;
     case "gallery":
       return {
@@ -162,11 +173,16 @@ export function createBlock(type: BlockType): Block {
 export function createDefaultPageLayout(
   defaultPlaylistId: string
 ): StoredPageLayout {
-  // Section 1 — Header
+  // Section 1 — Header.
+  // Every seeded column ends with an empty paragraph so the Notion-style
+  // "Press '/' for commands" hint always renders below the last real block.
   const header = createSection(1);
   header.name = "Header";
   header.columns[0].name = "Container";
-  header.columns[0].blocks = [createBlock("image")];
+  header.columns[0].blocks = [
+    createBlock("image"),
+    createEmptyParagraphBlock(),
+  ];
 
   // Section 2 — Content
   const content = createSection(2);
@@ -175,7 +191,7 @@ export function createDefaultPageLayout(
   const playerBlock = createBlock("player");
   // Wire the default playlist so the Player renders something on first paint.
   (playerBlock.content as PlayerBlockContent).playlistId = defaultPlaylistId;
-  content.columns[0].blocks = [playerBlock];
+  content.columns[0].blocks = [playerBlock, createEmptyParagraphBlock()];
 
   content.columns[1].name = "Right";
   // Seed cards now hold nested blocks instead of a single HTML body. Each
@@ -193,13 +209,17 @@ export function createDefaultPageLayout(
     createBlock("heading"),
     createBlock("paragraph"),
   ];
-  content.columns[1].blocks = [aboutCard, moreCard];
+  content.columns[1].blocks = [
+    aboutCard,
+    moreCard,
+    createEmptyParagraphBlock(),
+  ];
 
   // Section 3 — Footer
   const footer = createSection(1);
   footer.name = "Footer";
   footer.columns[0].name = "Container";
-  footer.columns[0].blocks = [createBlock("card")];
+  footer.columns[0].blocks = [createBlock("card"), createEmptyParagraphBlock()];
 
   return {
     sections: [header, content, footer],

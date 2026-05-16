@@ -40,6 +40,9 @@ export interface SectionComponentProps {
   onMoveBlockUp: (columnId: string, blockId: string) => void;
   onMoveBlockDown: (columnId: string, blockId: string) => void;
   onMoveBlockToColumn: (columnId: string, blockId: string, direction: "left" | "right") => void;
+  // Slash-menu in-place block-type swap, plumbed from BlockListSurface up
+  // through Canvas to the column-level reducer (`replaceBlock`).
+  onReplaceBlock: (columnId: string, blockId: string, newType: BlockType) => void;
 }
 
 export function SectionComponent({
@@ -61,6 +64,7 @@ export function SectionComponent({
   onMoveBlockUp,
   onMoveBlockDown,
   onMoveBlockToColumn,
+  onReplaceBlock,
 }: SectionComponentProps) {
   // Section/column visuals are layout-level affordances. Hidden when the
   // dashed-square toggle in TopHeader is off — blocks remain editable, the
@@ -223,6 +227,7 @@ export function SectionComponent({
                 onMoveBlockUp={(blockId) => onMoveBlockUp(column.id, blockId)}
                 onMoveBlockDown={(blockId) => onMoveBlockDown(column.id, blockId)}
                 onMoveBlockToColumn={(blockId, direction) => onMoveBlockToColumn(column.id, blockId, direction)}
+                onReplaceBlock={(blockId, newType) => onReplaceBlock(column.id, blockId, newType)}
               />
             </div>
           );

@@ -6,6 +6,11 @@ interface CodeBlockProps {
   isSelected: boolean;
   isEditing: boolean;
   onUpdate?: (content: Partial<BlockContent>) => void;
+  // Notion-style hooks forwarded into the InlineEditor.
+  onSlash?: (anchorEl: HTMLElement) => void;
+  onEnter?: () => void;
+  pendingFocus?: boolean;
+  onFocusConsumed?: () => void;
 }
 
 // Inline-styled "code" chunk. Visually a single styled block but the doc is
@@ -16,6 +21,10 @@ export function CodeBlock({
   isSelected,
   isEditing,
   onUpdate,
+  onSlash,
+  onEnter,
+  pendingFocus,
+  onFocusConsumed,
 }: CodeBlockProps) {
   return (
     <div
@@ -34,6 +43,10 @@ export function CodeBlock({
         isEditing={isEditing}
         placeholder="Inline code..."
         contentClassName="font-mono text-sm"
+        onSlash={onSlash}
+        onEnter={onEnter}
+        pendingFocus={pendingFocus}
+        onFocusConsumed={onFocusConsumed}
       />
     </div>
   );

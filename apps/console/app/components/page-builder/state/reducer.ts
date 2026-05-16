@@ -1,7 +1,9 @@
 import { arrayMove } from "@dnd-kit/sortable";
+import { createBlock, createEmptyParagraphBlock } from "./helpers";
 import type {
   Block,
   BlockContent,
+  BlockType,
   CardBlockContent,
   Column,
   PlaylistSummary,
@@ -138,6 +140,12 @@ export type PageBuilderAction =
       sectionId: string;
       columnId: string;
       block: Block;
+      // Optional insertion index inside the column's blocks. Appends to end
+      // when omitted. The reducer handles atIndex directly (no more Canvas-
+      // side setTimeout reorder) so the auto-appended trailing paragraph
+      // for non-paragraph inserts lands IMMEDIATELY after the new block,
+      // not at the column's end.
+      atIndex?: number;
       select?: boolean;
     }
   | {
@@ -216,6 +224,20 @@ export type PageBuilderAction =
       // Optional explicit destination index; appends to end if omitted.
       targetIndex?: number;
     }
+  // Replace a column-level block IN PLACE with a fresh block of `newType`.
+  // Preserves the original block.id so React keys + selection survive. Used
+  // by the Notion-style slash menu inside the inline editor: typing `/` at
+  // the start of an empty paragraph opens the menu; the picked type replaces
+  // that paragraph. When `newType` isn't `"paragraph"` the reducer auto-
+  // appends a fresh empty paragraph right after it so the user can keep
+  // typing below.
+  | {
+      type: "replaceBlock";
+      sectionId: string;
+      columnId: string;
+      blockId: string;
+      newType: BlockType;
+    }
   // Card-nested block operations. Each locates the host card by walking
   // sections → columns → blocks for a block with id === cardBlockId, then
   // mutates that block's `content.blocks` immutably. Cross-container moves
@@ -255,6 +277,15 @@ export type PageBuilderAction =
       cardBlockId: string;
       blockId: string;
     }
+  // Same in-place replace as `replaceBlock`, but inside a Card's nested
+  // block list. Preserves the child block.id and auto-appends an empty
+  // paragraph below it when `newType` is not `"paragraph"`.
+  | {
+      type: "replaceBlockInCard";
+      cardBlockId: string;
+      blockId: string;
+      newType: BlockType;
+    }
   // Phase 5: theme operations — these flow through the SEPARATE theme fetcher.
   | { type: "updateTheme"; partial: Partial<ThemeSettings> }
   | { type: "resetTheme"; theme: ThemeSettings }
@@ -291,12 +322,14 @@ export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
   "moveBlockDown",
   "moveBlockToColumn",
   "moveBlock",
+  "replaceBlock",
   "addBlockToCard",
   "deleteBlockFromCard",
   "updateBlockInCard",
   "reorderBlocksInCard",
   "moveBlockUpInCard",
   "moveBlockDownInCard",
+  "replaceBlockInCard",
   "setSectionVisibility",
   "setColumnVisibility",
   "setBlockVisibility",
@@ -650,17 +683,34 @@ export function pageBuilderReducer(
       break;
     }
     case "addBlock": {
+      // Notion-style trailing paragraph: when the new block isn't itself a
+      // paragraph, push a fresh empty paragraph right after it so the column
+      // always ends in a "Press '/' for commands" line.
+      const trailing =
+        action.block.type === "paragraph" ? null : createEmptyParagraphBlock();
       next = {
         ...state,
         sections: state.sections.map((s) =>
           s.id === action.sectionId
             ? {
                 ...s,
-                columns: s.columns.map((col) =>
-                  col.id === action.columnId
-                    ? { ...col, blocks: [...col.blocks, action.block] }
-                    : col
-                ),
+                columns: s.columns.map((col) => {
+                  if (col.id !== action.columnId) return col;
+                  const insertAt =
+                    action.atIndex === undefined
+                      ? col.blocks.length
+                      : Math.max(
+                          0,
+                          Math.min(action.atIndex, col.blocks.length)
+                        );
+                  const copy = [...col.blocks];
+                  if (trailing) {
+                    copy.splice(insertAt, 0, action.block, trailing);
+                  } else {
+                    copy.splice(insertAt, 0, action.block);
+                  }
+                  return { ...col, blocks: copy };
+                }),
               }
             : s
         ),
@@ -692,16 +742,23 @@ export function pageBuilderReducer(
           s.id === action.sectionId
             ? {
                 ...s,
-                columns: s.columns.map((col) =>
-                  col.id === action.columnId
-                    ? {
-                        ...col,
-                        blocks: col.blocks.filter(
-                          (b) => b.id !== action.blockId
-                        ),
-                      }
-                    : col
-                ),
+                columns: s.columns.map((col) => {
+                  if (col.id !== action.columnId) return col;
+                  const filtered = col.blocks.filter(
+                    (b) => b.id !== action.blockId
+                  );
+                  // Notion-style: a column is NEVER empty. If the user just
+                  // removed the last block, immediately push back a fresh
+                  // empty paragraph so the "Press '/' for commands" hint
+                  // stays visible.
+                  return {
+                    ...col,
+                    blocks:
+                      filtered.length === 0
+                        ? [createEmptyParagraphBlock()]
+                        : filtered,
+                  };
+                }),
               }
             : s
         ),
@@ -987,12 +1044,54 @@ export function pageBuilderReducer(
       };
       break;
     }
+    case "replaceBlock": {
+      // In-place replacement: swap the block at the matching position with a
+      // fresh `createBlock(newType)` BUT keep the original id so React keys,
+      // selection, and any pending-focus state survive. When the new type
+      // isn't `"paragraph"`, an empty paragraph is auto-appended right after
+      // it so the user can keep typing below the just-inserted block.
+      const replacement: Block = {
+        ...createBlock(action.newType),
+        id: action.blockId,
+      };
+      const trailing =
+        action.newType === "paragraph" ? null : createEmptyParagraphBlock();
+      next = {
+        ...state,
+        sections: state.sections.map((s) =>
+          s.id === action.sectionId
+            ? {
+                ...s,
+                columns: s.columns.map((col) => {
+                  if (col.id !== action.columnId) return col;
+                  const idx = col.blocks.findIndex(
+                    (b) => b.id === action.blockId
+                  );
+                  if (idx === -1) return col;
+                  const copy = [...col.blocks];
+                  if (trailing) {
+                    copy.splice(idx, 1, replacement, trailing);
+                  } else {
+                    copy.splice(idx, 1, replacement);
+                  }
+                  return { ...col, blocks: copy };
+                }),
+              }
+            : s
+        ),
+      };
+      break;
+    }
     case "addBlockToCard": {
       const loc = findCardLocation(state.sections, action.cardBlockId);
       if (!loc) {
         next = state;
         break;
       }
+      // Notion-style trailing paragraph (mirror of `addBlock`): non-paragraph
+      // inserts get a fresh empty paragraph appended immediately after them.
+      const trailing =
+        action.block.type === "paragraph" ? null : createEmptyParagraphBlock();
       const { sections: nextSections } = withCardBlocks(
         state.sections,
         action.cardBlockId,
@@ -1002,7 +1101,11 @@ export function pageBuilderReducer(
               ? blocks.length
               : Math.max(0, Math.min(action.index, blocks.length));
           const copy = [...blocks];
-          copy.splice(insertAt, 0, action.block);
+          if (trailing) {
+            copy.splice(insertAt, 0, action.block, trailing);
+          } else {
+            copy.splice(insertAt, 0, action.block);
+          }
           return copy;
         }
       );
@@ -1027,7 +1130,13 @@ export function pageBuilderReducer(
         action.cardBlockId,
         (blocks) => {
           const filtered = blocks.filter((b) => b.id !== action.blockId);
-          return filtered.length === blocks.length ? blocks : filtered;
+          if (filtered.length === blocks.length) return blocks;
+          // Cards mirror columns: never let the nested list go empty —
+          // restore a single empty paragraph so the "Press '/' for commands"
+          // hint stays visible inside the card.
+          return filtered.length === 0
+            ? [createEmptyParagraphBlock()]
+            : filtered;
         }
       );
       let selection = state.selection;
@@ -1098,6 +1207,34 @@ export function pageBuilderReducer(
           if (idx === -1 || idx >= blocks.length - 1) return blocks;
           const copy = [...blocks];
           [copy[idx], copy[idx + 1]] = [copy[idx + 1], copy[idx]];
+          return copy;
+        }
+      );
+      next = { ...state, sections: nextSections };
+      break;
+    }
+    case "replaceBlockInCard": {
+      // Same shape as `replaceBlock`, but inside a card's nested block list.
+      // Preserves the child block.id and auto-appends a trailing empty
+      // paragraph when the new type isn't already a paragraph.
+      const replacement: Block = {
+        ...createBlock(action.newType),
+        id: action.blockId,
+      };
+      const trailing =
+        action.newType === "paragraph" ? null : createEmptyParagraphBlock();
+      const { sections: nextSections } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) => {
+          const idx = blocks.findIndex((b) => b.id === action.blockId);
+          if (idx === -1) return blocks;
+          const copy = [...blocks];
+          if (trailing) {
+            copy.splice(idx, 1, replacement, trailing);
+          } else {
+            copy.splice(idx, 1, replacement);
+          }
           return copy;
         }
       );

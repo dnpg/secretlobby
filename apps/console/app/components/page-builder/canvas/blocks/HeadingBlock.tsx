@@ -10,6 +10,11 @@ interface HeadingBlockProps {
   isSelected: boolean;
   isEditing: boolean;
   onUpdate?: (content: Partial<BlockContent>) => void;
+  // Notion-style hooks forwarded into the InlineEditor.
+  onSlash?: (anchorEl: HTMLElement) => void;
+  onEnter?: () => void;
+  pendingFocus?: boolean;
+  onFocusConsumed?: () => void;
 }
 
 // Tailwind font-size + weight mapping per heading level. Headings render as
@@ -31,6 +36,10 @@ export function HeadingBlock({
   isSelected,
   isEditing,
   onUpdate,
+  onSlash,
+  onEnter,
+  pendingFocus,
+  onFocusConsumed,
 }: HeadingBlockProps) {
   const level = content.level ?? 1;
   return (
@@ -42,6 +51,10 @@ export function HeadingBlock({
         isEditing={isEditing}
         placeholder={`Heading ${level}`}
         contentClassName={cn(LEVEL_CLASS[level], "text-theme-primary")}
+        onSlash={onSlash}
+        onEnter={onEnter}
+        pendingFocus={pendingFocus}
+        onFocusConsumed={onFocusConsumed}
       />
     </div>
   );

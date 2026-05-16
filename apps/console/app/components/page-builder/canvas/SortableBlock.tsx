@@ -30,6 +30,17 @@ interface SortableBlockProps {
   // Called when the user clicks the `+` in the toolbar. The parent (column)
   // owns the BlockMenu popover and decides where to insert.
   onOpenInsertMenu?: (anchorEl: HTMLElement) => void;
+  // Slash typed at the start of an empty inline editor inside this block.
+  // The InlineEditor passes its outer DOM node so the menu can anchor.
+  onSlash?: (anchorEl: HTMLElement) => void;
+  // Enter pressed inside the text editor — parent appends a new paragraph
+  // below and routes pending focus back via `pendingFocus`.
+  onEnter?: () => void;
+  // When true, the inline editor inside this block should focus itself once
+  // and then call `onFocusConsumed`. Used to chase the caret onto a freshly
+  // inserted paragraph after Enter.
+  pendingFocus?: boolean;
+  onFocusConsumed?: () => void;
 }
 
 // Sortable wrapper for blocks (drag and drop).
@@ -49,6 +60,10 @@ export function SortableBlock({
   onMoveDown,
   onMoveToColumn,
   onOpenInsertMenu,
+  onSlash,
+  onEnter,
+  pendingFocus,
+  onFocusConsumed,
 }: SortableBlockProps) {
   const {
     attributes,
@@ -83,7 +98,19 @@ export function SortableBlock({
       // Named group (`group/block`) so the toolbar's `group-hover/block:*`
       // variants are scoped strictly to THIS block. An unnamed `group` would
       // be ambiguous if any ancestor were ever to add its own `.group` class.
-      className={cn("relative group/block", isEditing && "touch-none")}
+      //
+      // Active-block outline: when selected we paint a console-blue ring
+      // (NOT theme tokens — this is an editor affordance that must remain
+      // legible against any lobby theme). `ring-*` sits on top of the box
+      // rather than reflowing it, so layout never shifts. The white /
+      // neutral-950 `ring-offset` gives a contrast halo for dark themes.
+      className={cn(
+        "relative group/block rounded-md",
+        isEditing && "touch-none",
+        isEditing && isSelected
+          ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-950"
+          : ""
+      )}
       {...dragProps}
     >
       {/* Toolbar — pinned to the top-left of the block and translated Y by
@@ -208,6 +235,10 @@ export function SortableBlock({
         onDelete={onDelete}
         onUpdate={onUpdate}
         isEditing={isEditing}
+        onSlash={onSlash}
+        onEnter={onEnter}
+        pendingFocus={pendingFocus}
+        onFocusConsumed={onFocusConsumed}
       />
     </div>
   );

@@ -1,12 +1,15 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Command } from "cmdk";
 import { cn } from "@secretlobby/ui";
 import type { BlockType } from "~/components/page-builder/state/types";
 import { getBlockMenuItems, type BlockMenuItem } from "./items";
 
-// Anchor for positioning the menu. Either a viewport-relative rect (e.g.
-// from `getBoundingClientRect`) or coords used as the "below" anchor — the
-// menu flips above when there's no room below.
+// Anchor for positioning the menu. Viewport-relative rect coords — typically
+// `getBoundingClientRect()` from the trigger element. The menu renders in a
+// React portal mounted to `document.body` with `position: fixed`, so it
+// always sits above every sibling / overflow / stacking context (sections,
+// columns, cards, etc.).
 export interface BlockMenuAnchor {
   top: number;
   left: number;
@@ -15,10 +18,6 @@ export interface BlockMenuAnchor {
 
 interface BlockMenuProps {
   anchor: BlockMenuAnchor;
-  // Element used as the positioning container. The menu positions itself in
-  // this element's local coordinate space (absolute inside it). When omitted,
-  // the menu mounts to document.body using fixed positioning.
-  containerEl?: HTMLElement | null;
   initialQuery?: string;
   // Picks which entries to show. Currently all block types are listed; the
   // hook is here for level-2 / context-specific menus later.
@@ -35,7 +34,6 @@ interface BlockMenuProps {
 // roving-tab-index / aria semantics.
 export function BlockMenu({
   anchor,
-  containerEl,
   initialQuery = "",
   filter,
   onPick,
@@ -50,23 +48,16 @@ export function BlockMenu({
   }, [initialQuery]);
 
   // Compute popover position after layout so we can measure our own height
-  // for the up-flip decision.
+  // for the up-flip decision. Coords are viewport-relative (fixed
+  // positioning) — the menu is portal'd to <body> so it can't be clipped by
+  // a parent's `overflow` or buried beneath a sibling's stacking context.
   useLayoutEffect(() => {
     const popoverHeight = popoverRef.current?.offsetHeight ?? 320;
     const spaceBelow = window.innerHeight - anchor.bottom;
     const flipUp = spaceBelow < popoverHeight + 16;
-    if (containerEl) {
-      const wrapperRect = containerEl.getBoundingClientRect();
-      const top = flipUp
-        ? anchor.top - wrapperRect.top - popoverHeight - 4
-        : anchor.bottom - wrapperRect.top + 4;
-      const left = anchor.left - wrapperRect.left;
-      setPos({ top, left });
-    } else {
-      const top = flipUp ? anchor.top - popoverHeight - 4 : anchor.bottom + 4;
-      setPos({ top, left: anchor.left });
-    }
-  }, [anchor, containerEl]);
+    const top = flipUp ? anchor.top - popoverHeight - 4 : anchor.bottom + 4;
+    setPos({ top, left: anchor.left });
+  }, [anchor]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -97,7 +88,12 @@ export function BlockMenu({
 
   if (!pos) return null;
 
-  return (
+  // Only render in the browser — SSR doesn't have a `document` to portal to.
+  // The reducer dispatches the menu after a user keystroke, so this short
+  // bail-out is purely a hydration guard.
+  if (typeof document === "undefined") return null;
+
+  const popover = (
     // The BlockMenu is an EDITOR tool — it must NEVER inherit `--color-*`
     // theme variables (those are the lobby's design tokens; the user picks
     // them freely, and a deep-black lobby theme would otherwise render the
@@ -109,12 +105,13 @@ export function BlockMenu({
       ref={popoverRef}
       data-no-dnd-keyboard="true"
       className={cn(
-        "z-50 w-72 rounded-lg overflow-hidden",
+        // High z-index because the menu can sit above sections / cards /
+        // layered surfaces; the portal also escapes ancestor overflow.
+        "fixed z-[9999] w-72 rounded-lg overflow-hidden",
         "border border-neutral-200 dark:border-neutral-800",
         "bg-white dark:bg-neutral-900",
         "text-black dark:text-white",
-        "shadow-2xl ring-1 ring-black/10 dark:ring-white/10",
-        containerEl ? "absolute" : "fixed"
+        "shadow-2xl ring-1 ring-black/10 dark:ring-white/10"
       )}
       style={{ top: pos.top, left: pos.left }}
       onMouseDown={(e) => e.preventDefault()}
@@ -174,4 +171,6 @@ export function BlockMenu({
       </Command>
     </div>
   );
+
+  return createPortal(popover, document.body);
 }

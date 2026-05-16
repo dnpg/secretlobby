@@ -29,6 +29,9 @@ export interface ColumnComponentProps {
   onMoveBlockUp: (blockId: string) => void;
   onMoveBlockDown: (blockId: string) => void;
   onMoveBlockToColumn: (blockId: string, direction: "left" | "right") => void;
+  // Replace a block IN PLACE with a fresh block of the picked type. Triggered
+  // when the user opens the slash menu from inside an inline editor.
+  onReplaceBlock: (blockId: string, newType: BlockType) => void;
 }
 
 export function ColumnComponent({
@@ -50,6 +53,7 @@ export function ColumnComponent({
   onMoveBlockUp,
   onMoveBlockDown,
   onMoveBlockToColumn,
+  onReplaceBlock,
 }: ColumnComponentProps) {
   const showColumnUi = isEditing && showLayoutEdit;
   const columnHidden = column.hidden === true;
@@ -121,6 +125,7 @@ export function ColumnComponent({
         onMoveBlockDown={onMoveBlockDown}
         onMoveBlockToColumn={onMoveBlockToColumn}
         onSelectBlock={onSelectBlock}
+        onReplaceBlock={onReplaceBlock}
         // No filter on the column surface — allow every block type.
       />
     </div>

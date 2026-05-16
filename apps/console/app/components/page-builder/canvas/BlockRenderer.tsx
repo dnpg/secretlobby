@@ -43,6 +43,19 @@ interface BlockRendererProps {
   // When false (preview mode), the block does not attach selection click
   // handlers, selection rings, or the delete affordance.
   isEditing?: boolean;
+  // Notion-style hooks forwarded into the per-block inline editors.
+  // - `onSlash` opens the BlockListSurface's slash menu anchored to the
+  //   editor's DOM node when the user types `/` as the first character of
+  //   an empty inline editor.
+  // - `onEnter` is fired when the user hits Enter (no shift) in a non-empty
+  //   inline editor; the surface appends a paragraph and routes pending
+  //   focus back via `pendingFocus`.
+  // - `pendingFocus` + `onFocusConsumed` chase the caret onto a freshly
+  //   inserted paragraph.
+  onSlash?: (anchorEl: HTMLElement) => void;
+  onEnter?: () => void;
+  pendingFocus?: boolean;
+  onFocusConsumed?: () => void;
 }
 
 // Thin dispatcher: chooses the right block component for `block.type`, wraps
@@ -54,6 +67,10 @@ export function BlockRenderer({
   onDelete: _onDelete,
   onUpdate,
   isEditing = true,
+  onSlash,
+  onEnter,
+  pendingFocus,
+  onFocusConsumed,
 }: BlockRendererProps) {
   // Effective theme = global lobby theme overlaid with block.themeOverrides.
   const { state } = usePageBuilder();
@@ -106,6 +123,10 @@ export function BlockRenderer({
             isSelected={isSelected}
             isEditing={isEditing}
             onUpdate={onUpdate}
+            onSlash={onSlash}
+            onEnter={onEnter}
+            pendingFocus={pendingFocus}
+            onFocusConsumed={onFocusConsumed}
           />
         );
       case "paragraph":
@@ -115,6 +136,10 @@ export function BlockRenderer({
             isSelected={isSelected}
             isEditing={isEditing}
             onUpdate={onUpdate}
+            onSlash={onSlash}
+            onEnter={onEnter}
+            pendingFocus={pendingFocus}
+            onFocusConsumed={onFocusConsumed}
           />
         );
       case "bulletList":
@@ -142,6 +167,10 @@ export function BlockRenderer({
             isSelected={isSelected}
             isEditing={isEditing}
             onUpdate={onUpdate}
+            onSlash={onSlash}
+            onEnter={onEnter}
+            pendingFocus={pendingFocus}
+            onFocusConsumed={onFocusConsumed}
           />
         );
       case "code":
@@ -151,6 +180,10 @@ export function BlockRenderer({
             isSelected={isSelected}
             isEditing={isEditing}
             onUpdate={onUpdate}
+            onSlash={onSlash}
+            onEnter={onEnter}
+            pendingFocus={pendingFocus}
+            onFocusConsumed={onFocusConsumed}
           />
         );
       case "codeBlock":
@@ -194,11 +227,11 @@ export function BlockRenderer({
       className={cn(
         "relative group rounded transition-all",
         isEditing && "cursor-pointer",
-        isEditing && isSelected
-          ? "ring-2 ring-[var(--color-brand-red)] ring-offset-2 ring-offset-[var(--color-bg-primary)]"
-          : isEditing
-            ? "hover:ring-1 hover:ring-gray-500"
-            : ""
+        // The active-block outline now lives on the SortableBlock wrapper
+        // (console-blue ring with white / neutral-950 offset halo). Hover
+        // affordance stays here so users still get visual feedback before
+        // selecting.
+        isEditing && !isSelected ? "hover:ring-1 hover:ring-gray-500" : ""
       )}
     >
       {renderBlockContent()}

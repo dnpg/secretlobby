@@ -37,6 +37,7 @@ export interface SortableSectionProps {
   onMoveBlockUp: (columnId: string, blockId: string) => void;
   onMoveBlockDown: (columnId: string, blockId: string) => void;
   onMoveBlockToColumn: (columnId: string, blockId: string, direction: "left" | "right") => void;
+  onReplaceBlock: (columnId: string, blockId: string, newType: BlockType) => void;
 }
 
 export function SortableSection({
@@ -58,6 +59,7 @@ export function SortableSection({
   onMoveBlockUp,
   onMoveBlockDown,
   onMoveBlockToColumn,
+  onReplaceBlock,
 }: SortableSectionProps) {
   const {
     attributes,
@@ -143,6 +145,7 @@ export function SortableSection({
         onMoveBlockUp={onMoveBlockUp}
         onMoveBlockDown={onMoveBlockDown}
         onMoveBlockToColumn={onMoveBlockToColumn}
+        onReplaceBlock={onReplaceBlock}
       />
     </div>
   );

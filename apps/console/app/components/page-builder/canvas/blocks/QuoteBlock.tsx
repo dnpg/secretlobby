@@ -7,6 +7,11 @@ interface QuoteBlockProps {
   isSelected: boolean;
   isEditing: boolean;
   onUpdate?: (content: Partial<BlockContent>) => void;
+  // Notion-style hooks forwarded into the InlineEditor.
+  onSlash?: (anchorEl: HTMLElement) => void;
+  onEnter?: () => void;
+  pendingFocus?: boolean;
+  onFocusConsumed?: () => void;
 }
 
 export function QuoteBlock({
@@ -14,6 +19,10 @@ export function QuoteBlock({
   isSelected,
   isEditing,
   onUpdate,
+  onSlash,
+  onEnter,
+  pendingFocus,
+  onFocusConsumed,
 }: QuoteBlockProps) {
   const align = content.align ?? "left";
   return (
@@ -34,6 +43,10 @@ export function QuoteBlock({
           align === "center" && "text-center",
           align === "right" && "text-right"
         )}
+        onSlash={onSlash}
+        onEnter={onEnter}
+        pendingFocus={pendingFocus}
+        onFocusConsumed={onFocusConsumed}
       />
     </blockquote>
   );

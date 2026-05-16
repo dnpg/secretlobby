@@ -162,43 +162,41 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
       atIndex?: number
     ) => {
       const newBlock = createBlock(blockType);
+      // Reducer handles atIndex directly — no more setTimeout reorder. This
+      // keeps the auto-appended trailing paragraph adjacent to the new block
+      // even for mid-column inserts.
       dispatch({
         type: "addBlock",
         sectionId,
         columnId,
         block: newBlock,
+        atIndex,
         select: true,
       });
-      // The reducer appends to the end of the column. If a specific index
-      // was requested, defer one tick and reorder so the new block lands at
-      // that position. Reducer is synchronous; the timeout lets the dispatch
-      // settle before we re-read live state.
-      if (atIndex !== undefined) {
-        setTimeout(() => {
-          const liveSection = sections.find((s) => s.id === sectionId);
-          const liveColumn = liveSection?.columns.find((c) => c.id === columnId);
-          if (!liveColumn) return;
-          const ids = liveColumn.blocks
-            .filter((b) => b.id !== newBlock.id)
-            .map((b) => b.id);
-          const target = Math.max(0, Math.min(atIndex, ids.length));
-          ids.splice(target, 0, newBlock.id);
-          dispatch({
-            type: "reorderBlocks",
-            sectionId,
-            columnId,
-            blockIds: ids,
-          });
-        }, 0);
-      }
     },
-    [dispatch, sections]
+    [dispatch]
   );
 
 
   const deleteBlockFromColumn = useCallback(
     (sectionId: string, columnId: string, blockId: string) => {
       dispatch({ type: "deleteBlock", sectionId, columnId, blockId });
+    },
+    [dispatch]
+  );
+
+  // In-place block-type swap. Routed through `replaceBlock` so the block.id
+  // is preserved (selection + React keys survive). Auto-appends a trailing
+  // empty paragraph when `newType` isn't already a paragraph — see the
+  // reducer for the exact rule.
+  const replaceBlockInColumn = useCallback(
+    (
+      sectionId: string,
+      columnId: string,
+      blockId: string,
+      newType: BlockType
+    ) => {
+      dispatch({ type: "replaceBlock", sectionId, columnId, blockId, newType });
     },
     [dispatch]
   );
@@ -516,6 +514,12 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
                   moveBlockDown(section.id, columnId, blockId),
                 onMoveBlockToColumn: (columnId: string, blockId: string, direction: "left" | "right") =>
                   moveBlockToColumn(section.id, columnId, blockId, direction),
+                onReplaceBlock: (
+                  columnId: string,
+                  blockId: string,
+                  newType: BlockType
+                ) =>
+                  replaceBlockInColumn(section.id, columnId, blockId, newType),
               };
 
               return isEditing && isMounted ? (

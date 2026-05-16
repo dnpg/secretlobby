@@ -256,6 +256,22 @@ export function CardBlock({
     [blockId, dispatch]
   );
 
+  // In-place block-type swap inside the card. Filters disallowed types
+  // (player/card/gallery) the same way `handleAddBlock` does so the slash
+  // menu's filter and the reducer agree.
+  const handleReplaceBlock = useCallback(
+    (childBlockId: string, newType: BlockType) => {
+      if (DISALLOWED_INSIDE_CARD.has(newType)) return;
+      dispatch({
+        type: "replaceBlockInCard",
+        cardBlockId: blockId,
+        blockId: childBlockId,
+        newType,
+      });
+    },
+    [blockId, dispatch]
+  );
+
   const handleSelectBlock = useCallback(
     (childBlockId: string | null) => {
       if (childBlockId == null) {
@@ -308,6 +324,7 @@ export function CardBlock({
           onMoveBlockUp={handleMoveBlockUp}
           onMoveBlockDown={handleMoveBlockDown}
           onSelectBlock={handleSelectBlock}
+          onReplaceBlock={handleReplaceBlock}
           menuFilter={(item) => !DISALLOWED_INSIDE_CARD.has(item.type)}
         />
       </DndContext>
