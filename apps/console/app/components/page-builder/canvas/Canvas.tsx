@@ -6,8 +6,6 @@ import {
   closestCorners,
   DndContext,
   DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
   pointerWithin,
   useSensor,
   useSensors,
@@ -15,6 +13,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import {
+  EditorAwareKeyboardSensor,
+  EditorAwarePointerSensor,
+} from "./EditorAwareSensors";
 import {
   arrayMove,
   SortableContext,
@@ -153,7 +155,12 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
   );
 
   const addBlockToColumn = useCallback(
-    (sectionId: string, columnId: string, blockType: BlockType) => {
+    (
+      sectionId: string,
+      columnId: string,
+      blockType: BlockType,
+      atIndex?: number
+    ) => {
       const newBlock = createBlock(blockType);
       dispatch({
         type: "addBlock",
@@ -162,9 +169,32 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
         block: newBlock,
         select: true,
       });
+      // The reducer appends to the end of the column. If a specific index
+      // was requested, defer one tick and reorder so the new block lands at
+      // that position. Reducer is synchronous; the timeout lets the dispatch
+      // settle before we re-read live state.
+      if (atIndex !== undefined) {
+        setTimeout(() => {
+          const liveSection = sections.find((s) => s.id === sectionId);
+          const liveColumn = liveSection?.columns.find((c) => c.id === columnId);
+          if (!liveColumn) return;
+          const ids = liveColumn.blocks
+            .filter((b) => b.id !== newBlock.id)
+            .map((b) => b.id);
+          const target = Math.max(0, Math.min(atIndex, ids.length));
+          ids.splice(target, 0, newBlock.id);
+          dispatch({
+            type: "reorderBlocks",
+            sectionId,
+            columnId,
+            blockIds: ids,
+          });
+        }, 0);
+      }
     },
-    [dispatch]
+    [dispatch, sections]
   );
+
 
   const deleteBlockFromColumn = useCallback(
     (sectionId: string, columnId: string, blockId: string) => {
@@ -252,14 +282,18 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
     [dispatch]
   );
 
-  // DnD sensors
+  // DnD sensors. The editor-aware variants ignore events that originate inside
+  // any editor wrapper marked with `data-no-dnd-keyboard="true"`. That stops
+  // per-block Tiptap editors from accidentally triggering a keyboard drag
+  // when the user types space, and stops pointer events on their toolbars /
+  // buttons from being interpreted as drag starts.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(EditorAwarePointerSensor, {
       activationConstraint: {
         distance: 8, // 8px movement required to start drag
       },
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditorAwareKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
@@ -463,8 +497,11 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
                 selectedBlockId,
                 onSelectColumn: (columnId: string) => selectColumn(columnId),
                 onSelectBlock: (id: string | null) => selectBlock(id),
-                onAddBlock: (columnId: string, blockType: BlockType) =>
-                  addBlockToColumn(section.id, columnId, blockType),
+                onAddBlock: (
+                  columnId: string,
+                  blockType: BlockType,
+                  atIndex?: number
+                ) => addBlockToColumn(section.id, columnId, blockType, atIndex),
                 onDeleteBlock: (columnId: string, blockId: string) =>
                   deleteBlockFromColumn(section.id, columnId, blockId),
                 onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) =>
@@ -525,6 +562,7 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
                         isSelected={false}
                         onSelect={() => {}}
                         onDelete={() => {}}
+                        isEditing={false}
                       />
                     </div>
                   )}

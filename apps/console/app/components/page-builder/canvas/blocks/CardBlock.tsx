@@ -1,26 +1,54 @@
-import type { CSSProperties } from "react";
+import { useCallback, useMemo, type CSSProperties } from "react";
 import { cn } from "@secretlobby/ui";
+import {
+  closestCorners,
+  DndContext,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
   backdropFilterToCSS,
   borderRadiusToCSS,
   getCardBgCSS,
   getCardBorderCSS,
-  textColorToCSSDeclarations,
-  type TextColorValue,
 } from "~/lib/theme";
-import { CardIcon } from "../../icons";
 import { useSwatches } from "../../PageBuilderRoot";
-import type { CardBlockContent, ThemeSettings } from "../../state/types";
-import type { SavedSwatch, ColorValue } from "~/components/color-picker";
+import { usePageBuilder } from "../../state/provider";
+import { createBlock } from "../../state/helpers";
+import type {
+  BlockContent,
+  BlockType,
+  CardBlockContent,
+  ThemeSettings,
+} from "../../state/types";
+import { BlockListSurface } from "../BlockListSurface";
+import {
+  EditorAwareKeyboardSensor,
+  EditorAwarePointerSensor,
+} from "../EditorAwareSensors";
 
 interface CardBlockProps {
+  blockId: string;
   content: CardBlockContent;
   theme: ThemeSettings;
+  isEditing: boolean;
 }
 
-// Parse a CSS length string ("1px", "0.5rem", "0", " 2px ") into its leading
-// numeric value. Returns 0 for empty / undefined / non-numeric input — which
-// is the correct "no width" behaviour for the border on/off check below.
+// Block types that aren't allowed inside a card. Cards-inside-cards is
+// banned to keep the data shape one level deep (and the layers panel from
+// needing recursion guards). Player / Gallery are console-level blocks that
+// don't make sense to nest inside a card surface.
+const DISALLOWED_INSIDE_CARD: ReadonlySet<BlockType> = new Set([
+  "player",
+  "card",
+  "gallery",
+]);
+
+// Parse a CSS length string ("1px", "0.5rem", "0") into its leading numeric
+// value. Returns 0 for empty / undefined / non-numeric input — which is the
+// correct "no width" behaviour for the border on/off check below.
 function parseCSSLengthNumeric(value: string | undefined): number {
   if (!value) return 0;
   const match = String(value).trim().match(/^-?[\d.]+/);
@@ -29,8 +57,8 @@ function parseCSSLengthNumeric(value: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// True when the effective border width is positive on at least one side. The
-// page-builder no longer has a "show border" toggle — width alone gates it.
+// True when the effective border width is positive on at least one side.
+// Drives the "paint the border" decision; replaces the old `showBorder` flag.
 function hasPositiveBorderWidth(theme: ThemeSettings): boolean {
   const sides = theme.cardBorderSideWidths;
   if (sides) {
@@ -44,160 +72,245 @@ function hasPositiveBorderWidth(theme: ThemeSettings): boolean {
   return parseCSSLengthNumeric(theme.cardBorderWidth) > 0;
 }
 
-// Resolve a text-role field down to a CSSProperties object that handles both
-// solid and gradient text. For gradients we apply background-clip:text so the
-// gradient shows through the glyphs; the same `style` object also sets the
-// fallback `color` to "transparent" — browsers that don't honour
-// background-clip:text will render transparent text, which is unreadable, so
-// we set `WebkitBackgroundClip` alongside for Safari and document the
-// gradient-only-on-modern-browsers caveat in the task report.
-function textStyle(
-  rich: TextColorValue | undefined,
-  fallbackHex: string,
-  swatches: SavedSwatch[],
-  drafts: Map<string, ColorValue>
-): CSSProperties {
-  if (!rich) return { color: fallbackHex };
-  // Pass swatches + drafts so swatch-refs (a gradient picked from the Saved
-  // tab) resolve to their underlying gradient. Without these args the
-  // resolver returns the neutral fallback and the gradient never renders.
-  const decls = textColorToCSSDeclarations(
-    rich,
-    swatches as unknown as Parameters<typeof textColorToCSSDeclarations>[1],
-    drafts as unknown as Parameters<typeof textColorToCSSDeclarations>[2]
-  );
-  if (!decls.backgroundImage) return { color: decls.color };
-  return {
-    // Both `color: transparent` and `WebkitTextFillColor: transparent` —
-    // Safari prefers the latter; modern browsers honour either. With both set,
-    // the gradient set via `background-image` + `background-clip: text`
-    // shows through the glyphs everywhere.
-    color: decls.color,
-    WebkitTextFillColor: decls.color,
-    backgroundImage: decls.backgroundImage,
-    backgroundClip: decls.backgroundClip,
-    WebkitBackgroundClip: decls.backgroundClip,
-    // Use `inline-block` so the background-image stays scoped to the run of
-    // text rather than spreading to the parent block.
-    display: "inline-block",
-  };
-}
-
-// Card block — title + WYSIWYG HTML body, optional border. Empty state shows
-// a hint to encourage editors to add content.
-//
-// Phase 5: card-specific bg / border are gradient-aware so we can't represent
-// them via CSS variables alone. We compute them inline from the effective
-// theme (global + per-block overrides) and apply directly to the wrapper.
-export function CardBlock({ content, theme }: CardBlockProps) {
-  const hasContent = content.title || content.content;
-  // Pull the live swatch library + in-progress drafts so the card's bg AND
-  // text helpers can resolve swatch-refs against current data (and preview
-  // un-saved swatch edits while the user types in the swatch editor).
+// Card block — a themed container that holds a nested stack of blocks. The
+// slash menu inside the card excludes player / card / gallery; everything
+// else (heading, paragraph, lists, quote, code, table, divider, image) is
+// allowed. Reordering happens inside a local DndContext scoped to this card,
+// so nested ids never collide with the canvas-level context.
+export function CardBlock({
+  blockId,
+  content,
+  theme,
+  isEditing,
+}: CardBlockProps) {
+  const { state, dispatch } = usePageBuilder();
   const { swatches, drafts } = useSwatches();
 
+  // Resolve "selected nested block" against this card. Only matches when the
+  // selection's cardBlockId is THIS card — top-level selections of the card
+  // itself don't paint a child highlight.
+  const selectedChildBlockId =
+    state.selection.kind === "block" &&
+    state.selection.cardBlockId === blockId
+      ? state.selection.blockId
+      : null;
+
+  // ---- DnD: local context scoped to THIS card. -----------------------------
+  // The canvas's top-level DndContext can't pick up nested ids cleanly — it
+  // expects all draggable ids to live in column SortableContexts, and its
+  // unified drag-end handler classifies by location helpers that don't walk
+  // inside cards. Mounting a local DndContext per card keeps card reordering
+  // isolated and means we never have to add a second classification path.
+  const sensors = useSensors(
+    useSensor(EditorAwarePointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(EditorAwareKeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const childBlocks = content.blocks ?? [];
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const ids = childBlocks.map((b) => b.id);
+      const oldIndex = ids.indexOf(active.id as string);
+      const newIndex = ids.indexOf(over.id as string);
+      if (oldIndex === -1 || newIndex === -1) return;
+      dispatch({
+        type: "reorderBlocksInCard",
+        cardBlockId: blockId,
+        blockIds: arrayMove(ids, oldIndex, newIndex),
+      });
+    },
+    [childBlocks, blockId, dispatch]
+  );
+
+  // ---- Wrapper style — same theme chrome as before. ------------------------
   const border = getCardBorderCSS(theme);
-  // Whether the card paints a border now follows the width alone — there is
-  // no separate `cardBorderShow` toggle. We compute "has positive width" from
-  // the effective per-side widths first (when set), then fall back to the
-  // uniform `cardBorderWidth`. Invalid / 0 / "0px" → no border.
   const showBorder = hasPositiveBorderWidth(theme);
-  // Compute the backdrop-filter from THIS card's effective theme (global merged
-  // with block.themeOverrides upstream). Reading the global `--card-backdrop-
-  // filter` CSS variable would force every card to share the global value and
-  // ignore per-block overrides, so we apply it inline instead. When the
-  // resolved filter is empty / `none`, we omit the property entirely — setting
-  // `backdrop-filter: none` would still spuriously announce the property to
-  // the browser and (per spec corner cases) can interact with stacking
-  // contexts on some engines. Absent = truly no effect.
   const backdropFilterCSS = backdropFilterToCSS(theme.cardBackdropFilter);
   const hasBackdropFilter =
     backdropFilterCSS !== "none" && backdropFilterCSS.length > 0;
-  const wrapperStyle: CSSProperties = {
-    background: getCardBgCSS(
+  const wrapperStyle: CSSProperties = useMemo(
+    () => ({
+      background: getCardBgCSS(
+        theme,
+        swatches as unknown as Parameters<typeof getCardBgCSS>[1],
+        drafts as unknown as Parameters<typeof getCardBgCSS>[2]
+      ),
+      borderRadius: borderRadiusToCSS(theme.cardBorderRadius, 12),
+      color: theme.cardContentColor,
+      ...(hasBackdropFilter
+        ? {
+            backdropFilter: backdropFilterCSS,
+            WebkitBackdropFilter: backdropFilterCSS,
+          }
+        : {}),
+      ...(showBorder
+        ? {
+            border: border.style,
+            ...(border.widths
+              ? {
+                  borderTopWidth: border.widths.top,
+                  borderRightWidth: border.widths.right,
+                  borderBottomWidth: border.widths.bottom,
+                  borderLeftWidth: border.widths.left,
+                }
+              : {}),
+            ...(border.styles
+              ? {
+                  borderTopStyle: border.styles.top,
+                  borderRightStyle: border.styles.right,
+                  borderBottomStyle: border.styles.bottom,
+                  borderLeftStyle: border.styles.left,
+                }
+              : {}),
+          }
+        : { border: "none" }),
+      ...(border.boxShadow ? { boxShadow: border.boxShadow } : {}),
+    }),
+    [
       theme,
-      swatches as unknown as Parameters<typeof getCardBgCSS>[1],
-      drafts as unknown as Parameters<typeof getCardBgCSS>[2]
-    ),
-    borderRadius: borderRadiusToCSS(theme.cardBorderRadius, 12),
-    color: theme.cardContentColor,
-    ...(hasBackdropFilter
-      ? {
-          backdropFilter: backdropFilterCSS,
-          WebkitBackdropFilter: backdropFilterCSS,
+      swatches,
+      drafts,
+      hasBackdropFilter,
+      backdropFilterCSS,
+      showBorder,
+      border,
+    ]
+  );
+
+  // ---- Callbacks the BlockListSurface dispatches against. ------------------
+  const handleAddBlock = useCallback(
+    (type: BlockType, atIndex?: number) => {
+      if (DISALLOWED_INSIDE_CARD.has(type)) return;
+      const newBlock = createBlock(type);
+      dispatch({
+        type: "addBlockToCard",
+        cardBlockId: blockId,
+        block: newBlock,
+        index: atIndex,
+        select: true,
+      });
+    },
+    [blockId, dispatch]
+  );
+
+  const handleDeleteBlock = useCallback(
+    (childBlockId: string) => {
+      dispatch({
+        type: "deleteBlockFromCard",
+        cardBlockId: blockId,
+        blockId: childBlockId,
+      });
+    },
+    [blockId, dispatch]
+  );
+
+  const handleUpdateBlock = useCallback(
+    (childBlockId: string, partial: Partial<BlockContent>) => {
+      dispatch({
+        type: "updateBlockInCard",
+        cardBlockId: blockId,
+        blockId: childBlockId,
+        content: partial,
+      });
+    },
+    [blockId, dispatch]
+  );
+
+  const handleReorderBlocks = useCallback(
+    (ids: string[]) => {
+      dispatch({
+        type: "reorderBlocksInCard",
+        cardBlockId: blockId,
+        blockIds: ids,
+      });
+    },
+    [blockId, dispatch]
+  );
+
+  const handleMoveBlockUp = useCallback(
+    (childBlockId: string) => {
+      dispatch({
+        type: "moveBlockUpInCard",
+        cardBlockId: blockId,
+        blockId: childBlockId,
+      });
+    },
+    [blockId, dispatch]
+  );
+
+  const handleMoveBlockDown = useCallback(
+    (childBlockId: string) => {
+      dispatch({
+        type: "moveBlockDownInCard",
+        cardBlockId: blockId,
+        blockId: childBlockId,
+      });
+    },
+    [blockId, dispatch]
+  );
+
+  const handleSelectBlock = useCallback(
+    (childBlockId: string | null) => {
+      if (childBlockId == null) {
+        dispatch({ type: "clearSelection" });
+        return;
+      }
+      // The outer card already knows its own (sectionId, columnId) via the
+      // top-level selection; we walk the tree once to find them. This is
+      // O(sections * columns); the tree is tiny so it's fine.
+      for (const section of state.sections) {
+        for (const column of section.columns) {
+          if (column.blocks.some((b) => b.id === blockId)) {
+            dispatch({
+              type: "selectBlock",
+              sectionId: section.id,
+              columnId: column.id,
+              blockId: childBlockId,
+              cardBlockId: blockId,
+            });
+            return;
+          }
         }
-      : {}),
-    ...(showBorder
-      ? {
-          border: border.style,
-          // Per-side overrides — only present when the user has diverged from
-          // uniform. Spread directly into the style object; React's CSS prop
-          // accepts these camelCase per-side fields.
-          ...(border.widths
-            ? {
-                borderTopWidth: border.widths.top,
-                borderRightWidth: border.widths.right,
-                borderBottomWidth: border.widths.bottom,
-                borderLeftWidth: border.widths.left,
-              }
-            : {}),
-          ...(border.styles
-            ? {
-                borderTopStyle: border.styles.top,
-                borderRightStyle: border.styles.right,
-                borderBottomStyle: border.styles.bottom,
-                borderLeftStyle: border.styles.left,
-              }
-            : {}),
-        }
-      : { border: "none" }),
-    // Box-shadow is independent of border width — a borderless card can still
-    // cast a shadow.
-    ...(border.boxShadow ? { boxShadow: border.boxShadow } : {}),
-  };
+      }
+    },
+    [state.sections, blockId, dispatch]
+  );
 
   return (
     <div
       className={cn("w-full p-4")}
       style={wrapperStyle}
+      // Stop click-to-select on the card chrome from bubbling up to the
+      // parent column / section selection handlers.
+      onClick={(e) => e.stopPropagation()}
     >
-      {hasContent ? (
-        <>
-          {content.title && (
-            <div
-              className="text-sm font-medium mb-2"
-              style={textStyle(
-                theme.cardHeadingColorRich,
-                theme.cardHeadingColor,
-                swatches,
-                drafts
-              )}
-            >
-              {content.title}
-            </div>
-          )}
-          {content.content && (
-            <div
-              className="text-sm prose prose-sm prose-invert max-w-none"
-              style={textStyle(
-                theme.cardContentColorRich,
-                theme.cardContentColor,
-                swatches,
-                drafts
-              )}
-              dangerouslySetInnerHTML={{ __html: content.content }}
-            />
-          )}
-        </>
-      ) : (
-        <div
-          className="text-center"
-          style={{ color: theme.cardMutedColor }}
-        >
-          <CardIcon className="w-6 h-6 mx-auto mb-1" />
-          <span className="text-xs">Add content</span>
-        </div>
-      )}
+      <DndContext
+        id={`card-${blockId}`}
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragEnd={handleDragEnd}
+      >
+        <BlockListSurface
+          blocks={childBlocks}
+          isEditing={isEditing}
+          selectedBlockId={selectedChildBlockId}
+          onAddBlock={handleAddBlock}
+          onDeleteBlock={handleDeleteBlock}
+          onUpdateBlock={handleUpdateBlock}
+          onReorderBlocks={handleReorderBlocks}
+          onMoveBlockUp={handleMoveBlockUp}
+          onMoveBlockDown={handleMoveBlockDown}
+          onSelectBlock={handleSelectBlock}
+          menuFilter={(item) => !DISALLOWED_INSIDE_CARD.has(item.type)}
+        />
+      </DndContext>
     </div>
   );
 }

@@ -1,16 +1,13 @@
+import { useCallback, useRef } from "react";
 import { cn } from "@secretlobby/ui";
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type {
-  BlockContent,
-  BlockType,
-  Column,
-} from "../state/types";
-import { parseGapValue } from "../state/helpers";
-import { SortableBlock } from "./SortableBlock";
-import { AddBlockMenu } from "./AddBlockMenu";
+import type { BlockContent, BlockType, Column } from "../state/types";
+import { BlockListSurface } from "./BlockListSurface";
 
-// Column Component (renders a single column placeholder)
+// Column Component (renders a single column placeholder).
+// The actual "block list" rendering — empty state, slash menu, sortable
+// blocks, hover gaps, top insert line — lives in BlockListSurface, which is
+// shared with CardBlock so cards behave like mini-columns.
 export interface ColumnComponentProps {
   column: Column;
   index: number;
@@ -24,7 +21,8 @@ export interface ColumnComponentProps {
   selectedBlockId: string | null;
   onSelectColumn: () => void;
   onSelectBlock: (blockId: string | null) => void;
-  onAddBlock: (blockType: BlockType) => void;
+  // Inserts a block at the given index inside this column (defaults to end).
+  onAddBlock: (blockType: BlockType, atIndex?: number) => void;
   onDeleteBlock: (blockId: string) => void;
   onUpdateBlock: (blockId: string, content: Partial<BlockContent>) => void;
   onReorderBlocks: (blockIds: string[]) => void;
@@ -47,33 +45,37 @@ export function ColumnComponent({
   onSelectBlock,
   onAddBlock,
   onDeleteBlock,
-  onReorderBlocks: _onReorderBlocks,
+  onUpdateBlock,
+  onReorderBlocks,
   onMoveBlockUp,
   onMoveBlockDown,
   onMoveBlockToColumn,
 }: ColumnComponentProps) {
-  // Column edit affordances (dashed border, click-to-select, add-block menu)
-  // depend on both `isEditing` and the dashed-square toggle in TopHeader.
-  // Blocks inside the column still render normally — only the column wrapper
-  // becomes invisible.
   const showColumnUi = isEditing && showLayoutEdit;
-  // Visibility: a hidden column is fully removed from the canvas in every
-  // mode. The sidebar still surfaces it so the user can toggle it back on.
   const columnHidden = column.hidden === true;
-  if (columnHidden) return null;
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
   // Make column a drop target for blocks
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: column.id,
     data: { type: "column", columnId: column.id },
   });
 
-  // Block IDs for sortable context
-  const blockIds = column.blocks.map((b) => b.id);
-  const blockGap = parseGapValue(column.blockGap || "8");
+  // Helper to merge ref callbacks — we need both the droppable ref and our
+  // own wrapper ref on the same element.
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      wrapperRef.current = node;
+      setDroppableRef(node);
+    },
+    [setDroppableRef]
+  );
+
+  if (columnHidden) return null;
 
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       onClick={
         showColumnUi
           ? (e) => {
@@ -83,7 +85,7 @@ export function ColumnComponent({
           : undefined
       }
       className={cn(
-        "rounded transition-all min-h-[80px]",
+        "rounded transition-all min-h-[80px] relative",
         showColumnUi && "cursor-pointer",
         isSlider && isMobile ? "min-w-[150px] flex-shrink-0" : "",
         isSelected && showColumnUi
@@ -104,38 +106,23 @@ export function ColumnComponent({
         minWidth: isSlider && isMobile ? "150px" : undefined,
       }}
     >
-      {/* Blocks with sortable context */}
-      <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col" style={{ gap: blockGap }}>
-          {column.blocks.map((block, blockIndex) => (
-            <SortableBlock
-              key={block.id}
-              block={block}
-              isSelected={selectedBlockId === block.id}
-              onSelect={() => onSelectBlock(block.id)}
-              onDelete={() => onDeleteBlock(block.id)}
-              blockIndex={blockIndex}
-              totalBlocks={column.blocks.length}
-              columnIndex={index}
-              totalColumns={totalColumns}
-              isEditing={isEditing}
-              onMoveUp={() => onMoveBlockUp(block.id)}
-              onMoveDown={() => onMoveBlockDown(block.id)}
-              onMoveToColumn={(direction) => onMoveBlockToColumn(block.id, direction)}
-            />
-          ))}
-        </div>
-      </SortableContext>
-
-      {/* Add block button — part of the layout-edit affordances. Hidden when
-          the dashed-square toggle is off; users can still add blocks from the
-          LeftRail's inline "Add Block" dropdown per column. */}
-      {showColumnUi && (
-        <AddBlockMenu
-          onAdd={onAddBlock}
-          emptyColumn={column.blocks.length === 0}
-        />
-      )}
+      <BlockListSurface
+        blocks={column.blocks}
+        isEditing={isEditing}
+        columnIndex={index}
+        totalColumns={totalColumns}
+        selectedBlockId={selectedBlockId}
+        blockGap={column.blockGap}
+        onAddBlock={onAddBlock}
+        onDeleteBlock={onDeleteBlock}
+        onUpdateBlock={onUpdateBlock}
+        onReorderBlocks={onReorderBlocks}
+        onMoveBlockUp={onMoveBlockUp}
+        onMoveBlockDown={onMoveBlockDown}
+        onMoveBlockToColumn={onMoveBlockToColumn}
+        onSelectBlock={onSelectBlock}
+        // No filter on the column surface — allow every block type.
+      />
     </div>
   );
 }

@@ -2,16 +2,35 @@ import type {
   Block,
   BlockContent,
   BlockType,
+  BulletListBlockContent,
   CardBlockContent,
+  CodeBlockBlockContent,
+  CodeBlockContent,
   Column,
+  DividerBlockContent,
   GalleryBlockContent,
+  HeadingBlockContent,
   ImageBlockContent,
+  InlineDoc,
+  OrderedListBlockContent,
+  ParagraphBlockContent,
   PlayerBlockContent,
+  QuoteBlockContent,
   Section,
   StoredPageLayout,
+  TableBlockContent,
   ViewportSize,
 } from "./types";
 import { PAGE_LAYOUT_VERSION } from "./types";
+
+// Empty Tiptap inline doc: a single paragraph with no content. Every text-ish
+// block seeds itself with this so the editor has a valid cursor target on
+// first render. Returning a fresh object each time avoids accidentally
+// sharing the same reference across multiple blocks (which would mutate
+// each other on edit).
+function emptyInlineDoc(): InlineDoc {
+  return { type: "doc", content: [{ type: "paragraph" }] };
+}
 
 // Simple ID generator that works in all browsers.
 export function generateId(prefix = "section"): string {
@@ -67,11 +86,13 @@ export function getDefaultBlockContent(type: BlockType): BlockContent {
         autoplay: false,
       } as PlayerBlockContent;
     case "card":
+      // Post-overhaul: a Card is a nested container of blocks. No more
+      // WYSIWYG `content` HTML; users add Heading / Paragraph / Image / etc.
+      // sub-blocks via the in-card slash menu. Empty by default so the
+      // canvas shows the in-card placeholder immediately on insert.
       return {
-        title: "Card Title",
-        content: "<p>Add your content here...</p>",
-        showBorder: true,
-      } as CardBlockContent;
+        blocks: [],
+      } satisfies CardBlockContent;
     case "gallery":
       return {
         images: [],
@@ -82,6 +103,37 @@ export function getDefaultBlockContent(type: BlockType): BlockContent {
         autoplayIntervalMs: 4000,
         showArrows: true,
       } satisfies GalleryBlockContent;
+    case "heading":
+      return {
+        level: 1,
+        inline: emptyInlineDoc(),
+      } satisfies HeadingBlockContent;
+    case "paragraph":
+      return { inline: emptyInlineDoc() } satisfies ParagraphBlockContent;
+    case "quote":
+      return { inline: emptyInlineDoc() } satisfies QuoteBlockContent;
+    case "code":
+      return { inline: emptyInlineDoc() } satisfies CodeBlockContent;
+    case "codeBlock":
+      return { text: "", language: "" } satisfies CodeBlockBlockContent;
+    case "bulletList":
+      return {
+        items: [emptyInlineDoc()],
+      } satisfies BulletListBlockContent;
+    case "orderedList":
+      return {
+        items: [emptyInlineDoc()],
+      } satisfies OrderedListBlockContent;
+    case "table":
+      return {
+        headerRow: true,
+        rows: [
+          { cells: [emptyInlineDoc(), emptyInlineDoc()] },
+          { cells: [emptyInlineDoc(), emptyInlineDoc()] },
+        ],
+      } satisfies TableBlockContent;
+    case "divider":
+      return {} satisfies DividerBlockContent;
   }
 }
 
@@ -126,12 +178,21 @@ export function createDefaultPageLayout(
   content.columns[0].blocks = [playerBlock];
 
   content.columns[1].name = "Right";
+  // Seed cards now hold nested blocks instead of a single HTML body. Each
+  // gets a Heading sub-block (as the title row) and a Paragraph placeholder
+  // so first-paint matches the old layout's visual weight.
   const aboutCard = createBlock("card");
   (aboutCard.content as CardBlockContent).title = "About us";
-  (aboutCard.content as CardBlockContent).content = "Write anything";
+  (aboutCard.content as CardBlockContent).blocks = [
+    createBlock("heading"),
+    createBlock("paragraph"),
+  ];
   const moreCard = createBlock("card");
   (moreCard.content as CardBlockContent).title = "More about us";
-  (moreCard.content as CardBlockContent).content = "Write anything";
+  (moreCard.content as CardBlockContent).blocks = [
+    createBlock("heading"),
+    createBlock("paragraph"),
+  ];
   content.columns[1].blocks = [aboutCard, moreCard];
 
   // Section 3 — Footer

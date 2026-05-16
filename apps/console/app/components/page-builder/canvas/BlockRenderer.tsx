@@ -2,10 +2,20 @@ import { useMemo } from "react";
 import { cn } from "@secretlobby/ui";
 import type {
   Block,
+  BlockContent,
+  BulletListBlockContent,
   CardBlockContent,
+  CodeBlockBlockContent,
+  CodeBlockContent,
+  DividerBlockContent,
   GalleryBlockContent,
+  HeadingBlockContent,
   ImageBlockContent,
+  OrderedListBlockContent,
+  ParagraphBlockContent,
   PlayerBlockContent,
+  QuoteBlockContent,
+  TableBlockContent,
   ThemeSettings,
 } from "../state/types";
 import { usePageBuilder } from "../state/provider";
@@ -13,12 +23,23 @@ import { ImageBlock } from "./blocks/ImageBlock";
 import { PlayerBlock } from "./blocks/PlayerBlock";
 import { CardBlock } from "./blocks/CardBlock";
 import { GalleryBlock } from "./blocks/GalleryBlock";
+import { HeadingBlock } from "./blocks/HeadingBlock";
+import { ParagraphBlock } from "./blocks/ParagraphBlock";
+import { BulletListBlock } from "./blocks/BulletListBlock";
+import { OrderedListBlock } from "./blocks/OrderedListBlock";
+import { QuoteBlock } from "./blocks/QuoteBlock";
+import { CodeBlock } from "./blocks/CodeBlock";
+import { CodeBlockBlock } from "./blocks/CodeBlockBlock";
+import { TableBlock } from "./blocks/TableBlock";
+import { DividerBlock } from "./blocks/DividerBlock";
 
 interface BlockRendererProps {
   block: Block;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  // Text-ish blocks push their Tiptap doc updates back through this.
+  onUpdate?: (content: Partial<BlockContent>) => void;
   // When false (preview mode), the block does not attach selection click
   // handlers, selection rings, or the delete affordance.
   isEditing?: boolean;
@@ -30,11 +51,11 @@ export function BlockRenderer({
   block,
   isSelected,
   onSelect,
-  onDelete,
+  onDelete: _onDelete,
+  onUpdate,
   isEditing = true,
 }: BlockRendererProps) {
-  // The DragOverlay also lives inside PageBuilderProvider so context is safe
-  // here. Effective theme = global lobby theme overlaid with block.themeOverrides.
+  // Effective theme = global lobby theme overlaid with block.themeOverrides.
   const { state } = usePageBuilder();
   const effectiveTheme = useMemo<ThemeSettings>(
     () => ({ ...state.theme, ...(block.themeOverrides ?? {}) }),
@@ -65,14 +86,95 @@ export function BlockRenderer({
       case "card":
         return (
           <CardBlock
+            blockId={block.id}
             content={block.content as CardBlockContent}
             theme={effectiveTheme}
+            isEditing={isEditing}
           />
         );
       case "gallery":
         return (
           <GalleryBlock
             content={block.content as GalleryBlockContent}
+            theme={effectiveTheme}
+          />
+        );
+      case "heading":
+        return (
+          <HeadingBlock
+            content={block.content as HeadingBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "paragraph":
+        return (
+          <ParagraphBlock
+            content={block.content as ParagraphBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "bulletList":
+        return (
+          <BulletListBlock
+            content={block.content as BulletListBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "orderedList":
+        return (
+          <OrderedListBlock
+            content={block.content as OrderedListBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "quote":
+        return (
+          <QuoteBlock
+            content={block.content as QuoteBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "code":
+        return (
+          <CodeBlock
+            content={block.content as CodeBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "codeBlock":
+        return (
+          <CodeBlockBlock
+            content={block.content as CodeBlockBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "table":
+        return (
+          <TableBlock
+            content={block.content as TableBlockContent}
+            isSelected={isSelected}
+            isEditing={isEditing}
+            onUpdate={onUpdate}
+          />
+        );
+      case "divider":
+        return (
+          <DividerBlock
+            content={block.content as DividerBlockContent}
             theme={effectiveTheme}
           />
         );
@@ -102,8 +204,7 @@ export function BlockRenderer({
       {renderBlockContent()}
       {/* Per-block delete affordance lives in the left rail (trash icon on
           the layer row) and at the bottom of the SettingsOverlay. The canvas
-          stays clean. `onDelete` is still accepted as a prop in case future
-          surfaces want it. */}
+          stays clean. */}
     </div>
   );
 }

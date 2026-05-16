@@ -23,7 +23,7 @@ export interface SortableSectionProps {
   selectedBlockId: string | null;
   onSelectColumn: (columnId: string) => void;
   onSelectBlock: (blockId: string | null) => void;
-  onAddBlock: (columnId: string, blockType: BlockType) => void;
+  onAddBlock: (columnId: string, blockType: BlockType, atIndex?: number) => void;
   onDeleteBlock: (columnId: string, blockId: string) => void;
   onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) => void;
   onReorderBlocks: (columnId: string, blockIds: string[]) => void;

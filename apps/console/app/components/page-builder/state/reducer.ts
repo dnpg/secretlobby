@@ -2,6 +2,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import type {
   Block,
   BlockContent,
+  CardBlockContent,
   Column,
   PlaylistSummary,
   Section,
@@ -21,7 +22,18 @@ export type Selection =
   | { kind: "none" }
   | { kind: "section"; sectionId: string }
   | { kind: "column"; sectionId: string; columnId: string }
-  | { kind: "block"; sectionId: string; columnId: string; blockId: string };
+  // `cardBlockId` is set when the selected block is nested inside a Card. The
+  // outer card lives at `sectionId.columnId.cardBlockId`; the selected nested
+  // block lives at `blockId`. When absent, the selection is a normal
+  // column-level block. Cards-inside-cards aren't supported; the card slash
+  // menu filters out `card` so this stays a single level deep.
+  | {
+      kind: "block";
+      sectionId: string;
+      columnId: string;
+      blockId: string;
+      cardBlockId?: string;
+    };
 
 // Right-panel tab key. Lives in reducer state + URL param, NOT in pageLayout.
 export type RightPanelTab = "blocks" | "theme";
@@ -80,6 +92,10 @@ export type PageBuilderAction =
       sectionId: string;
       columnId: string;
       blockId: string;
+      // When set, the selected block lives inside a card (nested surface).
+      // The card lives at sectionId.columnId.cardBlockId; the selected child
+      // block's id is `blockId`.
+      cardBlockId?: string;
     }
   | { type: "clearSelection" }
   | { type: "setViewport"; viewport: ViewportSize }
@@ -200,6 +216,45 @@ export type PageBuilderAction =
       // Optional explicit destination index; appends to end if omitted.
       targetIndex?: number;
     }
+  // Card-nested block operations. Each locates the host card by walking
+  // sections → columns → blocks for a block with id === cardBlockId, then
+  // mutates that block's `content.blocks` immutably. Cross-container moves
+  // (card ↔ column, card ↔ card) aren't shipped in this pass — see the
+  // overhaul follow-up notes.
+  | {
+      type: "addBlockToCard";
+      cardBlockId: string;
+      block: Block;
+      // When omitted, appends to the end of the card.
+      index?: number;
+      select?: boolean;
+    }
+  | {
+      type: "deleteBlockFromCard";
+      cardBlockId: string;
+      blockId: string;
+    }
+  | {
+      type: "updateBlockInCard";
+      cardBlockId: string;
+      blockId: string;
+      content: Partial<BlockContent>;
+    }
+  | {
+      type: "reorderBlocksInCard";
+      cardBlockId: string;
+      blockIds: string[];
+    }
+  | {
+      type: "moveBlockUpInCard";
+      cardBlockId: string;
+      blockId: string;
+    }
+  | {
+      type: "moveBlockDownInCard";
+      cardBlockId: string;
+      blockId: string;
+    }
   // Phase 5: theme operations — these flow through the SEPARATE theme fetcher.
   | { type: "updateTheme"; partial: Partial<ThemeSettings> }
   | { type: "resetTheme"; theme: ThemeSettings }
@@ -236,6 +291,12 @@ export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
   "moveBlockDown",
   "moveBlockToColumn",
   "moveBlock",
+  "addBlockToCard",
+  "deleteBlockFromCard",
+  "updateBlockInCard",
+  "reorderBlocksInCard",
+  "moveBlockUpInCard",
+  "moveBlockDownInCard",
   "setSectionVisibility",
   "setColumnVisibility",
   "setBlockVisibility",
@@ -266,6 +327,78 @@ export function findBlockLocation(
   return null;
 }
 
+// Locate a card by id. Returns the section+column it sits in plus its index
+// inside the column, so the reducer can mutate the card and only the card.
+// Returns null if the id doesn't resolve to a `type === "card"` block.
+function findCardLocation(
+  sections: Section[],
+  cardBlockId: string
+): {
+  sectionId: string;
+  columnId: string;
+  index: number;
+  card: Block;
+} | null {
+  for (const section of sections) {
+    for (const column of section.columns) {
+      const idx = column.blocks.findIndex(
+        (b) => b.id === cardBlockId && b.type === "card"
+      );
+      if (idx !== -1) {
+        return {
+          sectionId: section.id,
+          columnId: column.id,
+          index: idx,
+          card: column.blocks[idx],
+        };
+      }
+    }
+  }
+  return null;
+}
+
+// Helpers for card-nested updates. Each takes a `cardBlockId` and a mutator
+// over the card's child block list, walks the tree once, and rebuilds the
+// affected branches immutably. Pulling these into helpers keeps each reducer
+// case to a single line of orchestration.
+function withCardBlocks(
+  sections: Section[],
+  cardBlockId: string,
+  mutate: (blocks: Block[]) => Block[]
+): { sections: Section[]; changed: boolean } {
+  let changed = false;
+  const nextSections = sections.map((s) => {
+    if (!s.columns.some((c) => c.blocks.some((b) => b.id === cardBlockId))) {
+      return s;
+    }
+    return {
+      ...s,
+      columns: s.columns.map((col) => {
+        if (!col.blocks.some((b) => b.id === cardBlockId)) return col;
+        return {
+          ...col,
+          blocks: col.blocks.map((b) => {
+            if (b.id !== cardBlockId || b.type !== "card") return b;
+            const cardContent = b.content as CardBlockContent;
+            const childBlocks = cardContent.blocks ?? [];
+            const nextChildren = mutate(childBlocks);
+            if (nextChildren === childBlocks) return b;
+            changed = true;
+            return {
+              ...b,
+              content: {
+                ...cardContent,
+                blocks: nextChildren,
+              } satisfies CardBlockContent,
+            };
+          }),
+        };
+      }),
+    };
+  });
+  return { sections: nextSections, changed };
+}
+
 // Hydrate `rightPanelTab` from URL. Defaults to "blocks" for any unknown value.
 export function parseRightPanelTabParam(
   value: string | null
@@ -291,8 +424,12 @@ export function parseSelectionParam(value: string | null): Selection {
     return { kind: "column", sectionId, columnId };
   }
   if (kind === "block") {
-    const [sectionId, columnId, blockId] = id.split(".");
+    const parts = id.split(".");
+    const [sectionId, columnId, blockId, cardBlockId] = parts;
     if (!sectionId || !columnId || !blockId) return { kind: "none" };
+    if (cardBlockId) {
+      return { kind: "block", sectionId, columnId, blockId, cardBlockId };
+    }
     return { kind: "block", sectionId, columnId, blockId };
   }
   return { kind: "none" };
@@ -307,7 +444,9 @@ export function serializeSelection(selection: Selection): string | null {
     case "column":
       return `column:${selection.sectionId}.${selection.columnId}`;
     case "block":
-      return `block:${selection.sectionId}.${selection.columnId}.${selection.blockId}`;
+      return selection.cardBlockId
+        ? `block:${selection.sectionId}.${selection.columnId}.${selection.blockId}.${selection.cardBlockId}`
+        : `block:${selection.sectionId}.${selection.columnId}.${selection.blockId}`;
   }
 }
 
@@ -349,6 +488,9 @@ export function pageBuilderReducer(
           sectionId: action.sectionId,
           columnId: action.columnId,
           blockId: action.blockId,
+          ...(action.cardBlockId
+            ? { cardBlockId: action.cardBlockId }
+            : {}),
         },
       };
       break;
@@ -537,7 +679,10 @@ export function pageBuilderReducer(
       let selection = state.selection;
       if (
         selection.kind === "block" &&
-        selection.blockId === action.blockId
+        (selection.blockId === action.blockId ||
+          // If the deleted block IS a card, drop any selection anchored to a
+          // nested child of that card too.
+          selection.cardBlockId === action.blockId)
       ) {
         selection = { kind: "none" };
       }
@@ -840,6 +985,123 @@ export function pageBuilderReducer(
           }),
         })),
       };
+      break;
+    }
+    case "addBlockToCard": {
+      const loc = findCardLocation(state.sections, action.cardBlockId);
+      if (!loc) {
+        next = state;
+        break;
+      }
+      const { sections: nextSections } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) => {
+          const insertAt =
+            action.index === undefined
+              ? blocks.length
+              : Math.max(0, Math.min(action.index, blocks.length));
+          const copy = [...blocks];
+          copy.splice(insertAt, 0, action.block);
+          return copy;
+        }
+      );
+      next = {
+        ...state,
+        sections: nextSections,
+        selection: action.select
+          ? {
+              kind: "block",
+              sectionId: loc.sectionId,
+              columnId: loc.columnId,
+              blockId: action.block.id,
+              cardBlockId: action.cardBlockId,
+            }
+          : state.selection,
+      };
+      break;
+    }
+    case "deleteBlockFromCard": {
+      const { sections: nextSections, changed } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) => {
+          const filtered = blocks.filter((b) => b.id !== action.blockId);
+          return filtered.length === blocks.length ? blocks : filtered;
+        }
+      );
+      let selection = state.selection;
+      if (
+        selection.kind === "block" &&
+        selection.cardBlockId === action.cardBlockId &&
+        selection.blockId === action.blockId
+      ) {
+        selection = { kind: "none" };
+      }
+      next = changed
+        ? { ...state, sections: nextSections, selection }
+        : { ...state, selection };
+      break;
+    }
+    case "updateBlockInCard": {
+      const { sections: nextSections } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) =>
+          blocks.map((b) =>
+            b.id === action.blockId
+              ? { ...b, content: { ...b.content, ...action.content } }
+              : b
+          )
+      );
+      next = { ...state, sections: nextSections };
+      break;
+    }
+    case "reorderBlocksInCard": {
+      const { sections: nextSections } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) => {
+          const map = new Map(blocks.map((b) => [b.id, b]));
+          const reordered = action.blockIds
+            .map((id) => map.get(id))
+            .filter((b): b is Block => Boolean(b));
+          // Defensive: if reorder lost a block, keep the originals.
+          if (reordered.length !== blocks.length) return blocks;
+          return reordered;
+        }
+      );
+      next = { ...state, sections: nextSections };
+      break;
+    }
+    case "moveBlockUpInCard": {
+      const { sections: nextSections } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) => {
+          const idx = blocks.findIndex((b) => b.id === action.blockId);
+          if (idx <= 0) return blocks;
+          const copy = [...blocks];
+          [copy[idx - 1], copy[idx]] = [copy[idx], copy[idx - 1]];
+          return copy;
+        }
+      );
+      next = { ...state, sections: nextSections };
+      break;
+    }
+    case "moveBlockDownInCard": {
+      const { sections: nextSections } = withCardBlocks(
+        state.sections,
+        action.cardBlockId,
+        (blocks) => {
+          const idx = blocks.findIndex((b) => b.id === action.blockId);
+          if (idx === -1 || idx >= blocks.length - 1) return blocks;
+          const copy = [...blocks];
+          [copy[idx], copy[idx + 1]] = [copy[idx + 1], copy[idx]];
+          return copy;
+        }
+      );
+      next = { ...state, sections: nextSections };
       break;
     }
     case "updateTheme": {

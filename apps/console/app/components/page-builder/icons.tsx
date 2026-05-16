@@ -148,6 +148,80 @@ export function CardIcon({ className = "w-5 h-5" }: { className?: string }) {
   );
 }
 
+// Text-ish block icons. Kept as small inline SVGs so the BLOCK_TYPES tile grid
+// can render them at the same visual weight as the rest of the page-builder.
+export function HeadingIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 4v16M18 4v16M6 12h12" />
+    </svg>
+  );
+}
+
+export function ParagraphIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 6h16M4 12h12M4 18h8" />
+    </svg>
+  );
+}
+
+export function BulletListIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+    </svg>
+  );
+}
+
+export function OrderedListIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6h13M8 12h13M8 18h13M3 4h1v3M3 12h2M3 18h2" />
+    </svg>
+  );
+}
+
+export function QuoteIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z" />
+    </svg>
+  );
+}
+
+export function CodeIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 8l-4 4 4 4M15 8l4 4-4 4" />
+    </svg>
+  );
+}
+
+export function CodeBlockIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 8l-4 4 4 4M15 8l4 4-4 4M13 4l-2 16" />
+    </svg>
+  );
+}
+
+export function TableIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12" />
+    </svg>
+  );
+}
+
+export function DividerIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12h16" />
+    </svg>
+  );
+}
+
 // Gallery icon — three overlapping framed rectangles to read as a stack of
 // photos. Distinct from ImageIcon's single-rectangle-with-mountain motif.
 export function GalleryIcon({ className = "w-5 h-5" }: { className?: string }) {
@@ -271,5 +345,59 @@ export const BLOCK_TYPES: {
     label: "Card",
     icon: CardIcon,
     description: "Text card with formatting",
+  },
+  {
+    type: "heading",
+    label: "Heading",
+    icon: HeadingIcon,
+    description: "Section heading",
+  },
+  {
+    type: "paragraph",
+    label: "Paragraph",
+    icon: ParagraphIcon,
+    description: "Plain text paragraph",
+  },
+  {
+    type: "bulletList",
+    label: "Bulleted list",
+    icon: BulletListIcon,
+    description: "Unordered list",
+  },
+  {
+    type: "orderedList",
+    label: "Numbered list",
+    icon: OrderedListIcon,
+    description: "Ordered list",
+  },
+  {
+    type: "quote",
+    label: "Quote",
+    icon: QuoteIcon,
+    description: "Block quote",
+  },
+  {
+    type: "code",
+    label: "Code",
+    icon: CodeIcon,
+    description: "Inline code snippet",
+  },
+  {
+    type: "codeBlock",
+    label: "Code block",
+    icon: CodeBlockIcon,
+    description: "Multi-line code",
+  },
+  {
+    type: "table",
+    label: "Table",
+    icon: TableIcon,
+    description: "Editable table",
+  },
+  {
+    type: "divider",
+    label: "Divider",
+    icon: DividerIcon,
+    description: "Horizontal rule",
   },
 ];

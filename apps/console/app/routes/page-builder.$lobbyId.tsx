@@ -4,10 +4,15 @@ import { PageBuilderRoot } from "~/components/page-builder/PageBuilderRoot";
 import {
   PAGE_LAYOUT_VERSION,
   type Block,
+  type CardBlockContent,
+  type HeadingBlockContent,
+  type InlineDoc,
+  type ParagraphBlockContent,
   type PlayerBlockContent,
   type Section,
   type StoredPageLayout,
 } from "~/components/page-builder/state/types";
+import { createBlock } from "~/components/page-builder/state/helpers";
 
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: `Page Builder - ${data?.lobby?.name || "Lobby"}` }];
@@ -34,13 +39,31 @@ function parseStoredPageLayout(
     ...section,
     columns: section.columns.map((col) => ({
       ...col,
-      blocks: col.blocks.map((block) => migratePlayerBlock(block, defaultPlaylistId)),
+      blocks: col.blocks.map((block) =>
+        migrateBlock(block, defaultPlaylistId)
+      ),
     })),
   }));
   return {
     sections: migratedSections,
     version: typeof obj.version === "number" ? obj.version : PAGE_LAYOUT_VERSION,
   };
+}
+
+// Per-block migration dispatcher. Centralises the few legacy shapes we
+// rewrite at load time so the rest of the runtime can assume the
+// post-overhaul schema. Currently:
+//   - player → back-fill `playlistId` with the lobby default
+//   - card   → WYSIWYG HTML body + optional title row → nested Block[] of
+//              Heading + Paragraph sub-blocks
+function migrateBlock(block: Block, defaultPlaylistId: string): Block {
+  if (block.type === "player") {
+    return migratePlayerBlock(block, defaultPlaylistId);
+  }
+  if (block.type === "card") {
+    return migrateCardBlock(block);
+  }
+  return block;
 }
 
 function migratePlayerBlock(block: Block, defaultPlaylistId: string): Block {
@@ -55,6 +78,87 @@ function migratePlayerBlock(block: Block, defaultPlaylistId: string): Block {
       ...content,
       playlistId: defaultPlaylistId,
     } as PlayerBlockContent,
+  };
+}
+
+// Pre-overhaul Card persisted as { title?: string; content?: string (HTML) }.
+// Post-overhaul Card is a nested container — `{ title?, blocks: Block[] }`.
+// We rebuild `blocks` from the old fields on first load; the next autosave
+// writes the migrated form back, retiring the legacy keys over time.
+//
+// HTML → text conversion strips all tags (v1) so we don't accidentally inject
+// arbitrary HTML into a Tiptap paragraph node. Re-richening (preserving
+// bold/italic/link marks) is a follow-up. Malformed HTML falls back to a
+// best-effort regex strip — we never throw here because failing the loader
+// would make the whole canvas unusable.
+function migrateCardBlock(block: Block): Block {
+  if (block.type !== "card") return block;
+  const legacy = block.content as Partial<CardBlockContent> & {
+    content?: string;
+  };
+  // Already migrated → return as-is. Detect by presence of a `blocks` array.
+  if (Array.isArray(legacy.blocks)) {
+    return block;
+  }
+  const children: Block[] = [];
+  const rawTitle = typeof legacy.title === "string" ? legacy.title.trim() : "";
+  if (rawTitle.length > 0) {
+    const headingBlock = createBlock("heading");
+    (headingBlock.content as HeadingBlockContent) = {
+      level: 1,
+      inline: textToInlineDoc(rawTitle),
+    };
+    children.push(headingBlock);
+  }
+  const rawBody = typeof legacy.content === "string" ? legacy.content : "";
+  const bodyText = stripHtmlToPlainText(rawBody).trim();
+  if (bodyText.length > 0) {
+    const paragraphBlock = createBlock("paragraph");
+    (paragraphBlock.content as ParagraphBlockContent) = {
+      inline: textToInlineDoc(bodyText),
+    };
+    children.push(paragraphBlock);
+  }
+  const migratedContent: CardBlockContent = {
+    title: rawTitle.length > 0 ? rawTitle : undefined,
+    blocks: children,
+  };
+  return { ...block, content: migratedContent };
+}
+
+// Best-effort HTML → plain text. We don't run a real parser here:
+//   - server-side this loader avoids DOM dependencies
+//   - the legacy bodies were short marketing snippets, not arbitrary docs
+// Regex-strip tags + collapse whitespace + decode the few entities the old
+// editor produced. Anything fancier (preserving links / bold) belongs in a
+// re-richening pass.
+function stripHtmlToPlainText(html: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ");
+}
+
+// Wrap a plain string in a minimal Tiptap inline-only doc shape that matches
+// the rest of the editor (single paragraph with a text node).
+function textToInlineDoc(text: string): InlineDoc {
+  if (!text) return { type: "doc", content: [{ type: "paragraph" }] };
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text }],
+      },
+    ],
   };
 }
 

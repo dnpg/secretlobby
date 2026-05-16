@@ -1,14 +1,32 @@
 // Shared types for the page builder. Kept in a single file so the reducer,
 // provider, and UI panels all import from one place.
 
+import type { JSONContent } from "@tiptap/react";
 import type { BorderRadius, ThemeSettings } from "~/lib/theme";
 
 export type { ThemeSettings };
 
 export type ViewportSize = "desktop" | "tablet" | "mobile";
 export type MobileLayout = "stack" | "keep" | "slider";
-export type BlockType = "image" | "player" | "card" | "gallery";
+export type BlockType =
+  | "image"
+  | "player"
+  | "card"
+  | "gallery"
+  | "heading"
+  | "paragraph"
+  | "bulletList"
+  | "orderedList"
+  | "quote"
+  | "code"
+  | "codeBlock"
+  | "table"
+  | "divider";
 export type GalleryStyle = "slider" | "grid" | "masonry";
+
+// `JSONContent` from Tiptap is the inline-only doc used by every text-ish
+// block to store rich-text content (marks, paragraphs, text nodes).
+export type InlineDoc = JSONContent;
 
 // Block content types ---------------------------------------------------------
 
@@ -64,9 +82,28 @@ export interface PlaylistSummary {
 }
 
 export interface CardBlockContent {
-  title: string;
-  content: string; // HTML content from WYSIWYG editor
-  showBorder: boolean;
+  /** Optional card title. The recommended pattern for a "title row" inside a
+   *  card is now a Heading sub-block at index 0 — keep this field nullable so
+   *  legacy persisted cards with a `title` don't blow up during
+   *  deserialization. */
+  title?: string;
+  /** Nested blocks rendered inside the card. The slash menu inside a card
+   *  excludes `player` / `card` / `gallery` — only text + image are allowed.
+   *  Cross-container moves (card ↔ column, card ↔ card) aren't supported in
+   *  this pass; the BlockListSurface inside CardBlock owns reordering. */
+  blocks: Block[];
+  /** @deprecated Pre-overhaul WYSIWYG HTML body. Migrated to nested
+   *  Paragraph / Heading blocks by `parseStoredPageLayout` at load time. New
+   *  layouts never write this field; kept on the type so older persisted
+   *  payloads still deserialize without TypeScript widening to `any`. */
+  content?: string;
+  /** @deprecated Pre-overhaul "show border" toggle. The card now derives its
+   *  border state from the theme's `cardBorderWidth` / per-side widths
+   *  (positive width = visible). Kept for back-compat on stored JSON. */
+  showBorder?: boolean;
+  /** @deprecated Pre-overhaul inline background override. Per-block bg now
+   *  flows through `block.themeOverrides.cardBg` (gradient-aware). Kept for
+   *  back-compat on stored JSON. */
   backgroundColor?: string;
 }
 
@@ -91,11 +128,69 @@ export interface GalleryBlockContent {
   showArrows?: boolean; // slider only; default true
 }
 
+// Text-ish blocks store an inline-only Tiptap doc (marks, paragraphs, text).
+// No block-level children — the page-builder column owns block structure.
+
+export interface HeadingBlockContent {
+  level: 1 | 2 | 3 | 4 | 5 | 6;
+  inline: InlineDoc;
+}
+
+export interface ParagraphBlockContent {
+  inline: InlineDoc;
+  align?: "left" | "center" | "right";
+}
+
+export interface QuoteBlockContent {
+  inline: InlineDoc;
+  align?: "left" | "center" | "right";
+}
+
+// Inline-styled "code" chunk — renders the text inside a single `code` mark
+// (visually a single styled line). Distinct from `CodeBlockBlockContent`
+// which is a full `<pre><code>` multi-line block with a language.
+export interface CodeBlockContent {
+  inline: InlineDoc;
+}
+
+export interface CodeBlockBlockContent {
+  language?: string;
+  text: string;
+}
+
+export interface BulletListBlockContent {
+  items: InlineDoc[];
+}
+
+export interface OrderedListBlockContent {
+  items: InlineDoc[];
+}
+
+export interface TableBlockContent {
+  rows: { cells: InlineDoc[] }[];
+  headerRow: boolean;
+}
+
+// Empty marker — the divider has no per-instance content (it inherits the
+// border color from the theme). Kept as an interface so the discriminated
+// union stays consistent.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface DividerBlockContent {}
+
 export type BlockContent =
   | ImageBlockContent
   | PlayerBlockContent
   | CardBlockContent
-  | GalleryBlockContent;
+  | GalleryBlockContent
+  | HeadingBlockContent
+  | ParagraphBlockContent
+  | QuoteBlockContent
+  | CodeBlockContent
+  | CodeBlockBlockContent
+  | BulletListBlockContent
+  | OrderedListBlockContent
+  | TableBlockContent
+  | DividerBlockContent;
 
 export interface Block {
   id: string;

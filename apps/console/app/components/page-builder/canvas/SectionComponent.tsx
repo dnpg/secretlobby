@@ -26,7 +26,7 @@ export interface SectionComponentProps {
   selectedBlockId: string | null;
   onSelectColumn: (columnId: string) => void;
   onSelectBlock: (blockId: string | null) => void;
-  onAddBlock: (columnId: string, blockType: BlockType) => void;
+  onAddBlock: (columnId: string, blockType: BlockType, atIndex?: number) => void;
   onDeleteBlock: (columnId: string, blockId: string) => void;
   onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) => void;
   onReorderBlocks: (columnId: string, blockIds: string[]) => void;
@@ -214,7 +214,9 @@ export function SectionComponent({
                 selectedBlockId={selectedBlockId}
                 onSelectColumn={() => onSelectColumn(column.id)}
                 onSelectBlock={onSelectBlock}
-                onAddBlock={(blockType) => onAddBlock(column.id, blockType)}
+                onAddBlock={(blockType, atIndex) =>
+                  onAddBlock(column.id, blockType, atIndex)
+                }
                 onDeleteBlock={(blockId) => onDeleteBlock(column.id, blockId)}
                 onUpdateBlock={(blockId, content) => onUpdateBlock(column.id, blockId, content)}
                 onReorderBlocks={(blockIds) => onReorderBlocks(column.id, blockIds)}

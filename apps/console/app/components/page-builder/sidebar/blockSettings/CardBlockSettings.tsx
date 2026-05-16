@@ -1,4 +1,3 @@
-import { RichTextEditor } from "@secretlobby/ui";
 import type { CardBlockContent } from "../../state/types";
 import type { ThemeSettings } from "~/lib/theme";
 import { usePageBuilder } from "../../state/provider";
@@ -11,12 +10,14 @@ interface CardBlockSettingsProps {
   onUpdate: (content: Partial<CardBlockContent>) => void;
 }
 
-// Per-block Card editor. The colour / border / backdrop fields are reused
-// straight from the global Theme → Card section (CardThemeFields). The only
-// per-block-specific UI here is the Title + Content + the legacy
-// "Show Border" content toggle. Theme overrides live on
-// `block.themeOverrides` and are dispatched through the existing
-// updateBlockThemeOverrides / clearBlockThemeOverrides reducer actions.
+// Per-block Card editor. After the page-builder overhaul, the Card is a
+// nested container of blocks (Heading / Paragraph / Image / etc.) — the
+// rich-text body editor is gone. This sidebar surface keeps just the
+// per-block-specific bits:
+//   - optional Title rename (kept on the type for back-compat with stored
+//     layouts; users are encouraged to use a Heading sub-block instead)
+//   - a help line pointing to the in-canvas slash menu
+//   - the existing theme-override surface (CardThemeFields + reset)
 export function CardBlockSettings({
   blockId,
   content,
@@ -35,17 +36,10 @@ export function CardBlockSettings({
     return null;
   })();
   const overrides: Partial<ThemeSettings> = block?.themeOverrides ?? {};
-  // Effective theme = global theme shallow-merged with this block's overrides.
-  // CardThemeFields reads this as the displayed value. baseTheme stays the
-  // pristine global theme so the Modified indicator + reset compare against
-  // the right thing.
   const effectiveTheme: ThemeSettings = { ...state.theme, ...overrides };
 
-  // Drop one or more override keys from this block. The reducer's
-  // `updateBlockThemeOverrides` only does shallow merges, and
-  // `clearBlockThemeOverrides` wipes the entire map — so to remove a single
-  // key we clear and re-apply the survivors. Same pattern the legacy
-  // BlockColorOverrides used.
+  // Drop one or more override keys from this block. Reuses the existing
+  // clear-then-reapply pattern; see CardThemeFields for the full rationale.
   const resetFields = (keys: (keyof ThemeSettings)[]) => {
     const next: Partial<ThemeSettings> = { ...overrides };
     for (const k of keys) delete next[k];
@@ -62,33 +56,26 @@ export function CardBlockSettings({
   return (
     <>
       <div>
-        <label className="block text-sm font-medium text-theme-primary mb-2">Title</label>
+        <label className="block text-sm font-medium text-theme-primary mb-2">
+          Title
+        </label>
         <input
           type="text"
-          value={content.title}
+          value={content.title ?? ""}
           onChange={(e) => onUpdate({ title: e.target.value })}
           placeholder="Optional card title"
           className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)]"
         />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-theme-primary mb-2">Content</label>
-        <RichTextEditor
-          defaultValue={content.content}
-          onChange={(html) => onUpdate({ content: html })}
-          placeholder="Card content..."
-          features={["bold", "italic", "underline", "link", "bulletList", "orderedList", "textAlign"]}
-        />
+        <p className="mt-2 text-xs text-theme-muted">
+          Card holds a stack of blocks. Type{" "}
+          <kbd className="px-1 py-0.5 rounded bg-theme-tertiary border border-theme text-theme-primary text-[11px]">
+            /
+          </kbd>{" "}
+          inside the card to add headings, lists, tables, and images. Cards
+          can&rsquo;t nest cards or contain players or galleries.
+        </p>
       </div>
       {block && (() => {
-        // "Reset all overrides" wipes the block's entire themeOverrides map
-        // via the dedicated reducer action. We deliberately do NOT filter by
-        // a curated key list here — that allowlist drifted out of sync any
-        // time a new theme field was added, leaving orphan override keys
-        // that survived the reset and caused two "reset" cards to diverge.
-        // Whatever ends up on `block.themeOverrides` is, by definition, an
-        // override this block carries; a full clear is the only way to
-        // guarantee the block fully inherits the global theme afterwards.
         const hasAnyOverrides = Object.keys(overrides).length > 0;
         return (
           <div className="pt-3 border-t border-theme space-y-3">

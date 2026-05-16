@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn, useColorMode } from "@secretlobby/ui";
-import type { Block, Section } from "../state/types";
+import type { Block, CardBlockContent, Section } from "../state/types";
 import { usePageBuilder } from "../state/provider";
 import { BLOCK_TYPES, TrashIcon } from "../icons";
 import { RenamableLabel } from "./RenamableLabel";
@@ -264,12 +264,95 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
       };
     }
 
-    // block selection
+    // Block branch — split into "card-nested" vs "top-of-column".
+    const cardBlockId =
+      selection.kind === "block" ? selection.cardBlockId : undefined;
+    if (cardBlockId) {
+      // Card-nested selection: look up the host card first, then the child.
+      const cardBlock = column.blocks.find((b) => b.id === cardBlockId);
+      if (!cardBlock || cardBlock.type !== "card") {
+        queueMicrotask(() => dispatch({ type: "clearSelection" }));
+        return null;
+      }
+      const cardChildren =
+        (cardBlock.content as CardBlockContent).blocks ?? [];
+      const child = cardChildren.find((b) => b.id === selection.blockId);
+      if (!child) {
+        queueMicrotask(() => dispatch({ type: "clearSelection" }));
+        return null;
+      }
+      const childIndex = cardChildren.indexOf(child);
+      const sameTypeIndex = cardChildren
+        .filter((b) => b.type === child.type)
+        .indexOf(child);
+      const cardLabel =
+        cardBlock.name?.trim() ||
+        (BLOCK_TYPES.find((t) => t.type === "card")?.label ?? "Card");
+      const placeholder = defaultBlockName(child, sameTypeIndex);
+      return {
+        breadcrumb: `${
+          section.name?.trim() || `Section ${sectionIndex + 1}`
+        } / ${column.name?.trim() || defaultColumnName(columnIndex)} / ${cardLabel} / ${
+          BLOCK_TYPES.find((t) => t.type === child.type)?.label ?? child.type
+        }`,
+        title: child.name ?? "",
+        placeholder,
+        // No card-nested rename reducer in this pass — renaming a card-nested
+        // block is a no-op for now (the placeholder still shows the
+        // type-based default). Promote to a dedicated action if users start
+        // asking for it.
+        onRename: (_next: string) => {
+          void _next;
+        },
+        body: (
+          <BlockSettings
+            block={child}
+            onUpdate={(content) =>
+              dispatch({
+                type: "updateBlockInCard",
+                cardBlockId: cardBlock.id,
+                blockId: child.id,
+                content,
+              })
+            }
+          />
+        ),
+        deleteLabel: "Delete block",
+        onDelete: () => {
+          const label =
+            child.name?.trim() || defaultBlockName(child, sameTypeIndex);
+          const snapshotChild = child;
+          const insertAt = childIndex;
+          dispatch({
+            type: "deleteBlockFromCard",
+            cardBlockId: cardBlock.id,
+            blockId: child.id,
+          });
+          toast.success(`${label} deleted`, {
+            duration: 5000,
+            action: {
+              label: "Undo",
+              onClick: () => {
+                dispatch({
+                  type: "addBlockToCard",
+                  cardBlockId: cardBlock.id,
+                  block: snapshotChild,
+                  index: insertAt,
+                });
+              },
+            },
+          });
+        },
+      };
+    }
+
+    // Lookup the block — needed by the block branch.
     const block = column.blocks.find((b) => b.id === selection.blockId);
     if (!block) {
       queueMicrotask(() => dispatch({ type: "clearSelection" }));
       return null;
     }
+
     const blockIndex = column.blocks.indexOf(block);
     const sameTypeIndex = column.blocks
       .filter((b) => b.type === block.type)

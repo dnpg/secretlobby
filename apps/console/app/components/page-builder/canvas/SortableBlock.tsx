@@ -1,13 +1,15 @@
+import { useRef } from "react";
 import { cn } from "@secretlobby/ui";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Block } from "../state/types";
+import type { Block, BlockContent } from "../state/types";
 import {
   ArrowDownIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
   ArrowUpIcon,
   BlockGripIcon,
+  PlusIcon,
 } from "../icons";
 import { BlockRenderer } from "./BlockRenderer";
 
@@ -16,6 +18,7 @@ interface SortableBlockProps {
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onUpdate?: (content: Partial<BlockContent>) => void;
   blockIndex: number;
   totalBlocks: number;
   columnIndex: number;
@@ -24,6 +27,9 @@ interface SortableBlockProps {
   onMoveUp: () => void;
   onMoveDown: () => void;
   onMoveToColumn: (direction: "left" | "right") => void;
+  // Called when the user clicks the `+` in the toolbar. The parent (column)
+  // owns the BlockMenu popover and decides where to insert.
+  onOpenInsertMenu?: (anchorEl: HTMLElement) => void;
 }
 
 // Sortable wrapper for blocks (drag and drop).
@@ -33,6 +39,7 @@ export function SortableBlock({
   isSelected,
   onSelect,
   onDelete,
+  onUpdate,
   blockIndex,
   totalBlocks,
   columnIndex,
@@ -41,6 +48,7 @@ export function SortableBlock({
   onMoveUp,
   onMoveDown,
   onMoveToColumn,
+  onOpenInsertMenu,
 }: SortableBlockProps) {
   const {
     attributes,
@@ -50,6 +58,7 @@ export function SortableBlock({
     transition,
     isDragging,
   } = useSortable({ id: block.id });
+  const plusBtnRef = useRef<HTMLButtonElement | null>(null);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -71,21 +80,51 @@ export function SortableBlock({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn("relative group", isEditing && "touch-none")}
+      // Named group (`group/block`) so the toolbar's `group-hover/block:*`
+      // variants are scoped strictly to THIS block. An unnamed `group` would
+      // be ambiguous if any ancestor were ever to add its own `.group` class.
+      className={cn("relative group/block", isEditing && "touch-none")}
       {...dragProps}
     >
-      {/* Block layout controls - always visible in edit mode (hover-revealed) */}
+      {/* Toolbar — pinned to the top-left of the block and translated Y by
+          -100% so it sits flush above the block (its bottom edge meets the
+          block's top edge with no gap). Visible ONLY while the cursor is
+          over THIS block's wrapper; selection alone does not reveal it. */}
       {isEditing && (
-        <div className="absolute -top-1 -left-1 z-10 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Drag handle indicator */}
+        <div
+          // NOTE: do NOT add `data-no-dnd-keyboard` here. The EditorAware
+          // pointer sensor's opt-out check uses `closest(...)`, so marking
+          // the toolbar would also block pointerdown on the grip handle and
+          // kill drag-to-reorder. The attribute belongs on actual text /
+          // contenteditable surfaces (InlineEditor, ListEditor, TableBlock,
+          // CodeBlockBlock) where Space/Enter would otherwise start a
+          // keyboard drag while the user is typing. The toolbar's other
+          // buttons already block pointer-drag via stopPropagation on
+          // onPointerDown.
+          //
+          // Editor tool — uses the console's light/dark mode ONLY (the
+          // `.dark` class on <html> drives the `dark:` variants). No
+          // `--color-*` theme tokens, no transparency: a deep-black lobby
+          // theme must not bleed through.
+          className={cn(
+            "absolute top-0 left-0 -translate-y-full z-10 flex items-center gap-0.5",
+            "px-1 py-0.5 rounded-md",
+            "bg-white dark:bg-neutral-900",
+            "text-black dark:text-white",
+            "border border-neutral-200 dark:border-neutral-800",
+            "shadow-md ring-1 ring-black/10 dark:ring-white/10",
+            "transition-opacity",
+            "opacity-0 pointer-events-none",
+            "group-hover/block:opacity-100 group-hover/block:pointer-events-auto"
+          )}
+        >
           <div
-            className="p-1 rounded bg-theme-secondary hover:bg-theme-tertiary cursor-grab active:cursor-grabbing text-theme-secondary hover:text-theme-primary"
+            className="p-1 rounded text-theme-secondary hover:text-theme-primary cursor-grab active:cursor-grabbing"
             title="Drag to reorder"
           >
             <BlockGripIcon />
           </div>
 
-          {/* Move up */}
           {canMoveUp && (
             <button
               type="button"
@@ -94,14 +133,27 @@ export function SortableBlock({
                 onMoveUp();
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded bg-theme-secondary hover:bg-theme-tertiary text-theme-secondary hover:text-theme-primary cursor-pointer"
+              className="p-1 rounded text-theme-secondary hover:text-theme-primary cursor-pointer"
               title="Move up"
             >
               <ArrowUpIcon />
             </button>
           )}
 
-          {/* Move down */}
+          <button
+            ref={plusBtnRef}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (plusBtnRef.current) onOpenInsertMenu?.(plusBtnRef.current);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="p-1 rounded text-theme-secondary hover:text-[var(--color-brand-red)] cursor-pointer"
+            title="Insert block after"
+          >
+            <PlusIcon className="w-3 h-3" />
+          </button>
+
           {canMoveDown && (
             <button
               type="button"
@@ -110,14 +162,13 @@ export function SortableBlock({
                 onMoveDown();
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded bg-theme-secondary hover:bg-theme-tertiary text-theme-secondary hover:text-theme-primary cursor-pointer"
+              className="p-1 rounded text-theme-secondary hover:text-theme-primary cursor-pointer"
               title="Move down"
             >
               <ArrowDownIcon />
             </button>
           )}
 
-          {/* Move left */}
           {canMoveLeft && (
             <button
               type="button"
@@ -126,14 +177,13 @@ export function SortableBlock({
                 onMoveToColumn("left");
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded bg-theme-secondary hover:bg-theme-tertiary text-theme-secondary hover:text-theme-primary cursor-pointer"
+              className="p-1 rounded text-theme-secondary hover:text-theme-primary cursor-pointer"
               title="Move to previous column"
             >
               <ArrowLeftIcon />
             </button>
           )}
 
-          {/* Move right */}
           {canMoveRight && (
             <button
               type="button"
@@ -142,7 +192,7 @@ export function SortableBlock({
                 onMoveToColumn("right");
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded bg-theme-secondary hover:bg-theme-tertiary text-theme-secondary hover:text-theme-primary cursor-pointer"
+              className="p-1 rounded text-theme-secondary hover:text-theme-primary cursor-pointer"
               title="Move to next column"
             >
               <ArrowRightIcon />
@@ -156,6 +206,7 @@ export function SortableBlock({
         isSelected={isSelected}
         onSelect={onSelect}
         onDelete={onDelete}
+        onUpdate={onUpdate}
         isEditing={isEditing}
       />
     </div>

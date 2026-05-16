@@ -4,12 +4,14 @@ import { cn, useColorMode } from "@secretlobby/ui";
 import {
   closestCenter,
   DndContext,
-  KeyboardSensor,
-  PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import {
+  EditorAwareKeyboardSensor,
+  EditorAwarePointerSensor,
+} from "../canvas/EditorAwareSensors";
 import {
   arrayMove,
   SortableContext,
@@ -19,8 +21,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
-import type { Block, BlockType, Column, Section } from "../state/types";
-import { LAYER_COLORS, createBlock, createSection } from "../state/helpers";
+import type {
+  Block,
+  BlockType,
+  CardBlockContent,
+  Column,
+  Section,
+} from "../state/types";
+import { createBlock, createSection } from "../state/helpers";
 import { findBlockLocation } from "../state/reducer";
 import { usePageBuilder } from "../state/provider";
 import {
@@ -126,6 +134,10 @@ export function LeftRail({
   const [expandedColumns, setExpandedColumns] = useState<Set<string>>(
     () => new Set(selectedColumnId ? [selectedColumnId] : [])
   );
+  // Track which card layer rows are expanded. Card blocks now hold nested
+  // blocks; expanding a card reveals those children as sub-layer rows. Drag-
+  // reorder of card children from the sidebar is a follow-up.
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(() => new Set());
 
   // "Section has blocks" confirm — surfaced by clicking the trash icon on a
   // non-empty section row. Cleared on cancel / confirm / Esc.
@@ -184,6 +196,20 @@ export function LeftRail({
     }
   }, [selectedBlockId, sections]);
 
+  // If the current selection is a card-nested block, auto-expand the parent
+  // card row so the user can see the highlighted sub-layer.
+  const selectedCardBlockId =
+    selection.kind === "block" ? selection.cardBlockId ?? null : null;
+  useEffect(() => {
+    if (!selectedCardBlockId) return;
+    setExpandedCards((prev) => {
+      if (prev.has(selectedCardBlockId)) return prev;
+      const next = new Set(prev);
+      next.add(selectedCardBlockId);
+      return next;
+    });
+  }, [selectedCardBlockId]);
+
   // Esc closes any open confirm modal.
   useEffect(() => {
     if (!confirmDelete) return;
@@ -208,6 +234,15 @@ export function LeftRail({
 
   const toggleColumn = (id: string) => {
     setExpandedColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCard = (id: string) => {
+    setExpandedCards((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -365,10 +400,10 @@ export function LeftRail({
   // (PointerSensor + KeyboardSensor) but with a smaller activation distance
   // so the grip handle feels immediately responsive.
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(EditorAwarePointerSensor, {
       activationConstraint: { distance: 4 },
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditorAwareKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
@@ -411,15 +446,18 @@ export function LeftRail({
                 sectionIndex={sIdx}
                 expanded={expandedSections.has(section.id)}
                 expandedColumns={expandedColumns}
+                expandedCards={expandedCards}
                 selectedSectionId={selectedSectionId}
                 selectedColumnId={selectedColumnId}
                 selectedBlockId={selectedBlockId}
+                selectedCardBlockId={selectedCardBlockId}
                 layoutMode={layoutMode}
                 neutralRowText={neutralRowText}
                 neutralRowBgHover={neutralRowBgHover}
                 neutralRowBgSelected={neutralRowBgSelected}
                 onToggleSection={toggleSection}
                 onToggleColumn={toggleColumn}
+                onToggleCard={toggleCard}
                 onSelectSection={(id) =>
                   dispatch({ type: "selectSection", sectionId: id })
                 }
@@ -430,12 +468,13 @@ export function LeftRail({
                     columnId,
                   })
                 }
-                onSelectBlock={(sectionId, columnId, blockId) =>
+                onSelectBlock={(sectionId, columnId, blockId, cardBlockId) =>
                   dispatch({
                     type: "selectBlock",
                     sectionId,
                     columnId,
                     blockId,
+                    ...(cardBlockId ? { cardBlockId } : {}),
                   })
                 }
                 onAddBlock={onAddBlock}
@@ -645,9 +684,11 @@ interface SortableSidebarSectionProps {
   sectionIndex: number;
   expanded: boolean;
   expandedColumns: Set<string>;
+  expandedCards: Set<string>;
   selectedSectionId: string | null;
   selectedColumnId: string | null;
   selectedBlockId: string | null;
+  selectedCardBlockId: string | null;
   // When true, render rows with LAYER_COLORS color-coded backgrounds;
   // otherwise fall back to the theme-appropriate neutral backgrounds.
   layoutMode: boolean;
@@ -656,9 +697,15 @@ interface SortableSidebarSectionProps {
   neutralRowBgSelected: string;
   onToggleSection: (id: string) => void;
   onToggleColumn: (id: string) => void;
+  onToggleCard: (id: string) => void;
   onSelectSection: (id: string) => void;
   onSelectColumn: (sectionId: string, columnId: string) => void;
-  onSelectBlock: (sectionId: string, columnId: string, blockId: string) => void;
+  onSelectBlock: (
+    sectionId: string,
+    columnId: string,
+    blockId: string,
+    cardBlockId?: string
+  ) => void;
   onAddBlock: (sectionId: string, columnId: string, type: BlockType) => void;
   onDeleteSection: () => void;
   onDeleteColumn: (column: Column, columnIndex: number) => void;
@@ -679,15 +726,18 @@ function SortableSidebarSection({
   sectionIndex,
   expanded,
   expandedColumns,
+  expandedCards,
   selectedSectionId,
   selectedColumnId,
   selectedBlockId,
+  selectedCardBlockId,
   layoutMode,
   neutralRowText,
   neutralRowBgHover,
   neutralRowBgSelected,
   onToggleSection,
   onToggleColumn,
+  onToggleCard,
   onSelectSection,
   onSelectColumn,
   onSelectBlock,
@@ -714,10 +764,10 @@ function SortableSidebarSection({
   // shape as the parent rail sensors; recreated per section so each scope has
   // its own pointer/keyboard tracking.
   const columnSensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(EditorAwarePointerSensor, {
       activationConstraint: { distance: 4 },
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditorAwareKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
@@ -846,13 +896,16 @@ function SortableSidebarSection({
                   column={column}
                   columnIndex={cIdx}
                   expanded={expandedColumns.has(column.id)}
+                  expandedCards={expandedCards}
                   selectedColumnId={selectedColumnId}
                   selectedBlockId={selectedBlockId}
+                  selectedCardBlockId={selectedCardBlockId}
                   layoutMode={layoutMode}
                   neutralRowText={neutralRowText}
                   neutralRowBgHover={neutralRowBgHover}
                   neutralRowBgSelected={neutralRowBgSelected}
                   onToggleColumn={onToggleColumn}
+                  onToggleCard={onToggleCard}
                   onSelectColumn={onSelectColumn}
                   onSelectBlock={onSelectBlock}
                   onAddBlock={onAddBlock}
@@ -893,15 +946,23 @@ interface SortableSidebarColumnProps {
   column: Column;
   columnIndex: number;
   expanded: boolean;
+  expandedCards: Set<string>;
   selectedColumnId: string | null;
   selectedBlockId: string | null;
+  selectedCardBlockId: string | null;
   layoutMode: boolean;
   neutralRowText: string;
   neutralRowBgHover: string;
   neutralRowBgSelected: string;
   onToggleColumn: (id: string) => void;
+  onToggleCard: (id: string) => void;
   onSelectColumn: (sectionId: string, columnId: string) => void;
-  onSelectBlock: (sectionId: string, columnId: string, blockId: string) => void;
+  onSelectBlock: (
+    sectionId: string,
+    columnId: string,
+    blockId: string,
+    cardBlockId?: string
+  ) => void;
   onAddBlock: (sectionId: string, columnId: string, type: BlockType) => void;
   onDeleteColumn: () => void;
   onDeleteBlock: (block: Block, blockIndex: number) => void;
@@ -915,13 +976,16 @@ function SortableSidebarColumn({
   column,
   columnIndex,
   expanded,
+  expandedCards,
   selectedColumnId,
   selectedBlockId,
+  selectedCardBlockId,
   layoutMode,
   neutralRowText,
   neutralRowBgHover,
   neutralRowBgSelected,
   onToggleColumn,
+  onToggleCard,
   onSelectColumn,
   onSelectBlock,
   onAddBlock,
@@ -941,10 +1005,10 @@ function SortableSidebarColumn({
   } = useSortable({ id: column.id });
 
   const blockSensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(EditorAwarePointerSensor, {
       activationConstraint: { distance: 4 },
     }),
-    useSensor(KeyboardSensor, {
+    useSensor(EditorAwareKeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
@@ -1061,11 +1125,14 @@ function SortableSidebarColumn({
                   column={column}
                   block={block}
                   blockIndex={blockIndex}
+                  expandedCards={expandedCards}
                   selectedBlockId={selectedBlockId}
+                  selectedCardBlockId={selectedCardBlockId}
                   layoutMode={layoutMode}
                   neutralRowText={neutralRowText}
                   neutralRowBgHover={neutralRowBgHover}
                   neutralRowBgSelected={neutralRowBgSelected}
+                  onToggleCard={onToggleCard}
                   onSelectBlock={onSelectBlock}
                   onDeleteBlock={onDeleteBlock}
                   onToggleBlockVisibility={onToggleBlockVisibility}
@@ -1092,12 +1159,20 @@ interface SortableSidebarBlockProps {
   column: Column;
   block: Block;
   blockIndex: number;
+  expandedCards: Set<string>;
   selectedBlockId: string | null;
+  selectedCardBlockId: string | null;
   layoutMode: boolean;
   neutralRowText: string;
   neutralRowBgHover: string;
   neutralRowBgSelected: string;
-  onSelectBlock: (sectionId: string, columnId: string, blockId: string) => void;
+  onToggleCard: (id: string) => void;
+  onSelectBlock: (
+    sectionId: string,
+    columnId: string,
+    blockId: string,
+    cardBlockId?: string
+  ) => void;
   onDeleteBlock: (block: Block, blockIndex: number) => void;
   onToggleBlockVisibility: (blockId: string, hidden: boolean) => void;
 }
@@ -1107,11 +1182,14 @@ function SortableSidebarBlock({
   column,
   block,
   blockIndex,
+  expandedCards,
   selectedBlockId,
-  layoutMode,
+  selectedCardBlockId,
+  layoutMode: _layoutMode,
   neutralRowText,
   neutralRowBgHover,
   neutralRowBgSelected,
+  onToggleCard,
   onSelectBlock,
   onDeleteBlock,
   onToggleBlockVisibility,
@@ -1132,7 +1210,8 @@ function SortableSidebarBlock({
     opacity: isDragging ? 0.85 : 1,
   };
 
-  const blockSelected = selectedBlockId === block.id;
+  const blockSelected =
+    selectedBlockId === block.id && !selectedCardBlockId;
   const meta = BLOCK_TYPES.find((t) => t.type === block.type);
   const Icon = meta?.icon || CardIcon;
   const sameTypeIndex = column.blocks
@@ -1140,6 +1219,14 @@ function SortableSidebarBlock({
     .indexOf(block);
   const defaultBlockName = `${meta?.label || block.type} ${sameTypeIndex + 1}`;
   const blockHidden = block.hidden === true;
+  // Card-nested layer rendering: when this block is a card, show a chevron
+  // and reveal the nested children as sub-rows. Cards-inside-cards aren't
+  // allowed by the in-card slash menu, so this stays exactly one level deep.
+  const isCard = block.type === "card";
+  const cardExpanded = isCard && expandedCards.has(block.id);
+  const cardChildren = isCard
+    ? ((block.content as CardBlockContent).blocks ?? [])
+    : [];
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -1166,6 +1253,36 @@ function SortableSidebarBlock({
         >
           <DragHandleIcon className="w-3 h-3" />
         </button>
+        {isCard ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCard(block.id);
+            }}
+            className="p-0.5 rounded text-current cursor-pointer flex-shrink-0"
+            title={cardExpanded ? "Collapse" : "Expand"}
+            aria-label={cardExpanded ? "Collapse card" : "Expand card"}
+          >
+            {cardExpanded ? (
+              <ChevronDownIcon />
+            ) : (
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                />
+              </svg>
+            )}
+          </button>
+        ) : null}
         <Icon className="w-3.5 h-3.5 text-current" />
         <span
           className={cn(
@@ -1185,6 +1302,128 @@ function SortableSidebarBlock({
           deleteLabel="Delete block"
         />
       </div>
+
+      {/* Nested card layers. Read-only beyond click-to-select: drag-reorder
+          inside the sidebar for card children is a follow-up. */}
+      {isCard && cardExpanded && (
+        <div className="mt-1 ml-4 pl-2 border-l border-[var(--color-brand-red)]/20 space-y-1">
+          {cardChildren.length === 0 ? (
+            <div className="px-2 py-1 text-xs text-theme-muted">Empty card</div>
+          ) : (
+            cardChildren.map((child, childIndex) => (
+              <CardChildLayerRow
+                key={child.id}
+                section={section}
+                column={column}
+                cardBlock={block}
+                child={child}
+                childIndex={childIndex}
+                siblings={cardChildren}
+                selectedBlockId={selectedBlockId}
+                selectedCardBlockId={selectedCardBlockId}
+                neutralRowText={neutralRowText}
+                neutralRowBgHover={neutralRowBgHover}
+                neutralRowBgSelected={neutralRowBgSelected}
+                onSelectBlock={onSelectBlock}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Single card-child layer row. Click-to-select only — no drag-handle yet
+// (sidebar DnD inside cards is a follow-up), no visibility toggle / delete
+// (the SettingsOverlay handles those once the row is selected). If we ever
+// encounter a card inside a card here we log a warning and skip rendering;
+// the slash-menu filter is meant to prevent this, this is belt-and-suspenders.
+interface CardChildLayerRowProps {
+  section: Section;
+  column: Column;
+  cardBlock: Block;
+  child: Block;
+  childIndex: number;
+  siblings: Block[];
+  selectedBlockId: string | null;
+  selectedCardBlockId: string | null;
+  neutralRowText: string;
+  neutralRowBgHover: string;
+  neutralRowBgSelected: string;
+  onSelectBlock: (
+    sectionId: string,
+    columnId: string,
+    blockId: string,
+    cardBlockId?: string
+  ) => void;
+}
+
+function CardChildLayerRow({
+  section,
+  column,
+  cardBlock,
+  child,
+  childIndex: _childIndex,
+  siblings,
+  selectedBlockId,
+  selectedCardBlockId,
+  neutralRowText,
+  neutralRowBgHover,
+  neutralRowBgSelected,
+  onSelectBlock,
+}: CardChildLayerRowProps) {
+  if (child.type === "card") {
+    // Cards-inside-cards aren't allowed; the slash menu filter blocks it.
+    // If one slipped in via legacy data, stop recursion and warn instead of
+    // rendering a confusing nested-card layer.
+    if (typeof console !== "undefined") {
+      console.warn(
+        "[page-builder] Card-in-card detected in layers panel; refusing to recurse.",
+        { cardBlockId: cardBlock.id, childId: child.id }
+      );
+    }
+    return null;
+  }
+  const childMeta = BLOCK_TYPES.find((t) => t.type === child.type);
+  const ChildIcon = childMeta?.icon || CardIcon;
+  const sameTypeIndex = siblings
+    .filter((b) => b.type === child.type)
+    .indexOf(child);
+  const defaultName = `${childMeta?.label || child.type} ${sameTypeIndex + 1}`;
+  const childHidden = child.hidden === true;
+  const isSelected =
+    selectedBlockId === child.id && selectedCardBlockId === cardBlock.id;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelectBlock(section.id, column.id, child.id, cardBlock.id);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelectBlock(section.id, column.id, child.id, cardBlock.id);
+        }
+      }}
+      className={cn(
+        "group flex items-center gap-1 px-2 py-1 rounded-lg transition-colors cursor-pointer",
+        neutralRowText,
+        isSelected ? neutralRowBgSelected : neutralRowBgHover,
+        childHidden && "opacity-50"
+      )}
+    >
+      <ChildIcon className="w-3.5 h-3.5 text-current" />
+      <span
+        className={cn(
+          "flex-1 text-sm truncate",
+          childHidden && "line-through opacity-60"
+        )}
+      >
+        {child.name?.trim() || defaultName}
+      </span>
     </div>
   );
 }
@@ -1240,3 +1479,4 @@ function SidebarAddBlockMenu({ onAdd }: { onAdd: (type: BlockType) => void }) {
     </div>
   );
 }
+
