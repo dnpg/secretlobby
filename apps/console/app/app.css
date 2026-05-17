@@ -438,3 +438,56 @@ textarea:focus-visible {
 .animated-border::after {
   transition-property: opacity !important;
 }
+
+/* ----------------------------------------------------------------------- */
+/* Page-builder InlineEditor placeholder.
+   Tiptap's Placeholder extension tags empty paragraphs with one of two
+   classes: `is-empty` (the currently focused empty node) and
+   `is-editor-empty` (the whole editor is empty). Match both so the hint
+   renders for every empty paragraph block — including the unselected ones,
+   which the user explicitly wants always visible.
+   Tiptap ships no styles for these classes; without this rule the hint
+   ("Press / to add blocks") would be invisible.
+   The hint must be legible on EVERY lobby theme — light flats, dark flats,
+   custom image backgrounds, gradients. A single flat color can't satisfy
+   that, so we render a mid-grey body with a doubled white + a black
+   text-shadow halo: the white strokes give contrast against dark
+   backgrounds, the black stroke gives contrast against light / colored
+   backgrounds, and the combined halo stays subtle enough not to look like
+   real content. */
+/* Inline links inside text blocks inherit the global lobby link color set
+   on the canvas root via `--color-link`. Falls back to `currentColor` when
+   the variable hasn't been emitted (e.g. preview screenshots that skip the
+   theme injection step). */
+.inline-link {
+  color: var(--color-link, currentColor);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Font smoothing across every page-builder editor surface so the canvas
+   text renders with the same antialiasing as the rest of the console. */
+.inline-editor-content,
+.inline-editor {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.inline-editor-content .is-empty:first-child::before,
+.inline-editor-content .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: black;
+  /* `filter: invert(1)` flips the rendered pixels of the pseudo-element
+     against whatever sits behind it, so black text becomes the per-pixel
+     inverse of the background — guaranteeing contrast on light flats,
+     dark flats, image backgrounds, and gradients without committing to a
+     single accent color. */
+  filter: invert(1);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: italic;
+  /* Skip the global color transition so the hint doesn't flicker every
+     time the theme color transition rule above retargets it. */
+  transition: none !important;
+}

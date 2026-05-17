@@ -12,6 +12,7 @@ interface QuoteBlockProps {
   onEnter?: () => void;
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
+  onEmptyDelete?: () => void;
 }
 
 export function QuoteBlock({
@@ -23,12 +24,19 @@ export function QuoteBlock({
   onEnter,
   pendingFocus,
   onFocusConsumed,
+  onEmptyDelete,
 }: QuoteBlockProps) {
   const align = content.align ?? "left";
   return (
     <blockquote
       className="pl-4 italic"
-      style={{ borderLeft: "3px solid var(--color-brand-red)" }}
+      style={{
+        borderLeft: "3px solid var(--color-brand-red)",
+        // Cards override `--color-text-content` so quotes inside a card
+        // pick up the card content color; outside a card we fall back to
+        // the global secondary text token.
+        color: "var(--color-text-content, var(--color-text-secondary))",
+      }}
     >
       <InlineEditor
         value={content.inline}
@@ -38,8 +46,9 @@ export function QuoteBlock({
         isSelected={isSelected}
         isEditing={isEditing}
         placeholder="Quote..."
+        // Drop `text-base text-theme-secondary` — let the wrapper's color
+        // + the canvas-root font-size flow through inheritance.
         contentClassName={cn(
-          "text-base text-theme-secondary",
           align === "center" && "text-center",
           align === "right" && "text-right"
         )}
@@ -47,6 +56,7 @@ export function QuoteBlock({
         onEnter={onEnter}
         pendingFocus={pendingFocus}
         onFocusConsumed={onFocusConsumed}
+        onEmptyDelete={onEmptyDelete}
       />
     </blockquote>
   );

@@ -15,6 +15,7 @@ export {
 } from "./hooks/useImageTransform.js";
 
 // Components
+export { Checkbox, type CheckboxProps } from "./components/Checkbox.js";
 export { ColorModeToggle } from "./components/ColorModeToggle.js";
 export { ResponsiveImage } from "./components/ResponsiveImage.js";
 export { PictureImage } from "./components/PictureImage.js";

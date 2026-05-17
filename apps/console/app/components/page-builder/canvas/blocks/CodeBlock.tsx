@@ -11,6 +11,7 @@ interface CodeBlockProps {
   onEnter?: () => void;
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
+  onEmptyDelete?: () => void;
 }
 
 // Inline-styled "code" chunk. Visually a single styled block but the doc is
@@ -25,6 +26,7 @@ export function CodeBlock({
   onEnter,
   pendingFocus,
   onFocusConsumed,
+  onEmptyDelete,
 }: CodeBlockProps) {
   return (
     <div
@@ -47,6 +49,7 @@ export function CodeBlock({
         onEnter={onEnter}
         pendingFocus={pendingFocus}
         onFocusConsumed={onFocusConsumed}
+        onEmptyDelete={onEmptyDelete}
       />
     </div>
   );

@@ -64,7 +64,7 @@ export function BlockRenderer({
   block,
   isSelected,
   onSelect,
-  onDelete: _onDelete,
+  onDelete,
   onUpdate,
   isEditing = true,
   onSlash,
@@ -127,6 +127,7 @@ export function BlockRenderer({
             onEnter={onEnter}
             pendingFocus={pendingFocus}
             onFocusConsumed={onFocusConsumed}
+            onEmptyDelete={onDelete}
           />
         );
       case "paragraph":
@@ -140,6 +141,7 @@ export function BlockRenderer({
             onEnter={onEnter}
             pendingFocus={pendingFocus}
             onFocusConsumed={onFocusConsumed}
+            onEmptyDelete={onDelete}
           />
         );
       case "bulletList":
@@ -171,6 +173,7 @@ export function BlockRenderer({
             onEnter={onEnter}
             pendingFocus={pendingFocus}
             onFocusConsumed={onFocusConsumed}
+            onEmptyDelete={onDelete}
           />
         );
       case "code":
@@ -184,6 +187,7 @@ export function BlockRenderer({
             onEnter={onEnter}
             pendingFocus={pendingFocus}
             onFocusConsumed={onFocusConsumed}
+            onEmptyDelete={onDelete}
           />
         );
       case "codeBlock":

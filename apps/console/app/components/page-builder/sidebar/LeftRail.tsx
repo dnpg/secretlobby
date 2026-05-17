@@ -26,9 +26,31 @@ import type {
   BlockType,
   CardBlockContent,
   Column,
+  ParagraphBlockContent,
   Section,
 } from "../state/types";
 import { createBlock, createSection } from "../state/helpers";
+
+// Detect the Notion-style "typing affordance" paragraphs the reducer
+// auto-seeds in every column / card. They exist on the canvas so the user
+// can click anywhere and start typing, but they're not real content and
+// would just clutter the layers tree, so we filter them out of the
+// sidebar's block list. A paragraph counts as "empty" once its concatenated
+// text content is the empty string — matches the same helper used by
+// BlockListSurface for the Enter step-into behavior.
+function inlineTextContent(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { text?: unknown; content?: unknown[] };
+  if (typeof n.text === "string") return n.text;
+  if (!Array.isArray(n.content)) return "";
+  return n.content.map(inlineTextContent).join("");
+}
+
+function isPlaceholderParagraph(b: Block): boolean {
+  if (b.type !== "paragraph") return false;
+  const inline = (b.content as ParagraphBlockContent).inline;
+  return inlineTextContent(inline).length === 0;
+}
 import { findBlockLocation } from "../state/reducer";
 import { usePageBuilder } from "../state/provider";
 import {
@@ -1033,7 +1055,11 @@ function SortableSidebarColumn({
   const colSelected = selectedColumnId === column.id;
   const defaultColName = `Column ${columnIndex + 1}`;
   const columnHidden = column.hidden === true;
-  const blockIds = column.blocks.map((b) => b.id);
+  // Hide the trailing / placeholder empty paragraphs the reducer auto-seeds.
+  // They're real blocks on the canvas (the "Press / to add blocks" line) but
+  // surfacing them as layer rows just clutters the tree.
+  const visibleBlocks = column.blocks.filter((b) => !isPlaceholderParagraph(b));
+  const blockIds = visibleBlocks.map((b) => b.id);
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -1118,13 +1144,17 @@ function SortableSidebarColumn({
               items={blockIds}
               strategy={verticalListSortingStrategy}
             >
-              {column.blocks.map((block, blockIndex) => (
+              {visibleBlocks.map((block) => (
+                // Pass the canonical `column.blocks` index, not the
+                // visible-list index — the undo handler restores the block
+                // at this position via a reorderBlocks dispatch and would
+                // mis-place items if the index were filtered.
                 <SortableSidebarBlock
                   key={block.id}
                   section={section}
                   column={column}
                   block={block}
-                  blockIndex={blockIndex}
+                  blockIndex={column.blocks.indexOf(block)}
                   expandedCards={expandedCards}
                   selectedBlockId={selectedBlockId}
                   selectedCardBlockId={selectedCardBlockId}
@@ -1225,7 +1255,9 @@ function SortableSidebarBlock({
   const isCard = block.type === "card";
   const cardExpanded = isCard && expandedCards.has(block.id);
   const cardChildren = isCard
-    ? ((block.content as CardBlockContent).blocks ?? [])
+    ? ((block.content as CardBlockContent).blocks ?? []).filter(
+        (b) => !isPlaceholderParagraph(b)
+      )
     : [];
 
   return (

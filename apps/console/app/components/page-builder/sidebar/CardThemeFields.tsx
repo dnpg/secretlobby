@@ -151,6 +151,11 @@ function borderEditorValueToTheme(
     cardBorderColor: parsed.color,
     cardBorderOpacity: parsed.opacity,
     cardBorderWidth: next.width,
+    // Clear the deprecated border-image field — left over from before the
+    // editor switched to solid-only. `getCardBorderCSS` short-circuits to a
+    // transparent border whenever this is set, which is why an old lobby
+    // would render an invisible border that ignores the picked colour.
+    cardBorderImage: undefined,
     // New structured fields.
     cardBorderStyle: next.style,
     cardBorderSideWidths: next.sideWidths,

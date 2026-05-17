@@ -18,6 +18,7 @@ import {
 } from "~/components/color-picker/utils";
 import { BackgroundPicker } from "~/components/background-picker";
 import { BorderRadiusInput } from "~/components/border-radius-input";
+import { CssLengthInput } from "~/components/css-length-input";
 import { useSwatches } from "../PageBuilderRoot";
 import {
   ColorRow,
@@ -227,6 +228,27 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
                 } as Partial<ThemeSettings>,
               });
             }}
+          />
+          <div>
+            <label className="block text-xs text-theme-secondary mb-1">
+              Font size
+            </label>
+            <CssLengthInput
+              value={theme.textBaseSize ?? "16px"}
+              onChange={(v) => set("textBaseSize", v)}
+              min={8}
+              max={64}
+              ariaLabel="Global base font size"
+              placeholder="16"
+            />
+          </div>
+          <ColorRow
+            label="Link color"
+            value={
+              theme.linkColor ??
+              (theme.colorMode === "light" ? "#2563eb" : "#60a5fa")
+            }
+            onChange={(v) => set("linkColor", v)}
           />
         </CollapsibleSection>
 

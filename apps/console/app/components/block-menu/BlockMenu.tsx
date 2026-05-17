@@ -47,16 +47,24 @@ export function BlockMenu({
     setSearch(initialQuery);
   }, [initialQuery]);
 
-  // Compute popover position after layout so we can measure our own height
-  // for the up-flip decision. Coords are viewport-relative (fixed
+  // Compute popover position after layout so we can measure our own size
+  // for the flip + clamp decisions. Coords are viewport-relative (fixed
   // positioning) — the menu is portal'd to <body> so it can't be clipped by
   // a parent's `overflow` or buried beneath a sibling's stacking context.
+  // Vertical: flip above the anchor when there isn't enough room below.
+  // Horizontal: clamp `left` into [VIEWPORT_PAD, viewportW − popoverW − PAD]
+  // so the menu stays fully on-screen even when the anchor sits near the
+  // right edge (or a left-margin layout pushes it past the left edge).
   useLayoutEffect(() => {
+    const VIEWPORT_PAD = 8;
     const popoverHeight = popoverRef.current?.offsetHeight ?? 320;
+    const popoverWidth = popoverRef.current?.offsetWidth ?? 288;
     const spaceBelow = window.innerHeight - anchor.bottom;
     const flipUp = spaceBelow < popoverHeight + 16;
     const top = flipUp ? anchor.top - popoverHeight - 4 : anchor.bottom + 4;
-    setPos({ top, left: anchor.left });
+    const maxLeft = window.innerWidth - popoverWidth - VIEWPORT_PAD;
+    const left = Math.max(VIEWPORT_PAD, Math.min(anchor.left, maxLeft));
+    setPos({ top, left });
   }, [anchor]);
 
   useEffect(() => {

@@ -445,6 +445,21 @@ export interface ThemeSettings {
    * keep rendering a sane single color.
    */
   textPrimaryColor?: TextColorValue;
+  /**
+   * Global base font-size for body text on the canvas. Accepts any CSS
+   * length string ("16px", "1rem", etc.). Consumers should read this via
+   * `var(--text-base-size, 16px)` so a missing field still resolves cleanly.
+   * Defaults to "16px" — both `defaultDarkTheme` and `defaultLightTheme` set
+   * it explicitly so the Theme UI always has a value to bind against.
+   */
+  textBaseSize?: string;
+  /**
+   * Color applied to inline links inside text blocks (paragraphs, headings,
+   * quotes, etc.). Consumers read this via `var(--color-link, currentColor)`
+   * so an unset value falls back to the surrounding text color. Stored as a
+   * plain hex string for now — the Text section uses a basic ColorRow.
+   */
+  linkColor?: string;
   /** @deprecated Hidden from the Theme UI — only `textPrimary` is user-editable. Still emitted to CSS for legacy consumers. */
   textSecondary: string;
   /** @deprecated Hidden from the Theme UI — only `textPrimary` is user-editable. Still emitted to CSS for legacy consumers. */
@@ -580,6 +595,8 @@ export const defaultDarkTheme: ThemeSettings = {
   colorMode: "dark",
   background: { color: { type: "solid", color: "#030712", opacity: 100 } },
   textPrimary: "#ffffff",
+  textBaseSize: "16px",
+  linkColor: "#60a5fa",
   textSecondary: "#9ca3af",
   textMuted: "#6b7280",
   border: "#374151",
@@ -635,6 +652,8 @@ export const defaultLightTheme: ThemeSettings = {
   colorMode: "light",
   background: { color: { type: "solid", color: "#ffffff", opacity: 100 } },
   textPrimary: "#111827",
+  textBaseSize: "16px",
+  linkColor: "#2563eb",
   textSecondary: "#4b5563",
   textMuted: "#9ca3af",
   border: "#d1d5db",
@@ -1538,6 +1557,14 @@ export function generateThemeCSS(
     `--color-text-primary-image: ${textPrimaryCSS.image}`,
     `--color-text-secondary: ${theme.textSecondary}`,
     `--color-text-muted: ${theme.textMuted}`,
+    // Global base font-size for body text — consumers read this via
+    // `var(--text-base-size, 16px)`. Persisted as a CSS length string
+    // ("16px", "1rem", etc.) so the user can pick their preferred unit.
+    `--text-base-size: ${theme.textBaseSize ?? "16px"}`,
+    // Inline link color — used by `.inline-link` and any anchors that opt in
+    // via `color: var(--color-link, currentColor)`. Defaults to a sensible
+    // blue per color mode (set on defaultDarkTheme / defaultLightTheme).
+    `--color-link: ${theme.linkColor ?? (theme.colorMode === "light" ? "#2563eb" : "#60a5fa")}`,
     `--color-border: ${theme.border}`,
     `--color-border-light: ${theme.border}`,
     `--color-primary: ${theme.primary}`,

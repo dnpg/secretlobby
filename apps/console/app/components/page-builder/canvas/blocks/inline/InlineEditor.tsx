@@ -35,6 +35,12 @@ interface InlineEditorProps {
   // paragraph after Enter.
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
+  // Notion-style empty-block delete. Fires when the user presses Backspace
+  // or Delete while the doc is empty (no text content). The parent removes
+  // the surrounding block — the reducer auto-restores a fresh empty
+  // paragraph if that was the column's last block, so the editor never
+  // gets stuck in a state with no block to type into.
+  onEmptyDelete?: () => void;
 }
 
 // Per-block Tiptap editor configured for inline content only. StarterKit's
@@ -58,84 +64,124 @@ export function InlineEditor({
   onEnter,
   pendingFocus,
   onFocusConsumed,
+  onEmptyDelete,
 }: InlineEditorProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  // Keep the latest slash/enter callbacks in refs so the editor's
-  // ProseMirror `handleKeyDown` can read fresh closures without forcing the
-  // editor to be re-created when the parent re-renders.
+  // Keep the latest slash/enter/change callbacks in refs so the editor's
+  // ProseMirror `handleKeyDown` + `onUpdate` can read fresh closures
+  // without forcing the editor to be re-created when the parent re-renders.
   const onSlashRef = useRef(onSlash);
   const onEnterRef = useRef(onEnter);
+  const onChangeRef = useRef(onChange);
+  const onEmptyDeleteRef = useRef(onEmptyDelete);
   onSlashRef.current = onSlash;
   onEnterRef.current = onEnter;
+  onChangeRef.current = onChange;
+  onEmptyDeleteRef.current = onEmptyDelete;
 
-  const editor = useEditor(
-    {
-      editable: isEditing && isSelected,
-      extensions: [
-        StarterKit.configure({
-          // Disable every block-level node — the page-builder column owns
-          // those. Keep marks + paragraph + the inline `code` mark.
-          heading: false,
-          bulletList: false,
-          orderedList: false,
-          listItem: false,
-          blockquote: false,
-          codeBlock: false,
-          horizontalRule: false,
-          // History is per-block — fine, since each editor has its own
-          // undo stack scoped to that block.
-        }),
-        Underline,
-        Link.configure({
-          openOnClick: false,
-          HTMLAttributes: { class: "inline-link" },
-        }),
-        Placeholder.configure({
-          placeholder,
-          showOnlyWhenEditable: true,
-        }),
-      ],
-      content: value,
-      editorProps: {
-        handleKeyDown: (view, event) => {
-          // Slash interception: only fire when the user types `/` AS THE
-          // FIRST CHARACTER of an effectively-empty doc (cursor at start,
-          // the doc is a single empty paragraph). `doc.textContent` is the
-          // cheapest reliable "is the doc empty" probe — beats
-          // `doc.size <= 2` since empty marks can shift the size by a few
-          // units even when there's no visible text.
-          if (event.key === "/" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
-            const isEmpty = view.state.doc.textContent.length === 0;
-            const atStart = view.state.selection.from <= 2;
-            if (isEmpty && atStart && onSlashRef.current && wrapperRef.current) {
-              event.preventDefault();
-              onSlashRef.current(wrapperRef.current);
-              return true;
-            }
+  // The editor is built ONCE per mount. Do NOT pass `[isEditing, isSelected]`
+  // as deps: that destroys + recreates the underlying ProseMirror view on
+  // every click-to-select. The old view's `destroy()` detaches DOM nodes
+  // that React still has live fiber refs to, and the next commit throws
+  // `NotFoundError: Failed to execute 'removeChild' on 'Node'`. Toggle
+  // editable in place via `editor.setEditable()` in the effect below.
+  const editor = useEditor({
+    editable: isEditing && isSelected,
+    extensions: [
+      StarterKit.configure({
+        // Disable every block-level node — the page-builder column owns
+        // those. Keep marks + paragraph + the inline `code` mark.
+        heading: false,
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+        blockquote: false,
+        codeBlock: false,
+        horizontalRule: false,
+        // History is per-block — fine, since each editor has its own
+        // undo stack scoped to that block.
+      }),
+      Underline,
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: { class: "inline-link" },
+      }),
+      Placeholder.configure({
+        placeholder,
+        // Always render the hint, not only when the editor is editable.
+        // Because we toggle `editor.setEditable(isEditing && isSelected)`
+        // to gate writes, leaving this true would hide the placeholder
+        // for every non-selected empty block — but the user expects the
+        // "Press / to add blocks" affordance to stay visible on every
+        // empty paragraph so they know where to click.
+        showOnlyWhenEditable: false,
+      }),
+    ],
+    content: value,
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        // Slash interception: only fire when the user types `/` AS THE
+        // FIRST CHARACTER of an effectively-empty doc (cursor at start,
+        // the doc is a single empty paragraph). `doc.textContent` is the
+        // cheapest reliable "is the doc empty" probe — beats
+        // `doc.size <= 2` since empty marks can shift the size by a few
+        // units even when there's no visible text.
+        if (event.key === "/" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          const isEmpty = view.state.doc.textContent.length === 0;
+          const atStart = view.state.selection.from <= 2;
+          if (isEmpty && atStart && onSlashRef.current && wrapperRef.current) {
+            event.preventDefault();
+            onSlashRef.current(wrapperRef.current);
+            return true;
           }
-          // Enter: fire `onEnter` so the parent appends a new paragraph
-          // below. Tiptap's default Enter splits the current paragraph;
-          // we suppress that here because the page-builder column owns
-          // block structure (no in-doc paragraph splits).
-          // Shift+Enter still inserts a `hardBreak` (soft line break) via
-          // StarterKit's HardBreak extension — we don't intercept it.
-          if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
-            if (onEnterRef.current) {
-              event.preventDefault();
-              onEnterRef.current();
-              return true;
-            }
+        }
+        // Enter: fire `onEnter` so the parent appends a new paragraph
+        // below. Tiptap's default Enter splits the current paragraph;
+        // we suppress that here because the page-builder column owns
+        // block structure (no in-doc paragraph splits).
+        // Shift+Enter still inserts a `hardBreak` (soft line break) via
+        // StarterKit's HardBreak extension — we don't intercept it.
+        if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          if (onEnterRef.current) {
+            event.preventDefault();
+            onEnterRef.current();
+            return true;
           }
-          return false;
-        },
-      },
-      onUpdate: ({ editor }) => {
-        onChange(editor.getJSON());
+        }
+        // Notion-style empty-doc delete: Backspace or Delete on an
+        // empty doc removes the surrounding block. We probe via
+        // `doc.textContent.length` (same cheap probe as the slash
+        // branch) and bail when modifiers are held so Cmd+Backspace
+        // line-clear and friends keep their browser default.
+        if (
+          (event.key === "Backspace" || event.key === "Delete") &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey
+        ) {
+          if (
+            view.state.doc.textContent.length === 0 &&
+            onEmptyDeleteRef.current
+          ) {
+            event.preventDefault();
+            onEmptyDeleteRef.current();
+            return true;
+          }
+        }
+        return false;
       },
     },
-    // Recreate when the editable flag flips so Tiptap re-evaluates readonly.
-    [isEditing, isSelected]
-  );
+    onUpdate: ({ editor }) => {
+      onChangeRef.current(editor.getJSON());
+    },
+  });
+
+  // Toggle editable in place instead of rebuilding the editor (see the long
+  // comment on `useEditor` above for why rebuilding crashes React).
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.setEditable(isEditing && isSelected);
+  }, [editor, isEditing, isSelected]);
 
   // Hydrate from out-of-band updates (e.g. switching blocks); skip when
   // structurally equal to avoid the setContent → onUpdate echo loop.
@@ -186,7 +232,19 @@ export function InlineEditor({
           contentClassName
         )}
       />
-      {isEditing && isSelected && <InlineBubbleMenu editor={editor} />}
+      {/*
+        BubbleMenu is mounted unconditionally for the editor's whole
+        lifetime. Do NOT gate it on `isSelected` (or any per-render flag).
+        @tiptap/extension-bubble-menu calls `this.element.remove()` on its
+        wrapper <div> during plugin init to reparent it under tippy's
+        popper — React's vdom still thinks that div is a child of the
+        wrapper above, so unmounting the conditional later throws
+        `NotFoundError: Failed to execute 'removeChild' on 'Node'`. Visibility
+        is correctly gated by `shouldShow` (see InlineBubbleMenu) plus the
+        `setEditable(...)` toggle above: when the block isn't selected, the
+        editor is read-only and the menu stays hidden.
+      */}
+      <InlineBubbleMenu editor={editor} />
     </div>
   );
 }

@@ -440,141 +440,210 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
   const isMobile = viewport === "mobile";
   const isPreview = mode === "preview";
 
+  // Render the full section list (sortable in edit mode, plain in preview).
+  // Pulled out of the JSX tree so both the edit-mode device frame and the
+  // preview-mode background wrapper can drop it in unchanged — without
+  // duplicating the SortableSection / DndContext plumbing.
+  const sectionsContent = (() => {
+    const sectionList = sections.map((section: Section) => {
+      const sectionProps = {
+        section,
+        isSelected: selectedSectionId === section.id,
+        selectedColumnId,
+        onClick: () => selectSection(section.id),
+        viewport,
+        isEditing,
+        showLayoutEdit,
+        selectedBlockId,
+        onSelectColumn: (columnId: string) => selectColumn(columnId),
+        onSelectBlock: (id: string | null) => selectBlock(id),
+        onAddBlock: (
+          columnId: string,
+          blockType: BlockType,
+          atIndex?: number
+        ) => addBlockToColumn(section.id, columnId, blockType, atIndex),
+        onDeleteBlock: (columnId: string, blockId: string) =>
+          deleteBlockFromColumn(section.id, columnId, blockId),
+        onUpdateBlock: (
+          columnId: string,
+          blockId: string,
+          content: Partial<BlockContent>
+        ) => updateBlockContent(section.id, columnId, blockId, content),
+        onReorderBlocks: (columnId: string, blockIds: string[]) =>
+          reorderBlocksInColumn(section.id, columnId, blockIds),
+        onResizeColumns: (
+          leftId: string,
+          rightId: string,
+          leftW: string,
+          rightW: string,
+          vp: ViewportSize
+        ) => resizeColumns(section.id, leftId, rightId, leftW, rightW, vp),
+        onMoveBlockUp: (columnId: string, blockId: string) =>
+          moveBlockUp(section.id, columnId, blockId),
+        onMoveBlockDown: (columnId: string, blockId: string) =>
+          moveBlockDown(section.id, columnId, blockId),
+        onMoveBlockToColumn: (
+          columnId: string,
+          blockId: string,
+          direction: "left" | "right"
+        ) => moveBlockToColumn(section.id, columnId, blockId, direction),
+        onReplaceBlock: (
+          columnId: string,
+          blockId: string,
+          newType: BlockType
+        ) => replaceBlockInColumn(section.id, columnId, blockId, newType),
+      };
+
+      return isEditing && isMounted ? (
+        <SortableSection key={section.id} {...sectionProps} />
+      ) : (
+        <SectionComponent key={section.id} {...sectionProps} />
+      );
+    });
+
+    const innerContent = (
+      <>
+        {isEditing && isMounted ? (
+          <SortableContext
+            items={sectionIds}
+            strategy={verticalListSortingStrategy}
+          >
+            {sectionList}
+          </SortableContext>
+        ) : (
+          sectionList
+        )}
+      </>
+    );
+
+    if (!isMounted) {
+      return <div className="space-y-4">{innerContent}</div>;
+    }
+
+    // Single DndContext for both sections and blocks. The unified
+    // handleDragEnd classifies by inspecting `active.id` against the
+    // sections array. Nested DndContexts previously caused section
+    // drags to be swallowed by the inner block context.
+    return (
+      <DndContext
+        id="page-builder-canvas"
+        sensors={sensors}
+        collisionDetection={collisionDetectionStrategy}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="space-y-4">{innerContent}</div>
+        <DragOverlay>
+          {activeBlock && (
+            <div className="opacity-80 rotate-2 scale-105">
+              <BlockRenderer
+                block={activeBlock}
+                isSelected={false}
+                onSelect={() => {}}
+                onDelete={() => {}}
+                isEditing={false}
+              />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+    );
+  })();
+
+  // Background + theme-var declarations shared by both modes. Pulled out so
+  // the preview branch can apply them to the FULL-WIDTH wrapper (background
+  // fills the panel) while the content sits in a narrower centered child,
+  // and the edit branch keeps applying them to the viewport-sized frame.
+  const themedSurfaceStyle: React.CSSProperties = {
+    background: "var(--color-bg)",
+    backgroundSize: "var(--bg-size, auto)",
+    backgroundPosition: "var(--bg-position, center)",
+    backgroundRepeat: "var(--bg-repeat, no-repeat)",
+    backgroundAttachment: "var(--bg-attachment, scroll)",
+    // Global base font-size emitted by generateThemeCSS — every text block
+    // inside the canvas inherits this unless it sets a per-block override
+    // (e.g. ParagraphBlockContent.fontSize).
+    fontSize: "var(--text-base-size, 16px)",
+    // Inject the live theme CSS variables so child blocks get the current
+    // theme without a server round-trip.
+    ...themeStyle,
+  };
+
+  if (isPreview) {
+    // Preview behaves differently by viewport.
+    //
+    // Desktop preview — the lobby's "final" look on a wide screen:
+    //   outer panel (bg-theme-tertiary, console chrome)
+    //     full-width themed wrapper (lobby bg + theme vars fill the panel
+    //     edge-to-edge, regardless of how narrow the content column is)
+    //       centered content column — capped at 1152px (the lobby's
+    //       intended content width) with 16px horizontal padding so it
+    //       doesn't kiss the background edge.
+    //
+    // Tablet / mobile preview — device-frame emulation, identical chrome to
+    // edit mode at those viewports: the bg-theme-tertiary panel acts as the
+    // "around the device" surround, the themed wrapper is a rounded card
+    // pinned to the viewport width, and the lobby background lives strictly
+    // inside that card so it visually represents the device screen.
+    if (viewport === "desktop") {
+      return (
+        <div className="flex-1 overflow-auto bg-theme-tertiary p-0">
+          <div className="min-h-full w-full" style={themedSurfaceStyle}>
+            <div className="mx-auto w-full px-4 transition-[max-width] duration-300" style={{ maxWidth: 1152 }}>
+              <div className="py-4 space-y-4 min-h-[600px]">
+                {sectionsContent}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div
+        className={cn(
+          "flex-1 overflow-auto bg-theme-tertiary",
+          isMobile ? "p-4" : "p-8"
+        )}
+      >
+        <div
+          className="mx-auto min-h-full rounded-3xl shadow-xl shadow-black/20 transition-all duration-300"
+          style={{
+            width: viewportWidth,
+            maxWidth: "100%",
+            ...themedSurfaceStyle,
+          }}
+        >
+          <div className="p-4 space-y-4 min-h-[600px]">{sectionsContent}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
         "flex-1 overflow-auto bg-theme-tertiary",
-        // Preview fills the whole panel edge-to-edge, no surrounding gutter.
-        // In edit mode the gutter depends on the viewport (desktop flush;
-        // mobile gets a tight 16px so the device frame still floats; tablet
-        // keeps the comfortable 32px gutter).
-        isPreview ? "p-0" : isDesktop ? "p-0" : isMobile ? "p-4" : "p-8"
+        // Edit-mode gutter depends on the viewport: desktop flush; mobile
+        // gets a tight 16px so the device frame still floats; tablet keeps
+        // the comfortable 32px gutter.
+        isDesktop ? "p-0" : isMobile ? "p-4" : "p-8"
       )}
     >
       <div
         className={cn(
           "mx-auto transition-all duration-300",
-          // In preview mode we always render edge-to-edge with no device
-          // frame — the user is verifying the final look. In edit mode the
-          // tablet / mobile viewports keep the device-frame styling.
-          isPreview || isDesktop
+          // Tablet / mobile viewports keep the device-frame styling.
+          isDesktop
             ? "min-h-full"
             : "min-h-full rounded-3xl shadow-xl shadow-black/20"
         )}
         style={{
-          // Preview ignores the 1440 desktop cap and fills the panel; edit
-          // mode pins to the selected viewport width.
-          width: isPreview ? "100%" : viewportWidth,
+          width: viewportWidth,
           maxWidth: "100%",
-          // Use the `background` shorthand (NOT `background-color`) so the
-          // theme bg variable can resolve to a gradient or an image URL, not
-          // just a solid color. The Tailwind utility `bg-theme-primary`
-          // emits `background-color: var(...)` which silently ignores
-          // gradient/image values — that's why gradients weren't showing.
-          background: "var(--color-bg)",
-          backgroundSize: "var(--bg-size, auto)",
-          backgroundPosition: "var(--bg-position, center)",
-          backgroundRepeat: "var(--bg-repeat, no-repeat)",
-          backgroundAttachment: "var(--bg-attachment, scroll)",
-          // Inject the live theme CSS variables so child blocks get the
-          // current theme without a server round-trip.
-          ...themeStyle,
+          ...themedSurfaceStyle,
         }}
       >
-        <div className="p-4 space-y-4 min-h-[600px]">
-          {(() => {
-            const sectionList = sections.map((section: Section) => {
-              const sectionProps = {
-                section,
-                isSelected: selectedSectionId === section.id,
-                selectedColumnId,
-                onClick: () => selectSection(section.id),
-                viewport,
-                isEditing,
-                showLayoutEdit,
-                selectedBlockId,
-                onSelectColumn: (columnId: string) => selectColumn(columnId),
-                onSelectBlock: (id: string | null) => selectBlock(id),
-                onAddBlock: (
-                  columnId: string,
-                  blockType: BlockType,
-                  atIndex?: number
-                ) => addBlockToColumn(section.id, columnId, blockType, atIndex),
-                onDeleteBlock: (columnId: string, blockId: string) =>
-                  deleteBlockFromColumn(section.id, columnId, blockId),
-                onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) =>
-                  updateBlockContent(section.id, columnId, blockId, content),
-                onReorderBlocks: (columnId: string, blockIds: string[]) =>
-                  reorderBlocksInColumn(section.id, columnId, blockIds),
-                onResizeColumns: (leftId: string, rightId: string, leftW: string, rightW: string, vp: ViewportSize) =>
-                  resizeColumns(section.id, leftId, rightId, leftW, rightW, vp),
-                onMoveBlockUp: (columnId: string, blockId: string) =>
-                  moveBlockUp(section.id, columnId, blockId),
-                onMoveBlockDown: (columnId: string, blockId: string) =>
-                  moveBlockDown(section.id, columnId, blockId),
-                onMoveBlockToColumn: (columnId: string, blockId: string, direction: "left" | "right") =>
-                  moveBlockToColumn(section.id, columnId, blockId, direction),
-                onReplaceBlock: (
-                  columnId: string,
-                  blockId: string,
-                  newType: BlockType
-                ) =>
-                  replaceBlockInColumn(section.id, columnId, blockId, newType),
-              };
-
-              return isEditing && isMounted ? (
-                <SortableSection key={section.id} {...sectionProps} />
-              ) : (
-                <SectionComponent key={section.id} {...sectionProps} />
-              );
-            });
-
-            const innerContent = (
-              <>
-                {isEditing && isMounted ? (
-                  <SortableContext items={sectionIds} strategy={verticalListSortingStrategy}>
-                    {sectionList}
-                  </SortableContext>
-                ) : (
-                  sectionList
-                )}
-              </>
-            );
-
-            if (!isMounted) {
-              return <div className="space-y-4">{innerContent}</div>;
-            }
-
-            // Single DndContext for both sections and blocks. The unified
-            // handleDragEnd classifies by inspecting `active.id` against the
-            // sections array. Nested DndContexts previously caused section
-            // drags to be swallowed by the inner block context.
-            return (
-              <DndContext
-                id="page-builder-canvas"
-                sensors={sensors}
-                collisionDetection={collisionDetectionStrategy}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-              >
-                <div className="space-y-4">{innerContent}</div>
-                <DragOverlay>
-                  {activeBlock && (
-                    <div className="opacity-80 rotate-2 scale-105">
-                      <BlockRenderer
-                        block={activeBlock}
-                        isSelected={false}
-                        onSelect={() => {}}
-                        onDelete={() => {}}
-                        isEditing={false}
-                      />
-                    </div>
-                  )}
-                </DragOverlay>
-              </DndContext>
-            );
-          })()}
-        </div>
+        <div className="p-4 space-y-4 min-h-[600px]">{sectionsContent}</div>
       </div>
     </div>
   );

@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@secretlobby/ui";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Block, BlockContent, BlockType } from "../state/types";
+import type {
+  Block,
+  BlockContent,
+  BlockType,
+  ParagraphBlockContent,
+} from "../state/types";
 import { parseGapValue } from "../state/helpers";
 import { SortableBlock } from "./SortableBlock";
 import {
@@ -70,6 +75,13 @@ export interface BlockListSurfaceProps {
   onReplaceBlock: (blockId: string, newType: BlockType) => void;
   // Restricts which block-menu entries are shown. Omit for "allow all".
   menuFilter?: (item: BlockMenuItem) => boolean;
+  // True when this surface is rendered INSIDE a card (i.e. its
+  // SortableBlocks are nested under another SortableBlock at the column
+  // level). Forwarded to each SortableBlock so the per-block toolbar uses
+  // a distinct Tailwind named group (`group/inner-block` instead of
+  // `group/block`) — without that distinction, hovering the outer card
+  // would cascade hover state into every nested toolbar at once.
+  isNested?: boolean;
 }
 
 // Internal handle describing what the open BlockMenu should do on pick.
@@ -80,14 +92,35 @@ type MenuMode =
   | { kind: "replace"; blockId: string };
 
 // Block types backed by the InlineEditor — these can consume a pending-
-// focus token. Other types (image, divider, table, code-block, lists, etc.)
-// don't carry an inline-editable surface, so we skip queueing focus for them.
+// focus token directly on the replaced id. Other types (image, divider,
+// table, code-block, lists, etc.) don't carry an inline-editable surface,
+// so for those we focus the trailing paragraph the reducer auto-appends
+// instead.
 const TEXT_BLOCK_TYPES: ReadonlySet<BlockType> = new Set<BlockType>([
   "heading",
   "paragraph",
   "quote",
   "code",
 ]);
+
+// Walk a Tiptap inline JSON doc and collect concatenated text. Mirrors
+// ProseMirror's `doc.textContent` without spinning up a view just to ask
+// "is this paragraph effectively empty?". Used by `handleEnter` to decide
+// whether to step the caret into an existing trailing empty paragraph
+// rather than dispatching another `addBlock` and stacking an orphan line.
+function inlineTextContent(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { text?: unknown; content?: unknown[] };
+  if (typeof n.text === "string") return n.text;
+  if (!Array.isArray(n.content)) return "";
+  return n.content.map(inlineTextContent).join("");
+}
+
+function isEmptyParagraphBlock(b: Block): boolean {
+  if (b.type !== "paragraph") return false;
+  const inline = (b.content as ParagraphBlockContent).inline;
+  return inlineTextContent(inline).length === 0;
+}
 
 export function BlockListSurface({
   blocks,
@@ -106,6 +139,7 @@ export function BlockListSurface({
   onSelectBlock,
   onReplaceBlock,
   menuFilter,
+  isNested = false,
 }: BlockListSurfaceProps) {
   const [menu, setMenu] = useState<{
     anchor: BlockMenuAnchor;
@@ -134,7 +168,12 @@ export function BlockListSurface({
   );
 
   // Resolve the pending-focus request against the current block list. Runs
-  // after every render; cheap because `blocks` is short.
+  // after every render; cheap because `blocks` is short. We also dispatch
+  // `onSelectBlock(fresh.id)` when the resolved paragraph isn't already
+  // selected — the InlineEditor only flips editable while its block is
+  // selected, and the slash-replace path for non-text targets (image,
+  // divider, gallery, etc.) leaves the original id selected even though we
+  // want the caret to land in the freshly-appended trailing paragraph.
   useEffect(() => {
     const req = pendingFocusReqRef.current;
     if (!req) return;
@@ -144,10 +183,33 @@ export function BlockListSurface({
     if (fresh) {
       pendingFocusReqRef.current = null;
       setPendingFocusBlockId(fresh.id);
+      if (selectedBlockId !== fresh.id) {
+        onSelectBlock(fresh.id);
+      }
     }
-  }, [blocks]);
+  }, [blocks, onSelectBlock, selectedBlockId]);
 
-  const blockIds = blocks.map((b) => b.id);
+  // In preview mode, trim leading + trailing runs of empty paragraphs. The
+  // reducer auto-seeds the typing-affordance paragraphs at the start of
+  // every column and after every non-paragraph insert; in edit mode they
+  // double as the "Press / to add blocks" hint, but in preview they'd just
+  // render as blank gaps before / after the real content. Middle empties
+  // are intentional (the user might have left them as visual spacers), so
+  // we only chip away at the edges.
+  const renderedBlocks = isEditing
+    ? blocks
+    : (() => {
+        let start = 0;
+        while (start < blocks.length && isEmptyParagraphBlock(blocks[start])) {
+          start++;
+        }
+        let end = blocks.length;
+        while (end > start && isEmptyParagraphBlock(blocks[end - 1])) {
+          end--;
+        }
+        return blocks.slice(start, end);
+      })();
+  const blockIds = renderedBlocks.map((b) => b.id);
   const gap = parseGapValue(blockGap || "8");
 
   const openMenuAt = useCallback(
@@ -172,23 +234,47 @@ export function BlockListSurface({
     (type: BlockType) => {
       if (!menu) return;
       if (menu.mode.kind === "insert") {
+        // Toolbar `+` insert. The reducer's `select: true` on `addBlock`
+        // selects the inserted block, which is what we want for text-ish
+        // types (paragraph / heading / quote / code) — the InlineEditor's
+        // auto-focus chains off `isSelected` and lands the caret inside
+        // the new block so the user can type immediately. Non-text inserts
+        // (image / divider / etc.) leave the caret nowhere unless we
+        // forward focus to the trailing paragraph the reducer also
+        // appends, so snapshot known ids for the resolver to catch it.
+        if (!TEXT_BLOCK_TYPES.has(type)) {
+          pendingFocusReqRef.current = {
+            sourceBlockId: "",
+            knownIds: new Set(blocks.map((b) => b.id)),
+          };
+        }
         onAddBlock(type, menu.mode.insertIndex);
       } else {
-        // Replace path: the block id is preserved, so we can directly queue
-        // pending-focus against the same id. The user expects the caret to
-        // be inside the freshly swapped block so they can start typing
-        // without an extra click. Only queue for text-ish types — non-text
-        // blocks (image / divider / table / etc.) don't carry an inline
-        // editor to consume the token.
         const replacedId = menu.mode.blockId;
-        onReplaceBlock(replacedId, type);
         if (TEXT_BLOCK_TYPES.has(type)) {
+          // Text replacement: the block id is preserved, so the caret lands
+          // inside the swapped heading / paragraph / quote / code by
+          // pointing pendingFocus at the same id.
+          onReplaceBlock(replacedId, type);
           setPendingFocusBlockId(replacedId);
+        } else {
+          // Non-text replacement (image / divider / table / list /
+          // codeBlock / gallery / card / player): the swapped block has no
+          // inline editor, so the caret has nowhere to land on it. The
+          // reducer auto-appends a fresh trailing paragraph after every
+          // non-paragraph replace — snapshot known ids BEFORE the dispatch
+          // and let the resolver effect pick out the trailing paragraph
+          // and route focus + selection there.
+          pendingFocusReqRef.current = {
+            sourceBlockId: replacedId,
+            knownIds: new Set(blocks.map((b) => b.id)),
+          };
+          onReplaceBlock(replacedId, type);
         }
       }
       closeMenu();
     },
-    [menu, onAddBlock, onReplaceBlock, closeMenu]
+    [menu, onAddBlock, onReplaceBlock, closeMenu, blocks]
   );
 
   const handleEmptyKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -222,19 +308,38 @@ export function BlockListSurface({
     [openMenuAt]
   );
 
-  // Enter-from-inside-editor handler. Append a fresh empty paragraph right
-  // after the source block and queue it for auto-focus on next render.
+  // Enter-from-inside-editor handler. If the very next block is already an
+  // empty paragraph (typically the trailing paragraph the reducer
+  // auto-appended after a slash-replace, or a previously-Enter-created
+  // empty line), step the caret INTO it instead of dispatching another
+  // `addBlock`. That kills the orphan empty paragraph that would otherwise
+  // appear below a freshly slash-inserted heading / quote / code as soon
+  // as the user typed a title and hit Enter. Selection alone is enough to
+  // land the caret — the InlineEditor's setEditable + auto-focus effects
+  // chain off `isSelected`.
   const handleEnter = useCallback(
     (blockId: string) => {
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
+      const nextBlock = blocks[idx + 1];
+      if (nextBlock && isEmptyParagraphBlock(nextBlock)) {
+        // Select AND queue pendingFocus. Selection alone flips the next
+        // editor editable, but the auto-focus effect bails when
+        // `editor.isFocused` is already true — which it can be when the
+        // old editor's blur hasn't fully landed by the time React commits.
+        // pendingFocus has no `isFocused` guard, so it deterministically
+        // moves the caret to the next paragraph.
+        onSelectBlock(nextBlock.id);
+        setPendingFocusBlockId(nextBlock.id);
+        return;
+      }
       pendingFocusReqRef.current = {
         sourceBlockId: blockId,
         knownIds: new Set(blocks.map((b) => b.id)),
       };
       onAddBlock("paragraph", idx + 1);
     },
-    [blocks, onAddBlock]
+    [blocks, onAddBlock, onSelectBlock]
   );
 
   // Called by a SortableBlock / InlineEditor once it consumes the pending
@@ -283,7 +388,7 @@ export function BlockListSurface({
       ) : (
         <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col" style={{ gap }}>
-            {blocks.map((block, blockIndex) => (
+            {renderedBlocks.map((block, blockIndex) => (
               <SortableBlock
                 key={block.id}
                 block={block}
@@ -292,10 +397,11 @@ export function BlockListSurface({
                 onDelete={() => onDeleteBlock(block.id)}
                 onUpdate={(content) => onUpdateBlock(block.id, content)}
                 blockIndex={blockIndex}
-                totalBlocks={blocks.length}
+                totalBlocks={renderedBlocks.length}
                 columnIndex={columnIndex}
                 totalColumns={totalColumns}
                 isEditing={isEditing}
+                isNested={isNested}
                 onMoveUp={() => onMoveBlockUp(block.id)}
                 onMoveDown={() => onMoveBlockDown(block.id)}
                 onMoveToColumn={(direction) =>

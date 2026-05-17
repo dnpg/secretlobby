@@ -458,7 +458,7 @@ type SaveActionData = { success: true } | { error: string };
 // Autosave + URL-sync wrapper. Reads from the reducer-backed context, owns the
 // fetcher used for `update_page_layout`, and renders the layout shell.
 function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps) {
-  const { state, dispatch } = usePageBuilder();
+  const { state, dispatch, undo, redo } = usePageBuilder();
   const {
     sections,
     selection,
@@ -552,6 +552,80 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isPreview, dispatch]);
+
+  // Cmd/Ctrl+Z → undo, Cmd/Ctrl+Shift+Z (or Cmd/Ctrl+Y) → redo. We bail when
+  // focus is inside an editable surface so Tiptap's own per-editor undo wins
+  // for in-progress typing — the page-builder history covers everything else
+  // (block reorders, inserts, deletes, theme tweaks, column resizes, etc.).
+  useEffect(() => {
+    if (isPreview) return;
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+      const key = e.key.toLowerCase();
+      const isUndo = key === "z" && !e.shiftKey;
+      const isRedo = (key === "z" && e.shiftKey) || key === "y";
+      if (!isUndo && !isRedo) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      e.preventDefault();
+      if (isUndo) undo();
+      else redo();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isPreview, undo, redo]);
+
+  // Delete / Backspace deletes the currently-selected block. We bail when the
+  // target is an editable surface (Tiptap contenteditable, input, textarea) —
+  // the editor's own delete semantics MUST win there. Cards dispatch through
+  // `deleteBlockFromCard` so nested children unmount cleanly.
+  useEffect(() => {
+    if (isPreview) return;
+    if (selection.kind !== "block") return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      e.preventDefault();
+      if (selection.cardBlockId) {
+        dispatch({
+          type: "deleteBlockFromCard",
+          cardBlockId: selection.cardBlockId,
+          blockId: selection.blockId,
+        });
+      } else {
+        dispatch({
+          type: "deleteBlock",
+          sectionId: selection.sectionId,
+          columnId: selection.columnId,
+          blockId: selection.blockId,
+        });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isPreview, selection, dispatch]);
 
   // Manual save: submits both fetchers in parallel for the dirty channel(s).
   // Autosave was removed — the user clicks the Save button in TopHeader to

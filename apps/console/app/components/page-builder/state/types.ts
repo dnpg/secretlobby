@@ -139,6 +139,10 @@ export interface HeadingBlockContent {
 export interface ParagraphBlockContent {
   inline: InlineDoc;
   align?: "left" | "center" | "right";
+  // Optional per-paragraph font-size override. Stored as a CSS length
+  // string ("18px", "1.25rem", etc.). When unset the paragraph inherits the
+  // global `--text-base-size` emitted by the theme — see ThemeSettings.
+  fontSize?: string;
 }
 
 export interface QuoteBlockContent {

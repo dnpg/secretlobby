@@ -130,7 +130,18 @@ export function CardBlock({
   );
 
   // ---- Wrapper style — same theme chrome as before. ------------------------
-  const border = getCardBorderCSS(theme);
+  // The page-builder Card editor only writes solid borders; `cardBorderImage`
+  // and `cardBorderType: "gradient"` are deprecated. `getCardBorderCSS` still
+  // honours both for back-compat with player/lobby consumers, but when either
+  // is set it returns `"<width> solid transparent"` + a `borderImage` that
+  // this wrapper doesn't spread — the net effect is an invisible border that
+  // ignores the user's picked `cardBorderColor`. Strip the legacy fields here
+  // so the helper always falls through to the uniform-solid path.
+  const solidBorderTheme = useMemo<ThemeSettings>(
+    () => ({ ...theme, cardBorderImage: undefined, cardBorderType: "solid" }),
+    [theme]
+  );
+  const border = getCardBorderCSS(solidBorderTheme);
   const showBorder = hasPositiveBorderWidth(theme);
   const backdropFilterCSS = backdropFilterToCSS(theme.cardBackdropFilter);
   const hasBackdropFilter =
@@ -144,6 +155,15 @@ export function CardBlock({
       ),
       borderRadius: borderRadiusToCSS(theme.cardBorderRadius, 12),
       color: theme.cardContentColor,
+      // Cascade theme card text + heading colors to descendants via CSS
+      // variables. HeadingBlock reads `--color-text-heading` (falling back
+      // to `--color-text-primary` outside cards), and ParagraphBlock /
+      // QuoteBlock read `--color-text-content` (falling back to the
+      // primary/secondary text tokens). Setting these on the card wrapper
+      // keeps the global theme as the canvas default and lets cards
+      // override per-card via their own theme overrides.
+      ["--color-text-heading" as string]: "var(--card-heading-color)",
+      ["--color-text-content" as string]: "var(--card-content-color)",
       ...(hasBackdropFilter
         ? {
             backdropFilter: backdropFilterCSS,
@@ -326,6 +346,10 @@ export function CardBlock({
           onSelectBlock={handleSelectBlock}
           onReplaceBlock={handleReplaceBlock}
           menuFilter={(item) => !DISALLOWED_INSIDE_CARD.has(item.type)}
+          // Nested surface: switches each child SortableBlock's toolbar to
+          // a `group/inner-block` scope so hovering the outer card no
+          // longer reveals every inner toolbar at once.
+          isNested
         />
       </DndContext>
     </div>

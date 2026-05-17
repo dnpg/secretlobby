@@ -1,4 +1,3 @@
-import { cn } from "@secretlobby/ui";
 import type {
   BlockContent,
   HeadingBlockContent,
@@ -15,6 +14,7 @@ interface HeadingBlockProps {
   onEnter?: () => void;
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
+  onEmptyDelete?: () => void;
 }
 
 // Tailwind font-size + weight mapping per heading level. Headings render as
@@ -40,21 +40,36 @@ export function HeadingBlock({
   onEnter,
   pendingFocus,
   onFocusConsumed,
+  onEmptyDelete,
 }: HeadingBlockProps) {
   const level = content.level ?? 1;
   return (
-    <div role="heading" aria-level={level} className="w-full">
+    <div
+      role="heading"
+      aria-level={level}
+      className="w-full"
+      // Headings inherit `--color-text-heading` so cards (which override
+      // that variable to `--card-heading-color`) get the lobby's heading
+      // color; outside a card the variable is unset and we fall back to
+      // `--color-text-primary` (the global text color).
+      style={{
+        color: "var(--color-text-heading, var(--color-text-primary))",
+      }}
+    >
       <InlineEditor
         value={content.inline}
         onChange={(next) => onUpdate?.({ inline: next } as Partial<BlockContent>)}
         isSelected={isSelected}
         isEditing={isEditing}
         placeholder={`Heading ${level}`}
-        contentClassName={cn(LEVEL_CLASS[level], "text-theme-primary")}
+        // No explicit `text-theme-primary` — let the wrapper's `color`
+        // style flow through inheritance so the card override above wins.
+        contentClassName={LEVEL_CLASS[level]}
         onSlash={onSlash}
         onEnter={onEnter}
         pendingFocus={pendingFocus}
         onFocusConsumed={onFocusConsumed}
+        onEmptyDelete={onEmptyDelete}
       />
     </div>
   );

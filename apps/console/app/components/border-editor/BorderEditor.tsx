@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@secretlobby/ui";
+import { Checkbox, cn } from "@secretlobby/ui";
 import type {
   BorderSideStyles,
   BorderSideWidths,
@@ -96,24 +96,48 @@ export function BorderEditor({
   setDraft,
   clearDraft,
 }: BorderEditorProps) {
+  // When the effective border style is `none`, width + color are
+  // ineffective — CSS paints nothing regardless. Hide those rows so the
+  // panel doesn't carry dead controls. "Effective none" means EITHER the
+  // uniform style is `none`, OR per-side mode has every side set to
+  // `none`. Switching back to a renderable style restores both rows.
+  const isUniformNone = !value.sideStyles && value.style === "none";
+  const isAllSidesNone =
+    !!value.sideStyles &&
+    value.sideStyles.top === "none" &&
+    value.sideStyles.right === "none" &&
+    value.sideStyles.bottom === "none" &&
+    value.sideStyles.left === "none";
+  const hideWidthAndColor = isUniformNone || isAllSidesNone;
+
   return (
     <div className="space-y-3">
       <StyleRow value={value} onChange={onChange} />
-      <WidthRow value={value} onChange={onChange} />
-      <ColorRow
-        value={value}
-        onChange={onChange}
+      {!hideWidthAndColor && (
+        <>
+          <WidthRow value={value} onChange={onChange} />
+          <ColorRow
+            value={value}
+            onChange={onChange}
+            swatches={swatches}
+            onSaveSwatch={onSaveSwatch}
+            onUpdateSwatch={onUpdateSwatch}
+            onDeleteSwatch={onDeleteSwatch}
+            setDraft={setDraft}
+            clearDraft={clearDraft}
+          />
+        </>
+      )}
+
+      <BoxShadowSection
+        value={value.boxShadow}
+        onChange={(next) => onChange({ ...value, boxShadow: next })}
         swatches={swatches}
         onSaveSwatch={onSaveSwatch}
         onUpdateSwatch={onUpdateSwatch}
         onDeleteSwatch={onDeleteSwatch}
         setDraft={setDraft}
         clearDraft={clearDraft}
-      />
-
-      <BoxShadowSection
-        value={value.boxShadow}
-        onChange={(next) => onChange({ ...value, boxShadow: next })}
       />
     </div>
   );
@@ -526,13 +550,28 @@ const DEFAULT_SHADOW = (): ShadowStop => ({
   color: formatHexWithAlpha("#000000", 25),
 });
 
+interface ShadowChildProps {
+  swatches: SavedSwatch[];
+  onSaveSwatch?: BorderEditorProps["onSaveSwatch"];
+  onUpdateSwatch?: BorderEditorProps["onUpdateSwatch"];
+  onDeleteSwatch?: BorderEditorProps["onDeleteSwatch"];
+  setDraft?: BorderEditorProps["setDraft"];
+  clearDraft?: BorderEditorProps["clearDraft"];
+}
+
 function BoxShadowSection({
   value,
   onChange,
+  swatches,
+  onSaveSwatch,
+  onUpdateSwatch,
+  onDeleteSwatch,
+  setDraft,
+  clearDraft,
 }: {
   value: BoxShadow | undefined;
   onChange: (next: BoxShadow | undefined) => void;
-}) {
+} & ShadowChildProps) {
   const [open, setOpen] = useState(!!value && value.length > 0);
   const count = value?.length ?? 0;
 
@@ -557,6 +596,12 @@ function BoxShadowSection({
               const list = (value ?? []).filter((s) => s.id !== shadow.id);
               onChange(list.length > 0 ? list : undefined);
             }}
+            swatches={swatches}
+            onSaveSwatch={onSaveSwatch}
+            onUpdateSwatch={onUpdateSwatch}
+            onDeleteSwatch={onDeleteSwatch}
+            setDraft={setDraft}
+            clearDraft={clearDraft}
           />
         ))}
         <button
@@ -575,29 +620,106 @@ function ShadowEditor({
   shadow,
   onChange,
   onRemove,
+  swatches,
+  onSaveSwatch,
+  onUpdateSwatch,
+  onDeleteSwatch,
+  setDraft,
+  clearDraft,
 }: {
   shadow: ShadowStop;
   onChange: (next: ShadowStop) => void;
   onRemove: () => void;
-}) {
+} & ShadowChildProps) {
+  // Shadow color is persisted as a hex string with optional alpha
+  // (`#RRGGBBAA`). Split it for the ColorPicker (which speaks ColorValue's
+  // `{ color, opacity }` shape) and reassemble on write.
+  const parsedColor = parseHexWithAlpha(shadow.color) ?? {
+    color: shadow.color || "#000000",
+    opacity: 100,
+  };
   return (
     <div className="rounded border border-theme p-2 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-theme-secondary">
-          <input
-            type="checkbox"
-            checked={shadow.inset}
-            onChange={(e) => onChange({ ...shadow, inset: e.target.checked })}
-            className="accent-[var(--color-brand-red)] cursor-pointer"
-          />
-          <span>Inset</span>
-        </label>
+        {/* Inset toggle + inline shadow color picker share the leading row.
+            Radix checkbox for accessibility + consistent styling with the
+            rest of the project; the ColorPicker resolves swatch-refs the
+            same way the border color row does so picking a saved swatch
+            inlines as a concrete hex+alpha on the shadow. */}
+        <div className="flex items-center gap-2 min-w-0">
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-theme-secondary">
+            <Checkbox
+              checked={shadow.inset}
+              onCheckedChange={(checked) =>
+                onChange({ ...shadow, inset: checked === true })
+              }
+              aria-label="Inset shadow"
+            />
+            <span>Inset</span>
+          </label>
+          <div className="min-w-0">
+            <ColorPicker
+              label="Shadow color"
+              value={{
+                type: "solid",
+                color: parsedColor.color,
+                opacity: parsedColor.opacity,
+              }}
+              onChange={(v) => {
+                let color: string;
+                let opacity: number;
+                if (v.type === "swatch-ref") {
+                  const resolved = unlinkValue(v, swatches);
+                  if (resolved.type === "solid") {
+                    color = resolved.color;
+                    opacity = resolved.opacity;
+                  } else {
+                    color = resolved.fallback ?? parsedColor.color;
+                    opacity = 100;
+                  }
+                } else if (v.type === "solid") {
+                  color = v.color;
+                  opacity = v.opacity;
+                } else {
+                  color = v.fallback ?? parsedColor.color;
+                  opacity = 100;
+                }
+                onChange({
+                  ...shadow,
+                  color: formatHexWithAlpha(color, opacity),
+                });
+              }}
+              allowedTypes={["solid"]}
+              swatches={swatches.filter((s) => s.kind === "solid")}
+              onSaveSwatch={onSaveSwatch}
+              onUpdateSwatch={onUpdateSwatch}
+              onDeleteSwatch={onDeleteSwatch}
+              setDraft={setDraft}
+              clearDraft={clearDraft}
+            />
+          </div>
+        </div>
         <button
           type="button"
           onClick={onRemove}
-          className="text-[10px] text-theme-muted hover:text-red-400 cursor-pointer underline"
+          className="p-1 rounded text-theme-muted hover:text-red-400 hover:bg-theme-tertiary cursor-pointer flex-shrink-0"
+          title="Remove shadow"
+          aria-label="Remove shadow"
         >
-          Remove
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+            />
+          </svg>
         </button>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
@@ -627,13 +749,6 @@ function ShadowEditor({
           onChange={(n) => onChange({ ...shadow, spread: n })}
         />
       </div>
-      <TextField
-        label="Color"
-        value={shadow.color}
-        onChange={(s) => onChange({ ...shadow, color: s })}
-        placeholder="#00000040"
-        title="Hex with optional alpha (#RRGGBB or #RRGGBBAA)"
-      />
     </div>
   );
 }
@@ -732,31 +847,3 @@ function NumberField({
   );
 }
 
-function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  title,
-}: {
-  label: string;
-  value: string;
-  onChange: (s: string) => void;
-  placeholder?: string;
-  title?: string;
-}) {
-  return (
-    <label className="block" title={title}>
-      <span className="block text-[10px] uppercase tracking-wide text-theme-muted mb-1">
-        {label}
-      </span>
-      <input
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full px-2 py-1 text-xs bg-theme-tertiary border border-theme rounded text-theme-primary"
-      />
-    </label>
-  );
-}
