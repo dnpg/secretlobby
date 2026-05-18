@@ -111,7 +111,15 @@ export {
   CodeBlockView,
   type CodeBlockViewProps,
 } from "./blocks/CodeBlockView";
+export { TableView, type TableViewProps } from "./blocks/TableView";
 export { InlineContent, type InlineContentProps } from "./blocks/inlineDoc";
+
+// BlockView — single-entry dispatcher. The lobby (and the editor, eventually)
+// renders `<BlockView block={…} theme={…} socialLinks={…} />` and gets the
+// right per-type view. Complex blocks not yet extracted (player / card /
+// gallery) fall through to `renderFallback` so the host can provide its own
+// renderer while the migration completes.
+export { BlockView, type BlockViewProps } from "./blocks/BlockView";
 export {
   VIEWPORT_WIDTHS,
   parseGapValue,
