@@ -79,6 +79,48 @@ interface LoginPageSettings {
   buttonLabel: string;
 }
 
+// Default page-builder layout for lobbies that haven't been edited in the
+// page-builder yet (no `lobby.settings.pageLayout` saved). One section, one
+// full-width column, one full-variant player block. Drops cleanly into the
+// same SectionView + BlockView pipeline as a saved layout, so the lobby's
+// render path is uniform — saved layouts and the default both flow through
+// PlayerBlockView with the same audio + track wiring.
+//
+// `playlistId` is intentionally empty: the lobby still loads a single track
+// list per page, and PlayerBlockView ignores playlistId for now. Once
+// multi-playlist support lands the loader will resolve this against a
+// canonical "main" playlist.
+const DEFAULT_LOBBY_PAGE_LAYOUT: { sections: Section[]; version: number } = {
+  version: 1,
+  sections: [
+    {
+      id: "default-section",
+      columns: [
+        {
+          id: "default-column",
+          width: "100%",
+          blocks: [
+            {
+              id: "default-player",
+              type: "player",
+              content: {
+                playlistId: "",
+                variant: "full",
+                showVisualizer: true,
+                showPlaylist: true,
+                autoplay: true,
+              },
+            },
+          ],
+        },
+      ],
+      rowGap: "0",
+      columnGap: "0",
+      mobileLayout: "stack",
+    },
+  ],
+};
+
 const defaultLoginPageSettings: LoginPageSettings = {
   title: "",
   description: "",
@@ -1462,13 +1504,12 @@ export default function LobbyIndex() {
             </div>
           )}
           {(() => {
-            // Single `renderPlayer(content)` factory — both the legacy
-            // no-sections fallback and the page-builder's per-block render
-            // call this with the block's persisted content (or a default
-            // shape when there is no block). Captures every audio + track
-            // prop from this component's scope so the hidden `<audio>`
-            // element and the autoplay state are shared across every
-            // PlayerBlockView instance on the page.
+            // `renderPlayer(content)` is the host's bridge to PlayerBlockView.
+            // Captures every audio + track prop from this component's scope so
+            // the hidden `<audio>` element and the autoplay state are shared
+            // across every PlayerBlockView instance on the page — which means
+            // designers can drop multiple player blocks into a section and
+            // they'll all coordinate through the same playback state.
             const renderPlayer = (content: PlayerBlockContent) => (
               <PlayerBlockView
                 content={content}
@@ -1506,22 +1547,17 @@ export default function LobbyIndex() {
               />
             );
 
-            // Default content shape for the legacy no-sections fallback —
-            // matches PlayerView's own defaults so un-migrated lobbies
-            // paint identically. `playlistId` is left empty because the
-            // lobby currently loads a single track list; multi-playlist
-            // support is a future migration.
-            const defaultPlayerContent: PlayerBlockContent = {
-              playlistId: "",
-              variant: "full",
-              showVisualizer: true,
-              showPlaylist: true,
-              autoplay: true,
-            };
-
-            const sections = (data.pageLayout?.sections ??
-              []) as unknown as Section[];
-            if (sections.length === 0) return renderPlayer(defaultPlayerContent);
+            // Un-migrated lobbies (no saved pageLayout, or a saved layout
+            // with zero sections) get the module-level default in-memory:
+            // a single section with a single full-variant player block.
+            // Every lobby — saved or not — flows through the same
+            // SectionView + BlockView pipeline below, so the lobby has
+            // exactly one render path for content.
+            const savedSections = data.pageLayout?.sections;
+            const sections: Section[] =
+              savedSections && savedSections.length > 0
+                ? (savedSections as unknown as Section[])
+                : DEFAULT_LOBBY_PAGE_LAYOUT.sections;
             return sections.map((section) => (
               <SectionView
                 key={section.id}
