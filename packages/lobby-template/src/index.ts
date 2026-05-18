@@ -98,6 +98,19 @@ export {
   type ParagraphViewProps,
 } from "./blocks/ParagraphView";
 export { QuoteView, type QuoteViewProps } from "./blocks/QuoteView";
+export {
+  BulletListView,
+  type BulletListViewProps,
+} from "./blocks/BulletListView";
+export {
+  OrderedListView,
+  type OrderedListViewProps,
+} from "./blocks/OrderedListView";
+export { CodeView, type CodeViewProps } from "./blocks/CodeView";
+export {
+  CodeBlockView,
+  type CodeBlockViewProps,
+} from "./blocks/CodeBlockView";
 export { InlineContent, type InlineContentProps } from "./blocks/inlineDoc";
 export {
   VIEWPORT_WIDTHS,
