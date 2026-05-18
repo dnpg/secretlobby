@@ -1464,7 +1464,17 @@ export default function LobbyIndex() {
         <main
           id="main-content"
           aria-label="Login"
-          style={data.themeVars as React.CSSProperties}
+          style={{
+            ...(data.themeVars as React.CSSProperties),
+            // LoginPanel paints its own full-bleed `bgColor` wrapper
+            // inside, so we don't need to set `background` on the main —
+            // but we DO need `--btn-*` and friends to cascade so the
+            // submit button + below-panel toggle pick up the global
+            // theme. font-size is set so any text inside the panel
+            // (descriptions, errors) reads the global base.
+            fontSize: "var(--text-base-size, 16px)",
+            minHeight: "100vh",
+          }}
         >
           <LoginPanel
             settings={lp}
@@ -1484,16 +1494,42 @@ export default function LobbyIndex() {
         // Authenticated lobby content — renders the page-builder layout
         // through the same `SectionView` + `BlockView` pipeline the editor
         // preview uses, so the published lobby paints exactly what
-        // designers see in the canvas. Page chrome (centered max-width
-        // container + padding) mirrors the editor's desktop preview branch
-        // in Canvas.tsx so widths line up. Body background flows from the
-        // `bodyBg` useEffect that writes to `document.body.style`.
+        // designers see in the canvas. Page chrome (themed surface +
+        // centered max-width container + padding) mirrors the editor's
+        // desktop preview branch in Canvas.tsx so the two surfaces are
+        // byte-for-byte the same layout.
+        //
+        // The themed surface style applies the theme's background CSS vars
+        // (color / image / size / position / repeat / attachment) plus the
+        // global font-size and the raw theme CSS vars. Same shape the
+        // editor builds in Canvas.tsx — kept in sync intentionally because
+        // any divergence shows up as "the lobby looks different from the
+        // editor preview".
+        //
+        // `data.bodyBg` is still applied to `document.body` via the
+        // useEffect below — covers the area around the main when content
+        // is shorter than the viewport, and the small SSR window before
+        // hydration. The main carrying its own background means the
+        // page paints correctly the moment the HTML lands, before any JS
+        // runs.
         //
         // For lobbies WITHOUT a saved layout, the in-memory
         // DEFAULT_LOBBY_PAGE_LAYOUT (single section, single full-variant
         // player block) flows through the same pipeline — one render
         // path, no special-case branch.
-        <main id="main-content" style={data.themeVars as React.CSSProperties}>
+        <main
+          id="main-content"
+          style={{
+            ...(data.themeVars as React.CSSProperties),
+            background: "var(--color-bg)",
+            backgroundSize: "var(--bg-size, auto)",
+            backgroundPosition: "var(--bg-position, center)",
+            backgroundRepeat: "var(--bg-repeat, no-repeat)",
+            backgroundAttachment: "var(--bg-attachment, scroll)",
+            fontSize: "var(--text-base-size, 16px)",
+            minHeight: "100vh",
+          }}
+        >
           <div
             className="mx-auto w-full px-4"
             style={{ maxWidth: 1152 }}
