@@ -25,7 +25,11 @@
 import type { CSSProperties } from "react";
 import { useImageTransform } from "@secretlobby/ui";
 import { borderRadiusToCSS, normalizeCSSValue } from "@secretlobby/theme";
-import type { ImageBlockContent, ThemeSettings } from "./types";
+import type {
+  ImageBlockContent,
+  ThemeSettings,
+  ViewportSize,
+} from "./types";
 
 // Default placeholder dims for legacy blocks that haven't persisted real
 // media dimensions yet. Picked to roughly match a 16:9 desktop image so the
@@ -67,9 +71,19 @@ const DESKTOP_SIZES = "100vw";
 export interface ImageBlockViewProps {
   content: ImageBlockContent;
   theme: ThemeSettings;
+  /** Editor-only — the page-builder canvas's currently-previewed viewport.
+   *  When set, an extra `<source media="(min-width: 0px)">` is emitted first
+   *  so the canvas honours the simulated viewport (Mobile / Tablet override)
+   *  regardless of the real browser width. The lobby never passes this —
+   *  real media queries pick the right asset on the user's real device. */
+  simulatedViewport?: ViewportSize;
 }
 
-export function ImageBlockView({ content, theme }: ImageBlockViewProps) {
+export function ImageBlockView({
+  content,
+  theme,
+  simulatedViewport,
+}: ImageBlockViewProps) {
   const { generateSrcSet, transformUrl } = useImageTransform();
   const hasResponsiveImages = content.tabletMediaUrl || content.mobileMediaUrl;
 
@@ -143,8 +157,42 @@ export function ImageBlockView({ content, theme }: ImageBlockViewProps) {
     width: DESKTOP_WIDTHS[DESKTOP_WIDTHS.length - 1],
   });
 
+  // Simulated-viewport override (editor canvas only). Real `<source media>`
+  // queries match the BROWSER's width, not the canvas's previewed viewport
+  // chip, so they never fire when the editor is on a desktop browser
+  // previewing Mobile / Tablet. Emit one extra <source> with
+  // `media="(min-width: 0px)"` — always matches, first <source> wins — that
+  // points at the override for whichever viewport the editor previews.
+  const simulatedOverride =
+    simulatedViewport === "mobile" && content.mobileMediaUrl
+      ? {
+          url: content.mobileMediaUrl,
+          widths: MOBILE_WIDTHS,
+          sizes: MOBILE_SIZES,
+          width: mobileW,
+          height: mobileH,
+        }
+      : simulatedViewport === "tablet" && content.tabletMediaUrl
+        ? {
+            url: content.tabletMediaUrl,
+            widths: TABLET_WIDTHS,
+            sizes: TABLET_SIZES,
+            width: tabletW,
+            height: tabletH,
+          }
+        : null;
+
   const imageContent = hasResponsiveImages ? (
     <picture>
+      {simulatedOverride && (
+        <source
+          media="(min-width: 0px)"
+          srcSet={generateSrcSet(simulatedOverride.url, simulatedOverride.widths)}
+          sizes={simulatedOverride.sizes}
+          width={simulatedOverride.width}
+          height={simulatedOverride.height}
+        />
+      )}
       {content.mobileMediaUrl && (
         <source
           media="(max-width: 767px)"

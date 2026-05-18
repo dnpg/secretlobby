@@ -2,8 +2,10 @@ import { useMemo } from "react";
 import { cn } from "@secretlobby/ui";
 import {
   DividerView,
+  ImageBlockView,
   SocialLinksBlockView,
 } from "@secretlobby/lobby-template";
+import { ImageIcon } from "../icons";
 import type {
   Block,
   BlockContent,
@@ -23,7 +25,6 @@ import type {
   ThemeSettings,
 } from "../state/types";
 import { usePageBuilder } from "../state/provider";
-import { ImageBlock } from "./blocks/ImageBlock";
 import { PlayerBlock } from "./blocks/PlayerBlock";
 import { CardBlock } from "./blocks/CardBlock";
 import { GalleryBlock } from "./blocks/GalleryBlock";
@@ -89,13 +90,43 @@ export function BlockRenderer({
 
   const renderBlockContent = () => {
     switch (block.type) {
-      case "image":
+      case "image": {
+        // Editor-only "Add Image" placeholder for empty blocks — the lobby
+        // version of ImageBlockView returns null when there's no media,
+        // which would collapse the column on the canvas and hide the
+        // affordance the designer needs to click into. We paint the
+        // theme-tertiary box + icon here and delegate to ImageBlockView
+        // as soon as a media URL lands. `simulatedViewport` tells the
+        // shared view to honour the canvas's previewed viewport chip
+        // (Mobile / Tablet) even though the browser's actual width is
+        // desktop.
+        const c = block.content as ImageBlockContent;
+        if (!c.mediaUrl) {
+          return (
+            <div
+              className="w-full aspect-video bg-theme-tertiary flex items-center justify-center text-gray-500"
+              style={{
+                borderRadius:
+                  typeof c.imageBorderRadius === "number"
+                    ? `${c.imageBorderRadius}px`
+                    : undefined,
+              }}
+            >
+              <div className="text-center">
+                <ImageIcon className="w-8 h-8 mx-auto mb-1" />
+                <span className="text-xs">Add Image</span>
+              </div>
+            </div>
+          );
+        }
         return (
-          <ImageBlock
-            content={block.content as ImageBlockContent}
+          <ImageBlockView
+            content={c}
             theme={effectiveTheme}
+            simulatedViewport={state.viewport}
           />
         );
+      }
       case "player":
         return (
           <PlayerBlock
