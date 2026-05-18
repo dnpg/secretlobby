@@ -35,6 +35,7 @@ import { ImageBlockView } from "./ImageBlockView";
 import { SocialLinksBlockView } from "./SocialLinksBlockView";
 import { TableView } from "./TableView";
 import { CardView } from "./CardView";
+import { GalleryView } from "./GalleryView";
 import type {
   BulletListBlockContent,
   CardBlockContent,
@@ -162,12 +163,18 @@ export function BlockView({
         />
       );
       break;
-    case "player":
     case "gallery":
-      // Acknowledge the content type for each fallback case so a future
-      // extraction has the type narrowing already wired up — the cast is
-      // discarded at runtime.
-      void (block.content as PlayerBlockContent | GalleryBlockContent);
+      inner = (
+        <GalleryView
+          content={block.content as GalleryBlockContent}
+          theme={effectiveTheme}
+        />
+      );
+      break;
+    case "player":
+      // Acknowledge the typed content shape — the cast is discarded at
+      // runtime and the host's `renderFallback` decides what JSX shows up.
+      void (block.content as PlayerBlockContent);
       inner = renderFallback ? renderFallback(block) : null;
       break;
     default:

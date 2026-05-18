@@ -125,6 +125,7 @@ export {
   type PlayerBlockViewProps,
 } from "./blocks/PlayerBlockView";
 export { CardView, type CardViewProps } from "./blocks/CardView";
+export { GalleryView, type GalleryViewProps } from "./blocks/GalleryView";
 export {
   VIEWPORT_WIDTHS,
   parseGapValue,
