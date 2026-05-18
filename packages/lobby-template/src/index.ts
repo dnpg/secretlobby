@@ -87,6 +87,18 @@ export {
   SocialLinksBlockView,
   type SocialLinksBlockViewProps,
 } from "./blocks/SocialLinksBlockView";
+
+// Text block views — render `InlineDoc` (Tiptap JSON) statically via the
+// internal `InlineContent` walker. No Tiptap editor mounted; the rendered
+// markup matches Tiptap's canonical output for the inline-only doc shape
+// the editor produces.
+export { HeadingView, type HeadingViewProps } from "./blocks/HeadingView";
+export {
+  ParagraphView,
+  type ParagraphViewProps,
+} from "./blocks/ParagraphView";
+export { QuoteView, type QuoteViewProps } from "./blocks/QuoteView";
+export { InlineContent, type InlineContentProps } from "./blocks/inlineDoc";
 export {
   VIEWPORT_WIDTHS,
   parseGapValue,
