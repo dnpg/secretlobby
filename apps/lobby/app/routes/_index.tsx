@@ -1600,10 +1600,10 @@ export default function LobbyIndex() {
           }}
         >
           <div
-            className="mx-auto w-full px-4"
+            className="mx-auto w-full px-4 transition-[max-width] duration-300"
             style={{ maxWidth: 1152 }}
           >
-            <div className="py-4 space-y-4 min-h-screen">
+            <div className="py-4 space-y-4 min-h-[600px]">
               {/* Logout button — part of the lobby PAGE, top-right.
                   Renders only when the lobby is password-gated; styling
                   flows from the theme's button CSS vars so the button
@@ -1679,9 +1679,17 @@ export default function LobbyIndex() {
               savedSections && savedSections.length > 0
                 ? (savedSections as unknown as Section[])
                 : DEFAULT_LOBBY_PAGE_LAYOUT.sections;
-            return sections.map((section) => (
-              <SectionView
-                key={section.id}
+            // The editor's preview canvas wraps the section list in an
+            // extra `<div class="space-y-4">` (originally from its DnDContext
+            // host). We emit the same wrapper here so the published lobby's
+            // DOM matches the preview byte-for-byte — the outer `py-4
+            // space-y-4` gives LogoutButton ↔ sections breathing room, the
+            // inner gives section ↔ section breathing room.
+            return (
+              <div className="space-y-4">
+                {sections.map((section) => (
+                  <SectionView
+                    key={section.id}
                 section={section}
                 viewport="desktop"
                 renderBlock={(block) => (
@@ -1703,7 +1711,9 @@ export default function LobbyIndex() {
                   />
                 )}
               />
-            ));
+                ))}
+              </div>
+            );
           })()}
             </div>
           </div>

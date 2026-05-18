@@ -1,14 +1,15 @@
 // =============================================================================
 // BulletListView
 // -----------------------------------------------------------------------------
-// Static unordered list. Each item is an `InlineDoc` — same shape the editor's
-// ListEditor reads / writes — so we render every item through `InlineContent`
-// to apply marks (bold, italic, links, etc.) consistently with the other text
-// views.
+// Static unordered list. Mirrors the editor's `<BulletListBlock>` →
+// `<ListEditor>` chain. The persisted shape is one `InlineDoc` per item;
+// each item's doc renders into a `<li>` via TiptapMirror so multi-
+// paragraph items (when allowed) preserve their structure.
 // =============================================================================
 
+import type { CSSProperties } from "react";
 import type { BulletListBlockContent } from "./types";
-import { InlineContent } from "./inlineDoc";
+import { TiptapMirror } from "./inlineDoc";
 
 export interface BulletListViewProps {
   content: BulletListBlockContent;
@@ -16,13 +17,25 @@ export interface BulletListViewProps {
 
 export function BulletListView({ content }: BulletListViewProps) {
   if (!Array.isArray(content.items) || content.items.length === 0) return null;
+  const wrapperStyle: CSSProperties = {
+    color: "var(--color-text-content, var(--color-text-primary))",
+  };
   return (
-    <ul className="w-full list-disc pl-6 space-y-1">
-      {content.items.map((item, i) => (
-        <li key={i}>
-          <InlineContent doc={item} />
-        </li>
-      ))}
-    </ul>
+    <div className="w-full" style={wrapperStyle}>
+      <div
+        data-no-dnd-keyboard="true"
+        className="inline-editor relative w-full"
+      >
+        <div className="inline-editor-content outline-none w-full">
+          <ul>
+            {content.items.map((item, i) => (
+              <li key={i}>
+                <TiptapMirror doc={item} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
   );
 }

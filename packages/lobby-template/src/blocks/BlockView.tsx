@@ -63,11 +63,16 @@ export interface BlockViewProps {
    *  socialLinks block; pass an empty value otherwise. */
   socialLinks: SocialLinksSettings;
   /** Render override for block types we haven't extracted into a view yet —
-   *  `player`, `card`, `gallery`. The lobby plugs in its existing PlayerView
-   *  (with audio state) for `player`, falls back to `null` otherwise. Called
-   *  with the block so the callback can downcast `block.content` to the
-   *  block type's content shape. */
+   *  `player` falls through here so the lobby can plug in its PlayerView
+   *  (with audio state). Called with the block so the callback can
+   *  downcast `block.content` to the block type's content shape. */
   renderFallback?: (block: Block) => React.ReactNode;
+  /** When true, the outer wrapper uses Tailwind's `group/inner-block` group
+   *  name instead of `group/block`. CardView passes this when recursing
+   *  through BlockView for its nested children so card-nested blocks
+   *  don't share the same group as the card's outer wrapper. Matches the
+   *  editor's SortableBlock `isNested` flag. */
+  isNested?: boolean;
 }
 
 export function BlockView({
@@ -75,6 +80,7 @@ export function BlockView({
   theme,
   socialLinks,
   renderFallback,
+  isNested = false,
 }: BlockViewProps) {
   // Hidden blocks drop out of the render entirely on the lobby. The editor
   // surfaces them dimmed; the lobby never shows them.
@@ -86,13 +92,6 @@ export function BlockView({
   const effectiveTheme: ThemeSettings = block.themeOverrides
     ? { ...theme, ...block.themeOverrides }
     : theme;
-
-  // marginBottom is a universal block-level spacing override. Wrap every
-  // block in a div that carries it so the column's gap (set on the parent
-  // flex container) and the block's own margin stack predictably.
-  const wrapperStyle = block.marginBottom
-    ? { marginBottom: block.marginBottom }
-    : undefined;
 
   let inner: React.ReactNode;
   switch (block.type) {
@@ -184,6 +183,29 @@ export function BlockView({
       inner = null;
   }
 
-  if (!wrapperStyle) return <>{inner}</>;
-  return <div style={wrapperStyle}>{inner}</div>;
+  // Two wrapping divs to mirror the editor's preview-mode DOM exactly:
+  //   - outer (`SortableBlock` equivalent): `relative rounded-md group/block`
+  //     plus the block's `marginBottom` and the placeholder opacity/transition
+  //     styles the editor's dnd-kit transform emits. The lobby has no drag,
+  //     but emitting the same attributes / inline style keeps the DOM
+  //     byte-for-byte identical with the editor preview, which is the
+  //     whole point of the shared render path.
+  //   - inner (`BlockRenderer` equivalent): `relative group rounded
+  //     transition-all` — the editor's BlockRenderer wraps every block in
+  //     this so selection rings + the hover-only toolbar can position
+  //     against a known stacking context. On the lobby it's inert chrome
+  //     but needs to be present for the DOM diff to land cleanly.
+  // `isNested` swaps `group/block` → `group/inner-block` so card-nested
+  // blocks pick up the same scoped Tailwind group name the editor uses.
+  const groupName = isNested ? "group/inner-block" : "group/block";
+  const outerStyle: React.CSSProperties = {
+    opacity: 1,
+    marginBottom: block.marginBottom ?? "0",
+    transition: "transform linear",
+  };
+  return (
+    <div className={`relative rounded-md ${groupName}`} style={outerStyle}>
+      <div className="relative group rounded transition-all">{inner}</div>
+    </div>
+  );
 }

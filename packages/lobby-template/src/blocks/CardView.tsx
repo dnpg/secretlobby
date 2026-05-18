@@ -190,18 +190,30 @@ export function CardView({
   // are passed (the lobby's default path), we loop the persisted block list
   // through BlockView.
   const nestedBlocks = Array.isArray(content.blocks) ? content.blocks : [];
+  // The editor's CardBlock renders nested children through a BlockListSurface
+  // (`<div class="relative w-full"><div class="flex flex-col" style="gap">`).
+  // Mirror that wrapping here so the published lobby's card-nested DOM
+  // matches the editor preview's. Nested BlockView calls pass `isNested`
+  // so their outer `group/...` Tailwind class flips to `group/inner-block`.
   const body =
-    children !== undefined
-      ? children
-      : nestedBlocks.map((child) => (
-          <BlockView
-            key={child.id}
-            block={child}
-            theme={theme}
-            socialLinks={socialLinks}
-            renderFallback={renderFallback}
-          />
-        ));
+    children !== undefined ? (
+      children
+    ) : (
+      <div className="relative w-full">
+        <div className="flex flex-col" style={{ gap: "8px" }}>
+          {nestedBlocks.map((child) => (
+            <BlockView
+              key={child.id}
+              block={child}
+              theme={theme}
+              socialLinks={socialLinks}
+              renderFallback={renderFallback}
+              isNested
+            />
+          ))}
+        </div>
+      </div>
+    );
 
   return (
     <div className="w-full" style={wrapperStyle}>

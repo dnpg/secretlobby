@@ -96,18 +96,20 @@ export function SectionView({ section, viewport, renderBlock }: SectionViewProps
     // swaps it for a dashed violet border when layout-edit is on, and the
     // 4px (2px × 2 sides) the transparent border consumes is part of how
     // sections size themselves. Without it sections render 4px wider on
-    // the lobby than in the editor preview.
+    // the lobby than in the editor preview. `data-section-container` is
+    // emitted for parity (the editor uses it for hit-testing).
     <div
+      data-section-container="true"
       className="relative rounded-lg transition-all border-2 border-transparent"
       style={{ "--section-gap": gapValue } as React.CSSProperties}
     >
       <div
         className={
           displayMode === "stack"
-            ? "flex flex-col"
+            ? "relative flex flex-col"
             : displayMode === "flex"
-              ? "flex overflow-x-auto"
-              : "flex"
+              ? "relative flex overflow-x-auto"
+              : "relative flex"
         }
         style={{
           gap:
@@ -141,10 +143,13 @@ export function SectionView({ section, viewport, renderBlock }: SectionViewProps
           return (
             <div
               key={column.id}
+              // `flex-shrink-0` (NOT `shrink-0` — same Tailwind utility but
+              // the editor's SectionComponent emits the long form, so we
+              // match it for byte-for-byte DOM parity).
               className={
                 displayMode === "flex"
-                  ? "relative shrink-0 min-w-[150px]"
-                  : "relative shrink-0"
+                  ? "relative flex-shrink-0 min-w-[150px]"
+                  : "relative flex-shrink-0"
               }
               style={{
                 width: cssWidth,
