@@ -15,6 +15,7 @@ import type {
   ParagraphBlockContent,
   PlayerBlockContent,
   QuoteBlockContent,
+  SocialLinksBlockContent,
   TableBlockContent,
   ThemeSettings,
 } from "../state/types";
@@ -32,6 +33,7 @@ import { CodeBlock } from "./blocks/CodeBlock";
 import { CodeBlockBlock } from "./blocks/CodeBlockBlock";
 import { TableBlock } from "./blocks/TableBlock";
 import { DividerBlock } from "./blocks/DividerBlock";
+import { SocialLinksBlock } from "./blocks/SocialLinksBlock";
 
 interface BlockRendererProps {
   block: Block;
@@ -215,6 +217,12 @@ export function BlockRenderer({
             theme={effectiveTheme}
           />
         );
+      case "socialLinks":
+        return (
+          <SocialLinksBlock
+            content={block.content as SocialLinksBlockContent}
+          />
+        );
     }
   };
 
@@ -230,11 +238,19 @@ export function BlockRenderer({
       }
       className={cn(
         "relative group rounded transition-all",
-        isEditing && "cursor-pointer",
+        // Cursor — text-bearing blocks (paragraph, heading, bullet/ordered
+        // list) get the I-beam so the user reads them as editable straight
+        // away. Every other block stays on the click-to-select pointer.
+        isEditing &&
+          (block.type === "paragraph" ||
+          block.type === "heading" ||
+          block.type === "bulletList" ||
+          block.type === "orderedList"
+            ? "cursor-text"
+            : "cursor-pointer"),
         // The active-block outline now lives on the SortableBlock wrapper
-        // (console-blue ring with white / neutral-950 offset halo). Hover
-        // affordance stays here so users still get visual feedback before
-        // selecting.
+        // (Figma-blue dashed rectangle). Hover affordance stays here so
+        // users still get visual feedback before selecting.
         isEditing && !isSelected ? "hover:ring-1 hover:ring-gray-500" : ""
       )}
     >

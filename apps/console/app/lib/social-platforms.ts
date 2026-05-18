@@ -11,6 +11,10 @@ export interface SocialLinksSettings {
   contentBefore?: string;
   contentAfter?: string;
   iconAlignment?: "left" | "center" | "right";
+  /** Gap between icon buttons as a CSS length string (e.g. `"8px"`). See
+   *  player-view's SocialLinksSettings for full semantics; this mirror
+   *  keeps the console-side shape in sync. */
+  gap?: string;
   placement?: "sidebar-above" | "sidebar-below" | "above-content" | "below-content" | "above-left" | "below-left";
 }
 

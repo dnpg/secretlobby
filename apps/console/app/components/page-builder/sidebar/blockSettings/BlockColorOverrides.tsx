@@ -289,7 +289,7 @@ export function BlockColorOverrides({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-theme-muted hover:text-theme-primary cursor-pointer mb-2"
+        className="w-full flex items-center justify-between text-xs font-semibold text-theme-muted hover:text-theme-primary cursor-pointer mb-2"
       >
         <span>
           Colors {modifiedCount > 0 ? `(${modifiedCount} modified)` : ""}

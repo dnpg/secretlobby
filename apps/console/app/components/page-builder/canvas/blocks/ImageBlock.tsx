@@ -1,9 +1,36 @@
 import type { CSSProperties } from "react";
 import { useImageTransform } from "@secretlobby/ui";
-import { borderRadiusToCSS } from "~/lib/theme";
+import { borderRadiusToCSS, normalizeCSSValue } from "~/lib/theme";
 import { ImageIcon } from "../../icons";
 import { usePageBuilder } from "../../state/provider";
 import type { ImageBlockContent, ThemeSettings } from "../../state/types";
+
+// Default placeholder dims for legacy blocks that haven't persisted real
+// media dimensions yet. Picked to roughly match a 16:9 desktop image so the
+// reserved aspect-ratio is in the right neighbourhood. New picks always
+// overwrite these with the real MediaItem dims captured in
+// ImageBlockSettings.
+const FALLBACK_W = 1920;
+const FALLBACK_H = 1080;
+
+// `Number.isFinite` guards against NaN coming out of bad legacy payloads,
+// `> 0` keeps the HTML attribute meaningful (0 isn't a useful reservation).
+function dimOrFallback(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
+}
+
+// Parse a CSS length to its numeric prefix — same trick CardBlock uses to
+// decide whether the border has positive width. Empty / non-numeric → 0,
+// which gates the border off.
+function cssLengthToNum(value: string | undefined): number {
+  if (!value) return 0;
+  const m = String(value).trim().match(/^-?[\d.]+/);
+  if (!m) return 0;
+  const n = parseFloat(m[0]);
+  return Number.isFinite(n) ? n : 0;
+}
 
 interface ImageBlockProps {
   content: ImageBlockContent;
@@ -61,21 +88,69 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
           }
         : null;
 
-  // Both `imageBorderRadius` (block-level override) and `theme.cardBorderRadius`
-  // (fallback) are a `BorderRadius` — a plain number for uniform corners or a
-  // per-corner object. Route both through `borderRadiusToCSS` so the emitted
-  // CSS is always valid shorthand regardless of which shape is stored.
-  const borderRadius =
-    content.imageBorderRadius !== undefined
-      ? borderRadiusToCSS(content.imageBorderRadius)
-      : borderRadiusToCSS(theme.cardBorderRadius, 12);
+  // Image-specific theme fields are the fallback layer below content
+  // overrides; theme defaults set them in defaultDarkTheme / defaultLightTheme
+  // so legacy lobbies without these fields persisted still get the global
+  // defaults (12px radius, 0px width).
+  const themeImageBorderRadius = theme.imageBorderRadius ?? 12;
+  const themeImageBorderWidth = theme.imageBorderWidth ?? "0";
+  const themeImageBorderColor =
+    theme.imageBorderColor ?? theme.border ?? "#000000";
+  const themeImageBorderStyle = theme.imageBorderStyle ?? "solid";
+
+  // Both `imageBorderRadius` (block-level override) and
+  // `theme.imageBorderRadius` (theme default) are a `BorderRadius` — a plain
+  // number for uniform corners or a per-corner object. Route both through
+  // `borderRadiusToCSS` so the emitted CSS is always valid shorthand
+  // regardless of which shape is stored.
+  const borderRadius = borderRadiusToCSS(
+    content.imageBorderRadius ?? themeImageBorderRadius,
+    12
+  );
+
+  // Effective border — each field falls back to the matching theme.image*
+  // field (the same field-level override pattern imageBorderRadius uses).
+  // The border only paints when the resolved width parses to a positive
+  // number; otherwise we skip the declarations entirely (avoids an invisible
+  // 0px border that still nudges hit-testing in some browsers).
+  const effectiveBorderWidth = normalizeCSSValue(
+    content.imageBorderWidth ?? themeImageBorderWidth,
+    "0"
+  );
+  const effectiveBorderColor =
+    content.imageBorderColor ?? themeImageBorderColor;
+  const effectiveBorderStyle =
+    content.imageBorderStyle ?? themeImageBorderStyle;
+  // `none` border-style suppresses paint regardless of width — matches the
+  // ImageBlockSettings UI rule (style=none hides width + color).
+  const hasBorder =
+    effectiveBorderStyle !== "none" &&
+    cssLengthToNum(effectiveBorderWidth) > 0;
 
   const imgStyle: CSSProperties = {
     width: "100%",
     height: "auto",
     display: "block",
     borderRadius,
+    ...(hasBorder
+      ? {
+          borderWidth: effectiveBorderWidth,
+          borderStyle: effectiveBorderStyle,
+          borderColor: effectiveBorderColor,
+        }
+      : {}),
   };
+
+  // Intrinsic dimensions for the <img>/<source> HTML attributes. Resolved
+  // per-viewport so tablet/mobile <source> tags advertise their own aspect
+  // ratios (otherwise the browser reserves desktop space for a mobile crop
+  // and you still get layout shift on small screens).
+  const desktopW = dimOrFallback(content.mediaWidth, FALLBACK_W);
+  const desktopH = dimOrFallback(content.mediaHeight, FALLBACK_H);
+  const tabletW = dimOrFallback(content.tabletMediaWidth, desktopW);
+  const tabletH = dimOrFallback(content.tabletMediaHeight, desktopH);
+  const mobileW = dimOrFallback(content.mobileMediaWidth, desktopW);
+  const mobileH = dimOrFallback(content.mobileMediaHeight, desktopH);
 
   const renderImage = () => {
     if (!content.mediaUrl) {
@@ -106,6 +181,17 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
       // sits first with an always-matching media query so the canvas honours
       // the page-builder's previewed viewport (Mobile / Tablet) regardless of
       // the real browser width.
+      // Each <source> declares its intrinsic width/height so the browser can
+      // reserve the right aspect ratio per breakpoint before any pixel data
+      // arrives. The simulated-override <source> reuses whichever viewport
+      // the canvas is previewing; the real responsive sources use their own
+      // tablet/mobile dims when available, or fall back to the desktop pair.
+      const simulatedDims =
+        simulatedViewport === "mobile"
+          ? { w: mobileW, h: mobileH }
+          : simulatedViewport === "tablet"
+            ? { w: tabletW, h: tabletH }
+            : { w: desktopW, h: desktopH };
       return (
         <picture>
           {simulatedOverride && (
@@ -116,6 +202,8 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
                 simulatedOverride.widths
               )}
               sizes={simulatedOverride.sizes}
+              width={simulatedDims.w}
+              height={simulatedDims.h}
             />
           )}
           {content.mobileMediaUrl && (
@@ -123,6 +211,8 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
               media="(max-width: 767px)"
               srcSet={generateSrcSet(content.mobileMediaUrl, MOBILE_WIDTHS)}
               sizes={MOBILE_SIZES}
+              width={mobileW}
+              height={mobileH}
             />
           )}
           {content.tabletMediaUrl && (
@@ -130,6 +220,8 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
               media="(min-width: 768px) and (max-width: 1023px)"
               srcSet={generateSrcSet(content.tabletMediaUrl, TABLET_WIDTHS)}
               sizes={TABLET_SIZES}
+              width={tabletW}
+              height={tabletH}
             />
           )}
           <img
@@ -137,6 +229,8 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
             srcSet={desktopSrcSet}
             sizes={DESKTOP_SIZES}
             alt={content.alt || ""}
+            width={desktopW}
+            height={desktopH}
             style={imgStyle}
             loading="lazy"
             decoding="async"
@@ -151,6 +245,8 @@ export function ImageBlock({ content, theme }: ImageBlockProps) {
         srcSet={desktopSrcSet}
         sizes={DESKTOP_SIZES}
         alt={content.alt || ""}
+        width={desktopW}
+        height={desktopH}
         style={imgStyle}
         loading="lazy"
         decoding="async"

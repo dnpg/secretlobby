@@ -18,7 +18,7 @@ export function QuoteBlockSettings({
   const current = content.align ?? "left";
   return (
     <div className="space-y-2">
-      <label className="block text-xs uppercase tracking-wide text-theme-muted">
+      <label className="block text-xs text-theme-muted">
         Alignment
       </label>
       <div className="flex gap-1">

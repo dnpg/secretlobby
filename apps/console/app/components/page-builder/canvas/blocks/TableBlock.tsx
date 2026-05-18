@@ -144,7 +144,9 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       onPointerDown={(e) => e.stopPropagation()}
-      className="px-2 py-1 rounded bg-theme-tertiary border border-theme text-theme-secondary hover:text-theme-primary hover:border-[var(--color-brand-red)] cursor-pointer"
+      // Editor chrome — light/dark mode only, no theme tokens — so the
+      // button stays legible regardless of the lobby theme.
+      className="px-2 py-1 rounded bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-black dark:text-neutral-300 dark:hover:text-white hover:border-[var(--color-brand-red)] cursor-pointer"
     >
       {children}
     </button>

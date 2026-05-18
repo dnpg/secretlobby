@@ -2,7 +2,12 @@
 // provider, and UI panels all import from one place.
 
 import type { JSONContent } from "@tiptap/react";
-import type { BorderRadius, ThemeSettings } from "~/lib/theme";
+import type {
+  BorderRadius,
+  BorderStyle,
+  BoxPadding,
+  ThemeSettings,
+} from "~/lib/theme";
 
 export type { ThemeSettings };
 
@@ -21,7 +26,8 @@ export type BlockType =
   | "code"
   | "codeBlock"
   | "table"
-  | "divider";
+  | "divider"
+  | "socialLinks";
 export type GalleryStyle = "slider" | "grid" | "masonry";
 
 // `JSONContent` from Tiptap is the inline-only doc used by every text-ish
@@ -35,18 +41,39 @@ export interface ImageBlockContent {
   mediaUrl?: string;
   alt?: string;
   aspectRatio?: string;
+  // Intrinsic pixel dimensions of the media. ImageBlock writes these to the
+  // <img> width/height HTML attributes on EVERY render — the browser uses
+  // them to reserve layout space before the image loads, which kills
+  // cumulative layout shift. Captured from MediaItem.{width,height} when the
+  // user picks an image in ImageBlockSettings. Optional only because legacy
+  // persisted blocks (pre-this-field) may not carry them; the renderer falls
+  // back to a sensible aspect-ratio default so the attribute is always
+  // present.
+  mediaWidth?: number;
+  mediaHeight?: number;
   // Optional per-image border-radius override. When omitted the image inherits
   // the theme's `cardBorderRadius`. Persisted on the block content so it
   // travels with the layout JSON like any other block field. Stored as a
   // `BorderRadius` (number for uniform, `{ tl, tr, br, bl }` for per-corner)
   // so the image picker can support Figma-style per-corner radii.
   imageBorderRadius?: BorderRadius;
+  // Optional per-image border overrides (width/color/style). Each falls back
+  // to the matching theme card-border field when undefined, mirroring the
+  // `imageBorderRadius` ↔ `theme.cardBorderRadius` pattern. The border is
+  // only painted when the effective width > 0 — same gating as cards.
+  imageBorderWidth?: string;
+  imageBorderColor?: string;
+  imageBorderStyle?: BorderStyle;
   linkUrl?: string;
   // Responsive image overrides
   tabletMediaId?: string;
   tabletMediaUrl?: string;
+  tabletMediaWidth?: number;
+  tabletMediaHeight?: number;
   mobileMediaId?: string;
   mobileMediaUrl?: string;
+  mobileMediaWidth?: number;
+  mobileMediaHeight?: number;
 }
 
 export interface PlayerBlockContent {
@@ -87,6 +114,11 @@ export interface CardBlockContent {
    *  legacy persisted cards with a `title` don't blow up during
    *  deserialization. */
   title?: string;
+  /** Per-card inner padding override. `number` applies the same value to all
+   *  four sides; `{ top, right, bottom, left }` lets the user pick per-side
+   *  values. Defaults to `16` (matches the legacy `p-4` Tailwind class the
+   *  card used before this field was introduced). */
+  padding?: BoxPadding;
   /** Nested blocks rendered inside the card. The slash menu inside a card
    *  excludes `player` / `card` / `gallery` — only text + image are allowed.
    *  Cross-container moves (card ↔ column, card ↔ card) aren't supported in
@@ -181,6 +213,24 @@ export interface TableBlockContent {
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface DividerBlockContent {}
 
+// Social Links block — renders the lobby's globally-configured social media
+// links (Instagram, Facebook, etc.) using the shared SocialLinks renderer
+// from `@secretlobby/player-view`. The block carries optional overrides so
+// users can place multiple Social Links blocks with different visual
+// treatments (e.g. brand-color icons on a hero, mono icons in a footer)
+// without changing the lobby-level settings every time. All fields default
+// to whatever's set on `state.socialLinks`.
+export interface SocialLinksBlockContent {
+  alignment?: "left" | "center" | "right";
+  iconStyle?: "brand" | "mono";
+  /** Mono-mode tint. Ignored when iconStyle is "brand". */
+  iconColor?: string;
+  /** Gap between icon buttons as a CSS length string (e.g. `"8px"`). When
+   *  undefined, the block inherits the lobby's `socialLinks.gap` setting
+   *  (or no gap when that's also unset). */
+  gap?: string;
+}
+
 export type BlockContent =
   | ImageBlockContent
   | PlayerBlockContent
@@ -194,7 +244,8 @@ export type BlockContent =
   | BulletListBlockContent
   | OrderedListBlockContent
   | TableBlockContent
-  | DividerBlockContent;
+  | DividerBlockContent
+  | SocialLinksBlockContent;
 
 export interface Block {
   id: string;
@@ -207,6 +258,12 @@ export interface Block {
   // preview/published mode. Persisted in the layout JSON so old layouts
   // without this field deserialize fine (treated as visible).
   hidden?: boolean;
+  // Universal spacing override — CSS length string (e.g. `"16px"`, `"1rem"`)
+  // applied to the block's wrapper as `margin-bottom`. Defaults to `0` (no
+  // gap) so persisted layouts without the field render identically. Stored
+  // at Block level (not BlockContent) because every block type supports it
+  // and the value isn't relevant to the inner content's shape.
+  marginBottom?: string;
   // Phase 5: per-block overrides for theme tokens. Optional + Partial so old
   // persisted layouts deserialize fine and clearing the object reverts to the
   // global theme.

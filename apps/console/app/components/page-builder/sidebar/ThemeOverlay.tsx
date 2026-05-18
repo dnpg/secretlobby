@@ -22,6 +22,7 @@ import { CssLengthInput } from "~/components/css-length-input";
 import { useSwatches } from "../PageBuilderRoot";
 import {
   ColorRow,
+  HexPickerRow,
   NumberRow,
   SelectRow,
   TextColorRow,
@@ -29,6 +30,19 @@ import {
   ToggleRow,
 } from "./ThemeFieldRows";
 import { CardThemeFields } from "./CardThemeFields";
+import { PlayerThemeFields } from "./PlayerThemeFields";
+import type { BorderStyle } from "~/lib/theme";
+
+// Border styles surfaced by the global Image section. Matches the basic
+// subset used by ImageBlockSettings — same order, same labels.
+const IMAGE_BORDER_STYLES: BorderStyle[] = [
+  "solid",
+  "dashed",
+  "dotted",
+  "double",
+  "none",
+];
+
 
 // =============================================================================
 // ThemeOverlay
@@ -67,7 +81,7 @@ function CollapsibleSection({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wide text-theme-muted hover:bg-theme-tertiary/40 cursor-pointer"
+        className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-theme-muted hover:bg-theme-tertiary/40 cursor-pointer"
       >
         <span>{title}</span>
         <svg
@@ -84,7 +98,12 @@ function CollapsibleSection({
           />
         </svg>
       </button>
-      {open && <div className="p-3 space-y-3">{children}</div>}
+      {/* 20px top/bottom padding inside every accordion body — accordions
+          are the only chrome boundary in the panel, so giving them a
+          generous vertical breath keeps the section feeling separate
+          from its neighbours. Horizontal padding stays at 12px to align
+          with the section header above. */}
+      {open && <div className="py-5 px-3 space-y-3">{children}</div>}
     </div>
   );
 }
@@ -268,88 +287,79 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
           />
         </CollapsibleSection>
 
-        <CollapsibleSection title="Visualizer" defaultOpen={false}>
+        <CollapsibleSection title="Image" defaultOpen={false}>
+          {/* Global Image defaults — separate from Card so a designer can
+              keep cards borderless yet add a 1px outline to every image (or
+              vice versa). ImageBlock falls back to these fields when its
+              block-level overrides are unset. Order matches ImageBlockSettings:
+              border-radius, then border style/width/color. Style is first in
+              the border group because `none` collapses width + color out of
+              the panel (same canvas-truth rule we apply per-block). */}
+          <div>
+            <label className="block text-xs text-theme-secondary mb-1">
+              Border radius
+            </label>
+            <BorderRadiusInput
+              value={theme.imageBorderRadius ?? 12}
+              onChange={(v) => set("imageBorderRadius", v)}
+              min={0}
+              max={9999}
+            />
+          </div>
           <SelectRow
-            label="Type"
-            value={theme.visualizerType}
-            options={[
-              { value: "equalizer", label: "Equalizer" },
-              { value: "waveform", label: "Waveform" },
-            ]}
-            onChange={(v) => set("visualizerType", v)}
+            label="Border style"
+            value={theme.imageBorderStyle ?? "solid"}
+            options={IMAGE_BORDER_STYLES.map((s) => ({
+              value: s,
+              label: s,
+            }))}
+            onChange={(v) => set("imageBorderStyle", v as BorderStyle)}
           />
-          <ToggleRow
-            label="Use card background"
-            value={theme.visualizerUseCardBg}
-            onChange={(v) => set("visualizerUseCardBg", v)}
-          />
-          {!theme.visualizerUseCardBg && (
+          {(theme.imageBorderStyle ?? "solid") !== "none" && (
             <>
-              <ColorRow
-                label="Background"
-                value={theme.visualizerBg}
-                onChange={(v) => set("visualizerBg", v)}
-              />
-              <NumberRow
-                label="Background opacity"
-                value={theme.visualizerBgOpacity}
-                min={0}
-                max={100}
-                slider
-                suffix="%"
-                onChange={(v) => set("visualizerBgOpacity", v)}
+              <div>
+                <label className="block text-xs text-theme-secondary mb-1">
+                  Border width
+                </label>
+                <CssLengthInput
+                  value={theme.imageBorderWidth ?? "0"}
+                  onChange={(v) => set("imageBorderWidth", v)}
+                  min={0}
+                  max={64}
+                  ariaLabel="Global image border width"
+                  placeholder="0"
+                />
+              </div>
+              <HexPickerRow
+                label="Border color"
+                value={
+                  theme.imageBorderColor ??
+                  theme.border ??
+                  "#000000"
+                }
+                onChange={(v) => set("imageBorderColor", v)}
               />
             </>
           )}
-          <ColorRow
-            label="Bar color"
-            value={theme.visualizerBar}
-            onChange={(v) => set("visualizerBar", v)}
-          />
-          <ColorRow
-            label="Bar alt color"
-            value={theme.visualizerBarAlt}
-            onChange={(v) => set("visualizerBarAlt", v)}
-          />
-          <ColorRow
-            label="Glow color"
-            value={theme.visualizerGlow}
-            onChange={(v) => set("visualizerGlow", v)}
-          />
-          <ToggleRow
-            label="Show border"
-            value={theme.visualizerBorderShow}
-            onChange={(v) => set("visualizerBorderShow", v)}
-          />
-          {theme.visualizerBorderShow && (
-            <ColorRow
-              label="Border color"
-              value={theme.visualizerBorderColor}
-              onChange={(v) => set("visualizerBorderColor", v)}
-            />
-          )}
-          <BorderRadiusInput
-            label="Border radius"
-            value={theme.visualizerBorderRadius}
-            min={0}
-            max={9999}
-            onChange={(v) => set("visualizerBorderRadius", v)}
-          />
-          <SelectRow
-            label="Blend mode"
-            value={theme.visualizerBlendMode}
-            options={[
-              { value: "normal", label: "Normal" },
-              { value: "multiply", label: "Multiply" },
-              { value: "screen", label: "Screen" },
-              { value: "overlay", label: "Overlay" },
-              { value: "lighten", label: "Lighten" },
-              { value: "darken", label: "Darken" },
-              { value: "color-dodge", label: "Color Dodge" },
-              { value: "color-burn", label: "Color Burn" },
-              { value: "difference", label: "Difference" },
-            ]}
-            onChange={(v) => set("visualizerBlendMode", v)}
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Player" defaultOpen={false}>
+          {/* Global Player defaults — separate from Card so a designer can
+              keep cards borderless yet outline the player (or vice versa).
+              The actual JSX lives in <PlayerThemeFields/>, which is also
+              used by the per-block Player Theme accordion in
+              PlayerBlockSettings — single source of truth for the player
+              editor. Adding / removing a setting requires touching one
+              file. */}
+          <PlayerThemeFields
+            value={theme}
+            onChange={(partial) =>
+              dispatch({ type: "updateTheme", partial })
+            }
+            swatches={swatches}
+            saveSwatch={saveSwatch}
+            updateSwatch={updateSwatch}
+            deleteSwatch={deleteSwatch}
           />
         </CollapsibleSection>
 
@@ -423,7 +433,7 @@ function SwatchesGrid({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wide text-theme-muted">
+        <span className="text-[10px] text-theme-muted">
           {swatches.length === 0 ? "No swatches yet" : `${swatches.length} swatch${swatches.length === 1 ? "" : "es"}`}
         </span>
         <button
@@ -582,7 +592,7 @@ function SwatchEditor({
   const canSave = trimmed.length > 0;
   return (
     <div className="rounded border border-theme bg-theme-tertiary/30 p-2 space-y-2">
-      <label className="block text-[10px] uppercase tracking-wide text-theme-muted">
+      <label className="block text-[10px] text-theme-muted">
         {mode === "edit" ? "Edit swatch" : "New swatch"}
       </label>
       <input
@@ -714,7 +724,7 @@ function ButtonStylesGroup({
         <button
           type="button"
           onClick={() => setAdvancedOpen((o) => !o)}
-          className="w-full flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-theme-muted hover:text-theme-primary cursor-pointer mb-2"
+          className="w-full flex items-center justify-between text-xs font-semibold text-theme-muted hover:text-theme-primary cursor-pointer mb-2"
         >
           <span>Advanced (states)</span>
           <svg
@@ -851,7 +861,7 @@ function ButtonStateRow({
 
   return (
     <div className="space-y-2 rounded border border-theme/60 p-2">
-      <div className="text-[10px] uppercase tracking-wide text-theme-muted font-semibold">
+      <div className="text-[10px] text-theme-muted font-semibold">
         {label}
       </div>
       {/* Background override */}

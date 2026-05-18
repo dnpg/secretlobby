@@ -88,6 +88,10 @@ export function SortableBlock({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    // Universal per-block spacing override. Empty/missing falls back to "0"
+    // so the wrapper never injects an implicit gap — the column / card
+    // surface controls inter-block spacing on its own (via blockGap).
+    marginBottom: block.marginBottom ?? "0",
   };
 
   const canMoveUp = blockIndex > 0;
@@ -127,19 +131,23 @@ export function SortableBlock({
       {isEditing && isSelected && (
         <div
           aria-hidden="true"
-          // 4px outside the block on every side, with a matching 10px radius
-          // so the corner stays concentric with the block's 6px rounded-md.
-          // Hides itself while any descendant input (Tiptap editor, table
-          // cell, code editor) is focused so it doesn't distract from typing.
-          // Both named-group variants are present because the wrapper uses
-          // `group/block` at the column level and `group/inner-block` when
-          // nested inside a card — only the variant whose group is in the
-          // ancestor chain will activate.
+          // Figma-style selection indicator — sharp blue dashed rectangle
+          // sitting 4px outside the block on every side. No border-radius
+          // (rectangular even when the block itself is rounded) and no
+          // mix-blend-mode (the indicator is a fixed brand-blue rather than
+          // an inverted halo).
+          //
+          // The outline is shown unconditionally while the block is
+          // selected — including for nested text blocks inside a card.
+          // (The previous `group-focus-within` hide rule killed the
+          // indicator the instant Tiptap's auto-focus fired on selection,
+          // so users couldn't see the blue dashed rectangle around
+          // paragraphs/headings inside cards. Keeping the outline visible
+          // during typing is the standard editor affordance for "this is
+          // the active block".)
           className={cn(
-            "pointer-events-none absolute -inset-1 rounded-[10px] border border-white z-20 transition-opacity",
-            "group-focus-within/block:opacity-0 group-focus-within/inner-block:opacity-0"
+            "pointer-events-none absolute -inset-1 border border-dashed border-[#0d99ff] z-20"
           )}
-          style={{ mixBlendMode: "difference" }}
         />
       )}
       {/* Toolbar — pinned to the top-left of the block and translated Y by
@@ -148,6 +156,13 @@ export function SortableBlock({
           over THIS block's wrapper; selection alone does not reveal it. */}
       {isEditing && (
         <div
+          // Stop clicks on the toolbar chrome (gap between buttons, padding)
+          // from bubbling to the canvas's click-outside-deselect handler.
+          // Individual buttons already stop propagation in their onClick,
+          // but clicks landing on the container's empty pixels would
+          // otherwise clear the block selection while the user is hovering
+          // the toolbar.
+          onClick={(e) => e.stopPropagation()}
           // NOTE: do NOT add `data-no-dnd-keyboard` here. The EditorAware
           // pointer sensor's opt-out check uses `closest(...)`, so marking
           // the toolbar would also block pointerdown on the grip handle and
@@ -163,7 +178,11 @@ export function SortableBlock({
           // `--color-*` theme tokens, no transparency: a deep-black lobby
           // theme must not bleed through.
           className={cn(
-            "absolute top-0 left-0 -translate-y-full z-10 flex items-center gap-0.5",
+            // z-30 keeps the toolbar above the active-block outline overlay
+            // (z-20 in this same wrapper). Without this the outline's 1px
+            // white border draws over the toolbar's bottom edge because the
+            // outline extends `-inset-1` past the block top.
+            "absolute top-0 left-0 -translate-y-full z-30 flex items-center gap-0.5",
             "px-1 py-0.5 rounded-md",
             "bg-white dark:bg-neutral-900",
             "text-black dark:text-white",
@@ -174,9 +193,18 @@ export function SortableBlock({
             // Match the group name picked above so the toolbar only reacts
             // to hover on its OWN SortableBlock wrapper, not on any
             // similarly-named ancestor in the tree.
+            //
+            // The `group-focus-within` variant hides the toolbar whenever
+            // a descendant input is focused. For a CARD block, this means
+            // the card's hover toolbar disappears the moment the user
+            // clicks into any nested block (paragraph, heading, etc.) —
+            // the card's chrome stays out of the way while you edit
+            // inside. For any block, it also keeps the block's own
+            // toolbar from re-appearing on hover while you're typing in
+            // its content.
             isNested
-              ? "group-hover/inner-block:opacity-100 group-hover/inner-block:pointer-events-auto"
-              : "group-hover/block:opacity-100 group-hover/block:pointer-events-auto"
+              ? "group-hover/inner-block:opacity-100 group-hover/inner-block:pointer-events-auto group-focus-within/inner-block:opacity-0 group-focus-within/inner-block:pointer-events-none"
+              : "group-hover/block:opacity-100 group-hover/block:pointer-events-auto group-focus-within/block:opacity-0 group-focus-within/block:pointer-events-none"
           )}
         >
           <div
@@ -184,7 +212,7 @@ export function SortableBlock({
               e.stopPropagation();
               onSelect();
             }}
-            className="p-1 rounded text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-grab active:cursor-grabbing"
+            className="p-1 rounded text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-grab active:cursor-grabbing"
             title="Drag to reorder · click to select"
           >
             <BlockGripIcon />
@@ -198,7 +226,7 @@ export function SortableBlock({
               if (plusBtnRef.current) onOpenInsertMenu?.(plusBtnRef.current);
             }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="p-1 rounded text-neutral-700 dark:text-neutral-300 hover:text-[var(--color-brand-red)] hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+            className="p-1 rounded text-black dark:text-neutral-300 hover:text-[var(--color-brand-red)] hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
             title="Insert block after"
           >
             <PlusIcon className="w-3 h-3" />
@@ -212,7 +240,7 @@ export function SortableBlock({
                 onMoveUp();
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+              className="p-1 rounded text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               title="Move up"
             >
               <ArrowUpIcon />
@@ -227,7 +255,7 @@ export function SortableBlock({
                 onMoveDown();
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+              className="p-1 rounded text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               title="Move down"
             >
               <ArrowDownIcon />
@@ -242,7 +270,7 @@ export function SortableBlock({
                 onMoveToColumn("left");
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+              className="p-1 rounded text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               title="Move to previous column"
             >
               <ArrowLeftIcon />
@@ -257,7 +285,7 @@ export function SortableBlock({
                 onMoveToColumn("right");
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="p-1 rounded text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+              className="p-1 rounded text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               title="Move to next column"
             >
               <ArrowRightIcon />

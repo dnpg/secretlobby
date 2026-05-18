@@ -61,7 +61,7 @@ export function InlineBubbleMenu({ editor }: InlineBubbleMenuProps) {
       "px-2 py-1 text-xs rounded cursor-pointer transition-colors",
       active
         ? "bg-[var(--color-brand-red)] text-white"
-        : "text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800"
+        : "text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800"
     );
 
   return (
@@ -152,7 +152,7 @@ export function InlineBubbleMenu({ editor }: InlineBubbleMenuProps) {
             <button
               type="button"
               onClick={() => setLinkOpen(false)}
-              className="px-2 py-1 text-xs rounded text-neutral-700 dark:text-neutral-300 hover:text-black dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+              className="px-2 py-1 text-xs rounded text-black dark:text-neutral-300 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
             >
               Cancel
             </button>

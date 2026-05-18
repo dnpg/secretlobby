@@ -556,7 +556,7 @@ export function LeftRail({
           type="button"
           onClick={onAddSection}
           className={cn(
-            "mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 border border-dashed rounded-lg text-sm transition-colors cursor-pointer shadow-sm",
+            "mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 border border-dashed rounded-lg text-sm transition-colors cursor-pointer",
             isDarkMode
               ? "border-white/40 text-white hover:bg-white/10"
               : "border-black/40 text-black hover:bg-black/10"
@@ -1466,6 +1466,8 @@ function CardChildLayerRow({
 function SidebarAddBlockMenu({ onAdd }: { onAdd: (type: BlockType) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const { resolvedMode } = useColorMode();
+  const isDarkMode = resolvedMode === "dark";
 
   useEffect(() => {
     if (!open) return;
@@ -1484,7 +1486,9 @@ function SidebarAddBlockMenu({ onAdd }: { onAdd: (type: BlockType) => void }) {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className="w-full flex items-center justify-center gap-1 px-2 py-1.5 border border-dashed border-[var(--color-brand-red)]/30 rounded-lg text-xs text-theme-muted hover:text-[var(--color-brand-red)] hover:border-[var(--color-brand-red)]/60 transition-colors cursor-pointer"
+        className={"w-full flex items-center justify-center gap-1 px-2 py-1.5 border border-dashed rounded-lg text-xs transition-colors cursor-pointer " + (isDarkMode
+              ? "border-white/40 text-white hover:bg-white/10"
+              : "border-black/40 text-black hover:bg-black/10")}
       >
         <PlusIcon className="w-3.5 h-3.5" />
         <span>Add Block</span>

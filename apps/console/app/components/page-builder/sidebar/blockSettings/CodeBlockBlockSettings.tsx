@@ -14,7 +14,7 @@ export function CodeBlockBlockSettings({
 }: CodeBlockBlockSettingsProps) {
   return (
     <div className="space-y-2">
-      <label className="block text-xs uppercase tracking-wide text-theme-muted">
+      <label className="block text-xs text-theme-muted">
         Language
       </label>
       <input

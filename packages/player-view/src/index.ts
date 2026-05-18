@@ -7,10 +7,12 @@
 
 export {
   PlayerView,
+  playerRegionStyle,
   type Track,
   type ImageUrls,
   type AudioControls,
   type CardStyles,
+  type PlayerRegionStyle,
   type TechnicalInfo,
 } from "./PlayerView";
 export { AudioVisualizer } from "./AudioVisualizer";

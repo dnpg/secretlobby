@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useBlocker, useFetcher, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { cn } from "@secretlobby/ui";
+import type { SocialLinksSettings } from "@secretlobby/player-view";
 import type {
   PlaylistSummary,
   StoredPageLayout,
@@ -42,6 +43,11 @@ interface PageBuilderLoaderData {
   theme: ThemeSettings;
   playlists: PlaylistSummary[];
   defaultPlaylistId: string;
+  // Lobby-level social link settings — passed through to the page-builder
+  // state so the SocialLinks block can render the user's configured links.
+  // The block never writes back; mutating these still happens on the
+  // dedicated /lobby/{id}/social route.
+  socialLinks: SocialLinksSettings;
   // Absolute origin (e.g. `https://acme.secretlobby.co`) for cross-origin
   // audio API requests from PlayerBlock to the lobby app.
   lobbyOrigin: string;
@@ -153,6 +159,7 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
     defaultPlaylistId,
     lobbyOrigin,
     lobbyPreviewToken,
+    socialLinks,
   } = loaderData;
   // Loader returns the JSON column as `unknown`; the runtime shape matches
   // SavedSwatch from the picker — cast once at this boundary so the rest of
@@ -189,6 +196,7 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
       lobbyOrigin,
       lobbyPreviewToken,
       pageKind,
+      socialLinks,
     };
     // We intentionally seed only once; subsequent URL changes are handled by
     // selection/viewport effects inside the inner component.

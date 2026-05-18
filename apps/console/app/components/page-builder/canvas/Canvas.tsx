@@ -619,8 +619,27 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
     );
   }
 
+  // Click-outside-to-deselect. BlockRenderer's wrapper calls
+  // e.stopPropagation() on every block click, so any click that bubbles up
+  // to the canvas root happened outside a block — clear the active
+  // selection so the block outline/toolbar disappear.
+  //
+  // Sections and columns also stopPropagation on their own onClick (when
+  // `showLayoutEdit` is on), so clicking them still routes to the right
+  // selection. With layout-edit off they have no onClick, and clicks on the
+  // section background fall through here, which matches user expectation:
+  // clicking the page background deselects the current block.
+  const handleCanvasClick = isEditing
+    ? () => {
+        if (selection.kind !== "none") {
+          dispatch({ type: "clearSelection" });
+        }
+      }
+    : undefined;
+
   return (
     <div
+      onClick={handleCanvasClick}
       className={cn(
         "flex-1 overflow-auto bg-theme-tertiary",
         // Edit-mode gutter depends on the viewport: desktop flush; mobile

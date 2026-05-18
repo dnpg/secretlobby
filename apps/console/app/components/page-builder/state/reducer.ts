@@ -1,4 +1,5 @@
 import { arrayMove } from "@dnd-kit/sortable";
+import type { SocialLinksSettings } from "@secretlobby/player-view";
 import { createBlock, createEmptyParagraphBlock } from "./helpers";
 import type {
   Block,
@@ -66,6 +67,11 @@ export interface PageBuilderState {
   // Updated only when the loader re-runs; mutating playlists happens on the
   // dedicated /lobby/{id}/playlists/{playlistId} route, not from here.
   playlists: PlaylistSummary[];
+  // Lobby social-link settings, surfaced read-only. The SocialLinks block
+  // reads this for the link list + global default rendering options.
+  // Mutating these still happens on the dedicated /lobby/{id}/social route
+  // (see _layout.lobby.social.tsx); the page builder never writes back.
+  socialLinks: SocialLinksSettings;
   // ID of the lobby's default playlist (always present after Phase 6 — the
   // loader auto-creates a default one if none exist). PlayerBlocks fall back
   // to this when their `content.playlistId` is empty or stale.
@@ -299,7 +305,17 @@ export type PageBuilderAction =
       blockId: string;
       overrides: Partial<ThemeSettings>;
     }
-  | { type: "clearBlockThemeOverrides"; blockId: string };
+  | { type: "clearBlockThemeOverrides"; blockId: string }
+  // Universal Block-level field setter. Used for `marginBottom` today; kept
+  // generic (Partial<Block>) so future universal fields can ride the same
+  // action without growing the action union. `content` is rejected at the
+  // type level (it lives on `updateBlock` / `updateBlockInCard` which carry
+  // proper Partial<BlockContent> typing).
+  | {
+      type: "updateBlockMeta";
+      blockId: string;
+      partial: Partial<Omit<Block, "id" | "type" | "content">>;
+    };
 
 // Action types that mutate persisted layout — used to flip the dirty flag.
 export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
@@ -336,6 +352,7 @@ export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
   // themeOverrides live on the block, so they autosave with layout.
   "updateBlockThemeOverrides",
   "clearBlockThemeOverrides",
+  "updateBlockMeta",
 ]);
 
 // Action types that mutate the lobby theme — flip the themeDirty flag and
@@ -1346,6 +1363,56 @@ export function pageBuilderReducer(
             : s
         ),
       };
+      break;
+    }
+    case "updateBlockMeta": {
+      // Find-and-replace the block wherever it lives — column level OR
+      // nested inside a card. Universal Block-level field setter; today
+      // drives `marginBottom`, but any future Partial<Block> field can ride
+      // through this path without growing the action union.
+      //
+      // Each field of `partial` set to `undefined` is treated as "clear" so
+      // the persisted JSON stays minimal (e.g. clearing marginBottom should
+      // remove the field rather than leave `marginBottom: undefined` on the
+      // serialized block).
+      const applyMeta = (b: Block): Block => {
+        const merged = { ...b, ...action.partial } as Block;
+        for (const [key, value] of Object.entries(action.partial)) {
+          if (value === undefined) {
+            delete (merged as unknown as Record<string, unknown>)[key];
+          }
+        }
+        return merged;
+      };
+
+      const sectionsMapped = state.sections.map((s) => ({
+        ...s,
+        columns: s.columns.map((col) => ({
+          ...col,
+          blocks: col.blocks.map((b) => {
+            if (b.id === action.blockId) return applyMeta(b);
+            // Card-nested children — walk one level deep. Cards-inside-cards
+            // are disallowed (see CardBlock's DISALLOWED_INSIDE_CARD), so a
+            // single-level scan is enough.
+            if (b.type === "card") {
+              const content = b.content as CardBlockContent;
+              const children = content.blocks ?? [];
+              if (!children.some((c) => c.id === action.blockId)) return b;
+              return {
+                ...b,
+                content: {
+                  ...content,
+                  blocks: children.map((c) =>
+                    c.id === action.blockId ? applyMeta(c) : c
+                  ),
+                },
+              };
+            }
+            return b;
+          }),
+        })),
+      }));
+      next = { ...state, sections: sectionsMapped };
       break;
     }
     default: {

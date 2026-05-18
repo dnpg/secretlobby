@@ -47,14 +47,19 @@ export function HeadingBlock({
     <div
       role="heading"
       aria-level={level}
-      className="w-full"
-      // Headings inherit `--color-text-heading` so cards (which override
-      // that variable to `--card-heading-color`) get the lobby's heading
-      // color; outside a card the variable is unset and we fall back to
-      // `--color-text-primary` (the global text color).
-      style={{
-        color: "var(--color-text-heading, var(--color-text-primary))",
-      }}
+      // `pb-heading-gradient` carries the legacy Card title pattern:
+      //   background: <gradient>;
+      //   -webkit-background-clip: text;
+      //   -webkit-text-fill-color: transparent;
+      //   color: <fallback hex>;
+      // See `apps/console/app/app.css` for the rule. The class also
+      // applies the styles to the nested Tiptap `.ProseMirror` element —
+      // setting `background-clip: text` only on this wrapper would miss
+      // the descendant that actually paints the glyphs. CardBlock seeds
+      // the three CSS vars (`--color-text-heading{,-image,-fill}`) on its
+      // wrapper; outside a card those vars are unset and the rule falls
+      // back to the global text-primary color with no gradient.
+      className="w-full pb-heading-gradient"
     >
       <InlineEditor
         value={content.inline}

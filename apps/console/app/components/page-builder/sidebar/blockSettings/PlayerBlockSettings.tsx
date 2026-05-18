@@ -1,11 +1,12 @@
+import { useState } from "react";
 import { Link } from "react-router";
 import { cn } from "@secretlobby/ui";
+import type { ThemeSettings } from "~/lib/theme";
+import { useSwatches } from "../../PageBuilderRoot";
 import { usePageBuilder } from "../../state/provider";
 import type { PlayerBlockContent } from "../../state/types";
-import {
-  BlockColorOverrides,
-  type FieldDescriptor,
-} from "./BlockColorOverrides";
+import { PlayerThemeFields } from "../PlayerThemeFields";
+import { ThemeOverrideAccordion } from "../ThemeOverrideAccordion";
 
 interface PlayerBlockSettingsProps {
   blockId: string;
@@ -13,81 +14,56 @@ interface PlayerBlockSettingsProps {
   onUpdate: (content: Partial<PlayerBlockContent>) => void;
 }
 
-// Theme tokens that affect a player block. Includes the cardBg/cardBorder
-// because the player typically renders inside a card (visualizerUseCardBg).
-const PLAYER_OVERRIDE_FIELDS: FieldDescriptor[] = [
-  { key: "visualizerBg", label: "Visualizer background", kind: { kind: "color" } },
-  {
-    key: "visualizerBgOpacity",
-    label: "Visualizer bg opacity",
-    kind: { kind: "number", min: 0, max: 100, slider: true, suffix: "%" },
-  },
-  { key: "visualizerBar", label: "Bar color", kind: { kind: "color" } },
-  { key: "visualizerBarAlt", label: "Bar alt color", kind: { kind: "color" } },
-  { key: "visualizerGlow", label: "Glow color", kind: { kind: "color" } },
-  {
-    key: "visualizerUseCardBg",
-    label: "Use card background",
-    kind: { kind: "toggle" },
-  },
-  {
-    key: "visualizerBorderShow",
-    label: "Show border",
-    kind: { kind: "toggle" },
-  },
-  {
-    key: "visualizerBorderColor",
-    label: "Border color",
-    kind: { kind: "color" },
-  },
-  {
-    key: "visualizerBorderRadius",
-    label: "Border radius",
-    kind: { kind: "number", min: 0, max: 64, suffix: "px" },
-  },
-  {
-    key: "visualizerBlendMode",
-    label: "Blend mode",
-    kind: {
-      kind: "select",
-      options: [
-        { value: "normal", label: "Normal" },
-        { value: "multiply", label: "Multiply" },
-        { value: "screen", label: "Screen" },
-        { value: "overlay", label: "Overlay" },
-        { value: "lighten", label: "Lighten" },
-        { value: "darken", label: "Darken" },
-      ],
-    },
-  },
-  {
-    key: "visualizerType",
-    label: "Visualizer type",
-    kind: {
-      kind: "select",
-      options: [
-        { value: "equalizer", label: "Equalizer" },
-        { value: "waveform", label: "Waveform" },
-      ],
-    },
-  },
-  {
-    key: "playButtonBorderRadius",
-    label: "Play button radius",
-    kind: { kind: "number", min: 0, max: 64, suffix: "px" },
-  },
-  // Card tokens — player typically renders inside a card.
-  { key: "cardBgColor", label: "Card background", kind: { kind: "color" } },
-  { key: "cardBorderColor", label: "Card border color", kind: { kind: "color" } },
-];
-
 export function PlayerBlockSettings({
   blockId,
   content,
   onUpdate,
 }: PlayerBlockSettingsProps) {
-  const { state } = usePageBuilder();
+  const { state, dispatch } = usePageBuilder();
   const { playlists, defaultPlaylistId } = state;
+  const { swatches, saveSwatch, updateSwatch, deleteSwatch } = useSwatches();
+
+  // Walk to the block — same single-pass lookup CardBlockSettings uses.
+  // Cheap; the block-settings panel already iterates this tree.
+  const block = (() => {
+    for (const section of state.sections) {
+      for (const column of section.columns) {
+        const b = column.blocks.find((bb) => bb.id === blockId);
+        if (b) return b;
+      }
+    }
+    return null;
+  })();
+  const overrides: Partial<ThemeSettings> = block?.themeOverrides ?? {};
+  const hasAnyOverrides = Object.keys(overrides).length > 0;
+  // Theme override toggle — when ON, edits in <PlayerThemeFields/> persist
+  // into `block.themeOverrides`; when OFF, they write to the global theme.
+  // We seed the local state from "is there at least one override" so a
+  // block that already has overrides opens in override-mode on first
+  // render. Flipping the toggle off clears every override.
+  const [overrideActive, setOverrideActive] = useState(hasAnyOverrides);
+  const effectiveTheme: ThemeSettings = { ...state.theme, ...overrides };
+  const handleThemeChange = (partial: Partial<ThemeSettings>) => {
+    if (overrideActive) {
+      dispatch({
+        type: "updateBlockThemeOverrides",
+        blockId,
+        overrides: partial,
+      });
+    } else {
+      dispatch({ type: "updateTheme", partial });
+    }
+  };
+  const handleOverrideToggle = (next: boolean) => {
+    setOverrideActive(next);
+    // Flipping the toggle OFF clears any per-block overrides so the block
+    // snaps back to the global theme. Flipping it ON without prior
+    // overrides is a no-op until the user edits a field — subsequent
+    // edits route through `updateBlockThemeOverrides` automatically.
+    if (!next && hasAnyOverrides) {
+      dispatch({ type: "clearBlockThemeOverrides", blockId });
+    }
+  };
 
   // Effective playlist id for the dropdown. If `content.playlistId` is empty
   // (legacy block) or stale (playlist deleted), fall back to the default so
@@ -196,7 +172,26 @@ export function PlayerBlockSettings({
           <span className="text-sm text-theme-secondary">Autoplay</span>
         </label>
       </div>
-      <BlockColorOverrides blockId={blockId} fields={PLAYER_OVERRIDE_FIELDS} />
+      {/* Theme — global player theme, with a per-player override toggle.
+          The accordion chrome + override toggle live in
+          ThemeOverrideAccordion so the same component drives
+          CardBlockSettings (and any future block that needs the same
+          "edit globally OR locally" pattern). */}
+      <ThemeOverrideAccordion
+        title="Theme"
+        hasAnyOverrides={hasAnyOverrides}
+        overrideActive={overrideActive}
+        onOverrideToggle={handleOverrideToggle}
+      >
+        <PlayerThemeFields
+          value={effectiveTheme}
+          onChange={handleThemeChange}
+          swatches={swatches}
+          saveSwatch={saveSwatch}
+          updateSwatch={updateSwatch}
+          deleteSwatch={deleteSwatch}
+        />
+      </ThemeOverrideAccordion>
     </>
   );
 }

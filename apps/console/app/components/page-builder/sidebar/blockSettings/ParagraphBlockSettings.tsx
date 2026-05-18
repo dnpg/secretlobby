@@ -35,7 +35,7 @@ export function ParagraphBlockSettings({
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <label className="block text-xs uppercase tracking-wide text-theme-muted">
+        <label className="block text-xs text-theme-muted">
           Alignment
         </label>
         <div className="flex gap-1">
@@ -63,7 +63,7 @@ export function ParagraphBlockSettings({
 
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <label className="text-xs uppercase tracking-wide text-theme-muted flex items-center gap-1.5">
+          <label className="text-xs text-theme-muted flex items-center gap-1.5">
             <span>Font size</span>
             {overrideFontSize !== null && (
               <span

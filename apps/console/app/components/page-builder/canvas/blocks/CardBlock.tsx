@@ -11,8 +11,11 @@ import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import {
   backdropFilterToCSS,
   borderRadiusToCSS,
+  boxPaddingToCSS,
   getCardBgCSS,
   getCardBorderCSS,
+  textColorFallbackHex,
+  textColorToCSSDeclarations,
 } from "~/lib/theme";
 import { useSwatches } from "../../PageBuilderRoot";
 import { usePageBuilder } from "../../state/provider";
@@ -146,6 +149,54 @@ export function CardBlock({
   const backdropFilterCSS = backdropFilterToCSS(theme.cardBackdropFilter);
   const hasBackdropFilter =
     backdropFilterCSS !== "none" && backdropFilterCSS.length > 0;
+
+  // Rich text resolution for the card's heading + content colors.
+  // The old (pre–Notion-blocks) Card painted titles like this:
+  //   background: -webkit-linear-gradient(...);
+  //   -webkit-background-clip: text;
+  //   -webkit-text-fill-color: transparent;
+  //   color: <fallback hex>;
+  // We rebuild the same pattern here: compute three pieces per role —
+  //   - color: the resolved fallback hex (always a real color, NEVER
+  //     `transparent`) so non-supporting browsers stay readable
+  //   - image: the gradient itself, or `none` for solids
+  //   - fill: `transparent` when the role IS a gradient (so the gradient
+  //     shows through the glyphs via background-clip:text), else
+  //     `currentColor` (so the solid `color` paints the text normally)
+  // CardBlock emits all three as CSS vars on its wrapper. HeadingBlock
+  // (and any future ParagraphBlock-side hookup) reads them via inherited
+  // `--color-text-heading*` vars and applies the same -webkit-* pattern.
+  function richTextPieces(
+    rich: ThemeSettings["cardHeadingColorRich"] | undefined,
+    legacy: string
+  ): { color: string; image: string; fill: string } {
+    const sw = swatches as unknown as Parameters<
+      typeof textColorToCSSDeclarations
+    >[1];
+    const dr = drafts as unknown as Parameters<
+      typeof textColorToCSSDeclarations
+    >[2];
+    if (!rich) return { color: legacy, image: "none", fill: "currentColor" };
+    const decls = textColorToCSSDeclarations(rich, sw, dr);
+    if (!decls.backgroundImage) {
+      return { color: decls.color, image: "none", fill: "currentColor" };
+    }
+    return {
+      color: textColorFallbackHex(rich, legacy, sw, dr),
+      image: decls.backgroundImage,
+      fill: "transparent",
+    };
+  }
+  const cardHeadingPieces = useMemo(
+    () => richTextPieces(theme.cardHeadingColorRich, theme.cardHeadingColor),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme.cardHeadingColorRich, theme.cardHeadingColor, swatches, drafts]
+  );
+  const cardContentPieces = useMemo(
+    () => richTextPieces(theme.cardContentColorRich, theme.cardContentColor),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme.cardContentColorRich, theme.cardContentColor, swatches, drafts]
+  );
   const wrapperStyle: CSSProperties = useMemo(
     () => ({
       background: getCardBgCSS(
@@ -154,6 +205,11 @@ export function CardBlock({
         drafts as unknown as Parameters<typeof getCardBgCSS>[2]
       ),
       borderRadius: borderRadiusToCSS(theme.cardBorderRadius, 12),
+      // Inner padding — content-level override falls back to 16px (the
+      // legacy `p-4` Tailwind class this replaces). `boxPaddingToCSS`
+      // handles both the uniform number and the per-side object form so
+      // the emitted CSS shorthand is always valid.
+      padding: boxPaddingToCSS(content.padding, 16),
       color: theme.cardContentColor,
       // Cascade theme card text + heading colors to descendants via CSS
       // variables. HeadingBlock reads `--color-text-heading` (falling back
@@ -162,8 +218,21 @@ export function CardBlock({
       // primary/secondary text tokens). Setting these on the card wrapper
       // keeps the global theme as the canvas default and lets cards
       // override per-card via their own theme overrides.
-      ["--color-text-heading" as string]: "var(--card-heading-color)",
-      ["--color-text-content" as string]: "var(--card-content-color)",
+      //
+      // For each role we emit THREE vars — `*` (the color), `*-image`
+      // (the gradient or `none`), and `*-fill` (`transparent` when the
+      // role is a gradient, `currentColor` otherwise). The descendant
+      // block writes them through the legacy `-webkit-text-fill-color` +
+      // `-webkit-background-clip: text` pattern, so gradients mask the
+      // text while solid colors render normally via `color`. The `color`
+      // var carries the real fallback hex (NOT `transparent`) so browsers
+      // that can't do background-clip:text still paint legible text.
+      ["--color-text-heading" as string]: cardHeadingPieces.color,
+      ["--color-text-heading-image" as string]: cardHeadingPieces.image,
+      ["--color-text-heading-fill" as string]: cardHeadingPieces.fill,
+      ["--color-text-content" as string]: cardContentPieces.color,
+      ["--color-text-content-image" as string]: cardContentPieces.image,
+      ["--color-text-content-fill" as string]: cardContentPieces.fill,
       ...(hasBackdropFilter
         ? {
             backdropFilter: backdropFilterCSS,
@@ -201,6 +270,9 @@ export function CardBlock({
       backdropFilterCSS,
       showBorder,
       border,
+      cardHeadingPieces,
+      cardContentPieces,
+      content.padding,
     ]
   );
 
@@ -321,7 +393,7 @@ export function CardBlock({
 
   return (
     <div
-      className={cn("w-full p-4")}
+      className={cn("w-full")}
       style={wrapperStyle}
       // Stop click-to-select on the card chrome from bubbling up to the
       // parent column / section selection handlers.

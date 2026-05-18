@@ -167,7 +167,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const { getLobbyById } = await import("~/models/queries/lobby.server");
   const { getAccountWithBasicInfo } = await import("~/models/queries/account.server");
   const { getLobbySettings } = await import("~/models/mutations/lobby.server");
-  const { getLobbyThemeSettings } = await import("~/lib/content.server");
+  const { getLobbyThemeSettings, getLobbySocialLinksSettings } = await import(
+    "~/lib/content.server"
+  );
   const { getPlaylistsByLobbyIdWithTracks } = await import(
     "~/models/queries/playlist.server"
   );
@@ -196,15 +198,25 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const pageKind: "lobby" | "login" =
     new URL(request.url).searchParams.get("page") === "login" ? "login" : "lobby";
 
-  const [lobby, account, csrfToken, theme, lobbySettings, swatchesRaw] =
-    await Promise.all([
-      getLobbyById(lobbyId),
-      getAccountWithBasicInfo(accountId),
-      getCsrfToken(request),
-      getLobbyThemeSettings(lobbyId),
-      getLobbySettings(lobbyId),
-      listSwatchesByAccount(accountId),
-    ]);
+  const [
+    lobby,
+    account,
+    csrfToken,
+    theme,
+    lobbySettings,
+    swatchesRaw,
+    socialLinks,
+  ] = await Promise.all([
+    getLobbyById(lobbyId),
+    getAccountWithBasicInfo(accountId),
+    getCsrfToken(request),
+    getLobbyThemeSettings(lobbyId),
+    getLobbySettings(lobbyId),
+    listSwatchesByAccount(accountId),
+    // Social-link settings — merged from lobby-level + account-level fallback
+    // by the helper, so the page builder sees a single resolved object.
+    getLobbySocialLinksSettings(lobbyId),
+  ]);
 
   if (!lobby || lobby.accountId !== accountId) {
     throw redirect("/lobbies");
@@ -300,6 +312,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     playlists: playlistSummaries,
     defaultPlaylistId: defaultPlaylist.id,
     swatches,
+    socialLinks,
   };
 }
 

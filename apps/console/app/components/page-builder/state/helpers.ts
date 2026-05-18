@@ -17,6 +17,7 @@ import type {
   PlayerBlockContent,
   QuoteBlockContent,
   Section,
+  SocialLinksBlockContent,
   StoredPageLayout,
   TableBlockContent,
   ViewportSize,
@@ -145,6 +146,13 @@ export function getDefaultBlockContent(type: BlockType): BlockContent {
       } satisfies TableBlockContent;
     case "divider":
       return {} satisfies DividerBlockContent;
+    case "socialLinks":
+      // No defaults — the renderer reads `state.socialLinks` from the
+      // page-builder context. Optional per-block overrides (alignment /
+      // iconStyle / iconColor) are written into this content by the block
+      // settings panel when the user wants a different treatment than the
+      // lobby-level defaults.
+      return {} satisfies SocialLinksBlockContent;
   }
 }
 

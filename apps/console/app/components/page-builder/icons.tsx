@@ -313,6 +313,27 @@ export function PencilIcon({ className = "w-5 h-5" }: { className?: string }) {
   );
 }
 
+// "Share" / "Hash" style icon used as the tile glyph for the Social Links
+// block. Inline SVG to stay dependency-free; visually distinct from the
+// Player and Link icons so the user can scan the block palette quickly.
+export function SocialLinksIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0-12.814a2.25 2.25 0 103.935-2.186 2.25 2.25 0 00-3.935 2.186zm0 12.814a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186z"
+      />
+    </svg>
+  );
+}
+
 // Block-type metadata used by the toolbar / sidebar to render add-block menus.
 // Each entry now includes a short description used by the right-panel
 // "Add a block" tile grid.
@@ -399,5 +420,11 @@ export const BLOCK_TYPES: {
     label: "Divider",
     icon: DividerIcon,
     description: "Horizontal rule",
+  },
+  {
+    type: "socialLinks",
+    label: "Social links",
+    icon: SocialLinksIcon,
+    description: "Lobby social media icons",
   },
 ];

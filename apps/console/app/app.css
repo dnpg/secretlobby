@@ -1,5 +1,44 @@
 @import "tailwindcss";
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
+/* Also scan @secretlobby/player-view — the page-builder's SocialLinks block
+   renders `<SocialLinks />` from that package, and its `min-w-11 min-h-11`
+   (44px tap target floor on every social <a>) plus icon sizing classes
+   are emitted from the player-view source. Without this @source the
+   classes are present in the JSX but Tailwind never produces the CSS for
+   them, so the icons collapse to their intrinsic SVG size in the console. */
+@source "../../../packages/player-view/src/**/*.{ts,tsx}";
+
+/* Make Tailwind's `dark:` variant follow the app's data-theme attribute
+   (set on <html> in root.tsx) instead of the OS prefers-color-scheme
+   media query. Without this every `dark:` class fires on OS dark mode
+   regardless of the in-app theme toggle. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Page-builder heading gradient.
+   Mirrors the legacy Card title pattern:
+     background: <gradient>;
+     -webkit-background-clip: text;
+     -webkit-text-fill-color: transparent;
+     color: <fallback hex>;
+   `color` carries the resolved fallback hex (never `transparent`), so
+   non-supporting browsers stay readable. CardBlock cascades three vars:
+     --color-text-heading           (the fallback hex)
+     --color-text-heading-image     (the gradient, or `none` for solids)
+     --color-text-heading-fill      (`transparent` for gradient, `currentColor` for solids)
+   The rule is applied to BOTH the heading wrapper and the nested Tiptap
+   text-bearing element. background-clip only clips the background of the
+   element it's set on; setting it on the wrapper alone misses the inner
+   .ProseMirror node that actually paints the glyphs, which is why the
+   wrapper-only style on its own renders blank. */
+.pb-heading-gradient,
+.pb-heading-gradient .ProseMirror,
+.pb-heading-gradient .ProseMirror > * {
+  color: var(--color-text-heading, var(--color-text-primary));
+  background: var(--color-text-heading-image, none);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: var(--color-text-heading-fill, currentColor);
+}
 
 /* Roundo Font for auth pages */
 @font-face {

@@ -32,6 +32,15 @@ export interface SocialLinksSettings {
   contentBefore?: string;
   contentAfter?: string;
   iconAlignment?: "left" | "center" | "right";
+  /**
+   * Gap between icon buttons as a CSS length string (e.g. `"8px"`,
+   * `"0.5rem"`). Stored as a string — same shape as `cardBorderWidth` and
+   * other length theme fields — so the page-builder's `CssLengthInput` can
+   * round-trip it without coercing px-only. Applied as `gap` on the flex
+   * `<nav>`, so the spacing stays symmetric when icons wrap onto multiple
+   * lines. Undefined / empty string falls back to the legacy tight pack.
+   */
+  gap?: string;
   placement?: "sidebar-above" | "sidebar-below" | "above-content" | "below-content" | "above-left" | "below-left";
 }
 
@@ -42,7 +51,7 @@ interface SocialLinksProps {
 }
 
 export function SocialLinks({ settings, headingColor, contentColor }: SocialLinksProps) {
-  const { links, iconStyle, iconColor, title, contentBefore, contentAfter, iconAlignment = "center" } = settings;
+  const { links, iconStyle, iconColor, title, contentBefore, contentAfter, iconAlignment = "center", gap } = settings;
 
   const hasLinks = links && links.length > 0;
   const hasContent = title || contentBefore || contentAfter || hasLinks;
@@ -114,7 +123,20 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
       )}
 
       {hasLinks && (
-        <nav aria-label="Social media links" className={`flex flex-wrap items-center ${alignmentClass}`}>
+        <nav
+          aria-label="Social media links"
+          className={`flex flex-wrap items-center ${alignmentClass}`}
+          // Apply the gap only when the consumer provides a non-empty CSS
+          // length string. Leaving `style` undefined for legacy settings
+          // keeps their current tight-packed rendering exactly the same.
+          // NOTE: the per-icon `<a>` keeps `min-w-11 min-h-11` (44px) below
+          // — gap controls spacing between buttons, never their size.
+          style={
+            typeof gap === "string" && gap.trim() !== ""
+              ? { gap }
+              : undefined
+          }
+        >
           {links.map((link) => {
             const platform = link.platform as SocialPlatform;
             const IconComponent = icons[platform];
@@ -135,6 +157,10 @@ export function SocialLinks({ settings, headingColor, contentColor }: SocialLink
                 href={href}
                 target={isEmail ? undefined : "_blank"}
                 rel={isEmail ? undefined : "noopener noreferrer"}
+                // 44px minimum tap target on BOTH axes (`min-w-11` /
+                // `min-h-11` = 2.75rem at the default 16px root). Required
+                // — do not drop below 44px; consumers (including the
+                // page-builder SocialLinks block) rely on this floor.
                 className="min-w-11 min-h-11 flex items-center justify-center rounded-lg transition hover:opacity-70 focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer"
                 aria-label={accessibleLabel}
                 style={monoStyle}

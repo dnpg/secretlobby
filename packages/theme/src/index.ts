@@ -172,6 +172,65 @@ export interface RadiusCorners {
 
 export type BorderRadius = number | RadiusCorners;
 
+// =============================================================================
+// Box padding — Figma-style: either a single number (all four sides) or a
+// per-side object. CSS shorthand emitted by `boxPaddingToCSS` follows the
+// standard `top right bottom left` order. Used by CardBlock for the card's
+// inner padding; kept here next to `BorderRadius` so the two value-shape
+// patterns stay symmetric and any future per-side field can reuse the same
+// idea.
+// =============================================================================
+
+export interface BoxSides {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export type BoxPadding = number | BoxSides;
+
+/**
+ * Render a `BoxPadding` value as a CSS string. A plain number returns a
+ * single `Npx`; the per-side object returns the four-value shorthand
+ * `Tpx Rpx Bpx Lpx`. Undefined / null falls back to `${fallback}px`.
+ */
+export function boxPaddingToCSS(
+  p: BoxPadding | undefined | null,
+  fallback = 0
+): string {
+  if (p === undefined || p === null) return `${fallback}px`;
+  if (typeof p === "number") return `${p}px`;
+  return `${p.top}px ${p.right}px ${p.bottom}px ${p.left}px`;
+}
+
+/**
+ * Coerce a persisted padding value (legacy number, new object, or junk)
+ * into a valid `BoxPadding`. Used at load time so old card content with
+ * `padding: 16` keeps working alongside new cards that may persist
+ * `{ top, right, bottom, left }`.
+ */
+export function normalizeBoxPadding(raw: unknown): BoxPadding {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const r = raw as Record<string, unknown>;
+    if (
+      typeof r.top === "number" &&
+      typeof r.right === "number" &&
+      typeof r.bottom === "number" &&
+      typeof r.left === "number"
+    ) {
+      return {
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+        left: r.left,
+      };
+    }
+  }
+  return 0;
+}
+
 /**
  * Render a `BorderRadius` value as a CSS string. A plain number returns a
  * single `Npx`; the per-corner object returns the four-value shorthand
@@ -492,6 +551,129 @@ export interface ThemeSettings {
   visualizerBorderRadius: BorderRadius;
   visualizerBlendMode: string;
   visualizerType: "equalizer" | "waveform";
+
+  // ---------------------------------------------------------------------------
+  // Player theming.
+  // ---------------------------------------------------------------------------
+  // The page-builder Player block has historically inherited the card surface
+  // (cardBg + cardBorder + cardBorderRadius) and the global text/accent colors
+  // for track rows. These dedicated player/playlist/track fields let the
+  // designer style the player independently from cards — e.g. keep cards
+  // borderless yet outline the player, or use a darker fill behind the
+  // playlist than behind cards in the same lobby.
+  //
+  // Every field is optional so legacy persisted theme JSON without them still
+  // type-checks. Consumers (PlayerView / PlayerBlock) should read with a
+  // sensible `?? <fallback>` — typically the matching card-level field for
+  // the container roles and the global text/accent colors for the track
+  // roles.
+
+  // Four independently-toggleable container regions inside the Player.
+  // Each region carries the same five chrome settings — enabled flag, bg,
+  // backdrop-filter, border (width/color/style), and border-radius — so
+  // the designer can wrap any subset of regions with its own surface
+  // without affecting the others. PlayerView reads each via the shared
+  // CardStyles object; PlayerBlock.buildCardStyles is the single point
+  // where flat theme fields collapse into the per-region shape.
+  //
+  // When `*ContainerEnabled` is `false` (default), the renderer applies
+  // NONE of the corresponding chrome — the region just lays out without a
+  // surface wrap. When `true`, the renderer applies bg + backdrop + border
+  // + radius as one bundle. This keeps the toggle a single user-facing
+  // switch instead of asking the user to clear four fields to opt out.
+
+  // ---- Player container (outermost wrap holding everything) -------------
+  playerContainerEnabled?: boolean;
+  playerBg?: ThemeBackgroundColor;
+  playerBackdropFilter?: BackdropFilter;
+  playerBorderWidth?: string;
+  playerBorderColor?: string;
+  playerBorderStyle?: BorderStyle;
+  playerBorderRadius?: BorderRadius;
+
+  // ---- Visualizer container (frame around the bars/waveform area) -------
+  // Note: bar / glow colors and blend mode stay on the legacy
+  // `visualizerBar*` / `visualizerGlow` / `visualizerBlendMode` fields —
+  // those describe the CANVAS render, not the container wrap. The fields
+  // below describe the container chrome.
+  visualizerContainerEnabled?: boolean;
+  visualizerBackdropFilter?: BackdropFilter;
+  visualizerBorderWidth?: string;
+  visualizerBorderStyle?: BorderStyle;
+
+  // ---- Transport container (current song + play/pause/skip controls) ----
+  transportContainerEnabled?: boolean;
+  transportBg?: ThemeBackgroundColor;
+  transportBackdropFilter?: BackdropFilter;
+  transportBorderWidth?: string;
+  transportBorderColor?: string;
+  transportBorderStyle?: BorderStyle;
+  transportBorderRadius?: BorderRadius;
+
+  // Transport content — inside the transport container. These drive the
+  // current-song title / progress bar / button styling regardless of the
+  // container chrome toggle, so the designer can theme the controls even
+  // when the container itself stays transparent. Optional fields all
+  // resolve to sensible fallbacks in PlayerView (textPrimary, primary,
+  // etc.) so legacy lobbies render unchanged.
+
+  /** Inner padding of the transport container — `BoxPadding`, same shape
+   *  as `cardPadding` so a single number gives uniform spacing and an
+   *  object `{ top, right, bottom, left }` lets the user set each side. */
+  transportPadding?: BoxPadding;
+  /** Current-song title + artist text color. */
+  transportTextColor?: string;
+
+  /** Unfilled portion of the progress bar — the track behind the fill. */
+  progressBarColor?: string;
+  /** Filled portion of the progress bar (the current-time indicator). */
+  progressBarActiveColor?: string;
+  /** Time-stamp text color (current time + duration labels). */
+  progressBarTextColor?: string;
+
+  /** Play / pause button background (rich color — supports solid /
+   *  gradient / swatch-ref). */
+  playButtonBg?: ThemeBackgroundColor;
+  /** Color of the play / pause / loading icon glyph. */
+  playButtonIconColor?: string;
+  // `playButtonBorderRadius` already exists above (legacy field).
+  playButtonBorderWidth?: string;
+  playButtonBorderColor?: string;
+  playButtonBorderStyle?: BorderStyle;
+
+  /** Back / Forward (skip) button background. */
+  skipButtonBg?: ThemeBackgroundColor;
+  skipButtonIconColor?: string;
+  skipButtonBorderRadius?: BorderRadius;
+  skipButtonBorderWidth?: string;
+  skipButtonBorderColor?: string;
+  skipButtonBorderStyle?: BorderStyle;
+
+  // ---- Playlist container (track-list panel) ----------------------------
+  playlistContainerEnabled?: boolean;
+  playlistBg?: ThemeBackgroundColor;
+  playlistBackdropFilter?: BackdropFilter;
+  playlistBorderWidth?: string;
+  playlistBorderColor?: string;
+  playlistBorderStyle?: BorderStyle;
+  playlistBorderRadius?: BorderRadius;
+
+  // Track rows — three states (normal / hover / active). Each state owns a
+  // background fill and a text color. `trackMutedText` paints the
+  // secondary text (artist, duration) regardless of state; today the
+  // renderer uses `cardMutedColor` for this, but giving it its own field
+  // lets a designer dim/brighten the secondary text without touching the
+  // global card theme. Hex strings (not the rich ThemeBackgroundColor)
+  // because track bgs are flat, single-color surfaces in the current
+  // PlayerView design — a gradient on a 40px row would be noisy.
+  trackBg?: string;
+  trackText?: string;
+  trackMutedText?: string;
+  trackHoverBg?: string;
+  trackHoverText?: string;
+  trackActiveBg?: string;
+  trackActiveText?: string;
+
   // Card settings
   cardHeadingColor: string;
   /** Rich text color for card headings — same pattern as `textPrimaryColor`. */
@@ -548,6 +730,23 @@ export interface ThemeSettings {
    * `generateThemeCSS`.
    */
   cardBackdropFilter?: BackdropFilter;
+  // ---------------------------------------------------------------------------
+  // Image (block-level) theme defaults.
+  // ---------------------------------------------------------------------------
+  // ImageBlock used to fall back to `cardBorder*` / `cardBorderRadius` when its
+  // own content overrides were undefined. These dedicated theme fields give
+  // images a separate global default so a designer can keep cards borderless
+  // while still putting a 1px outline on every image in the lobby. The
+  // existing block-level overrides (`imageBorderWidth`, `imageBorderColor`,
+  // `imageBorderStyle`, `imageBorderRadius` on ImageBlockContent) continue to
+  // win when set; these fields are the fallback layer. Optional so legacy
+  // persisted theme JSON without them still type-checks — consumers should
+  // read with a sensible `?? <fallback>`.
+  imageBorderRadius?: BorderRadius;
+  imageBorderWidth?: string;
+  imageBorderColor?: string;
+  imageBorderStyle?: BorderStyle;
+
   /** Border radius — number (uniform) or per-corner `{ tl, tr, br, bl }`. */
   buttonBorderRadius: BorderRadius;
   /** Border radius — number (uniform) or per-corner `{ tl, tr, br, bl }`. */
@@ -636,6 +835,13 @@ export const defaultDarkTheme: ThemeSettings = {
   cardBorderOpacity: 100,
   cardBorderWidth: "1px",
   cardBorderRadius: 12,
+  // Image defaults — borderless by default. Width is "0" so the renderer's
+  // positive-width gate short-circuits and no border paints unless the user
+  // (or block-level override) bumps it up.
+  imageBorderRadius: 12,
+  imageBorderWidth: "0",
+  imageBorderColor: "#374151",
+  imageBorderStyle: "solid",
   buttonBorderRadius: 24,
   playButtonBorderRadius: 50,
   // Button styles — dark mode: white pill on dark bg.
@@ -693,6 +899,11 @@ export const defaultLightTheme: ThemeSettings = {
   cardBorderOpacity: 100,
   cardBorderWidth: "1px",
   cardBorderRadius: 12,
+  // Image defaults — borderless by default. See defaultDarkTheme for rationale.
+  imageBorderRadius: 12,
+  imageBorderWidth: "0",
+  imageBorderColor: "#d1d5db",
+  imageBorderStyle: "solid",
   buttonBorderRadius: 24,
   playButtonBorderRadius: 50,
   // Button styles — light mode: black pill on light bg.

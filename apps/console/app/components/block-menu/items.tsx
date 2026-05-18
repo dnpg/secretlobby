@@ -27,6 +27,15 @@ const TYPE_KEYWORDS: Partial<Record<BlockType, string[]>> = {
   player: ["player", "audio", "music"],
   card: ["card", "container"],
   gallery: ["gallery", "photos"],
+  socialLinks: [
+    "social",
+    "links",
+    "instagram",
+    "facebook",
+    "tiktok",
+    "spotify",
+    "follow",
+  ],
 };
 
 export function getBlockMenuItems(): BlockMenuItem[] {

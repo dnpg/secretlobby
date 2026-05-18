@@ -2,7 +2,11 @@ import { useState, useEffect, useCallback, useRef, memo } from "react";
 import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { createLogger, formatError } from "@secretlobby/logger/client";
-import { borderRadiusToCSS, type BorderRadius } from "@secretlobby/theme";
+import {
+  borderRadiusToCSS,
+  type BorderRadius,
+  type BorderStyle,
+} from "@secretlobby/theme";
 import { AudioVisualizer } from "./AudioVisualizer";
 import { WaveformProgress } from "./WaveformProgress";
 import { usePcmAnalyser } from "./usePcmAnalyser";
@@ -149,6 +153,29 @@ export interface AudioControls {
   lastSaneTimeRef: React.RefObject<number>;
 }
 
+// Per-region container chrome — bundles the bg / backdrop-filter /
+// border / border-radius settings for ONE toggleable region of the
+// player (outer player, visualizer banner, transport, playlist).
+// `enabled` is the master flag — when false the renderer applies NONE
+// of the chrome, leaving the region untouched. `playerRegionStyle`
+// below converts an instance into a React CSSProperties object that
+// callers can spread onto the region's outer div.
+export interface PlayerRegionStyle {
+  enabled: boolean;
+  /** CSS background-image / -color string (gradient or solid). */
+  bg: string;
+  bgIsGradient: boolean;
+  /** Composed `backdrop-filter` value, e.g. `"blur(8px) saturate(140%)"`.
+   *  Pass `"none"` (the default) to skip the declaration entirely. */
+  backdropFilter: string;
+  borderRadius: BorderRadius;
+  borderStyle: BorderStyle;
+  /** CSS length (e.g. `"1px"`). `"0"` collapses the border entirely. */
+  borderWidth: string;
+  /** Hex / rgba string. Ignored when borderWidth is `"0"`. */
+  borderColor: string;
+}
+
 export interface CardStyles {
   bg: string;
   bgIsGradient: boolean;
@@ -168,15 +195,199 @@ export interface CardStyles {
   cardBorderRadius: BorderRadius;
   buttonBorderRadius: BorderRadius;
   playButtonBorderRadius: BorderRadius;
+  // ---- Per-region container chrome (all optional, all toggleable). ------
+  // Each field is undefined when the consumer hasn't built one for that
+  // region. PlayerView reads each with `playerRegionStyle(...)` and only
+  // applies the chrome when `enabled === true`.
+  playerContainer?: PlayerRegionStyle;
+  visualizerContainer?: PlayerRegionStyle;
+  transportContainer?: PlayerRegionStyle;
+  playlistContainer?: PlayerRegionStyle;
+
+  // ---- Transport content styling (inside the transport container) -------
+  // These apply independently of `transportContainer.enabled`: a designer
+  // can recolour the controls / progress bar / text even when the
+  // container chrome stays invisible. All optional — consumers should
+  // read with sensible fallbacks (legacy `headingColor`, accent, etc.).
+
+  /** Pre-rendered CSS padding shorthand for the transport wrapper, e.g.
+   *  `"16px"` or `"8px 16px 16px 8px"`. PlayerBlock computes this from
+   *  the flat `transportPadding` field via `boxPaddingToCSS`. */
+  transportPaddingCSS?: string;
+  transportTextColor?: string;
+
+  progressBarColor?: string;
+  progressBarActiveColor?: string;
+  progressBarTextColor?: string;
+
+  /** Pre-resolved CSS background string for the play button (handles
+   *  solid + gradient + swatch-ref via `colorPartToCSS`). */
+  playButtonBg?: string;
+  playButtonBgIsGradient?: boolean;
+  playButtonIconColor?: string;
+  playButtonBorderWidth?: string;
+  playButtonBorderColor?: string;
+  playButtonBorderStyle?: BorderStyle;
+
+  skipButtonBg?: string;
+  skipButtonBgIsGradient?: boolean;
+  skipButtonIconColor?: string;
+  skipButtonBorderRadius?: BorderRadius;
+  skipButtonBorderWidth?: string;
+  skipButtonBorderColor?: string;
+  skipButtonBorderStyle?: BorderStyle;
+}
+
+// Translate a PlayerRegionStyle into inline CSS. Returns an empty object
+// when the region is disabled or undefined, so callers can spread the
+// result unconditionally:
+//
+//   <div style={{ ...someBaseStyle, ...playerRegionStyle(r) }}>
+//
+// The bg path picks between `background` (gradient string) and
+// `backgroundColor` (solid) so single-color fills don't accidentally
+// short-circuit React's style diffing. Both `backdropFilter` and the
+// `-webkit-` prefix are written because Safari still requires the
+// prefixed form.
+export function playerRegionStyle(
+  region: PlayerRegionStyle | undefined
+): React.CSSProperties {
+  if (!region || !region.enabled) return {};
+  const borderEnabled =
+    region.borderStyle !== "none" &&
+    region.borderWidth !== "0" &&
+    region.borderWidth.trim() !== "";
+  const bdf = region.backdropFilter;
+  const applyBdf = bdf && bdf !== "none" && bdf.trim().length > 0;
+  return {
+    ...(region.bgIsGradient
+      ? { background: region.bg }
+      : { backgroundColor: region.bg }),
+    ...(applyBdf
+      ? { backdropFilter: bdf, WebkitBackdropFilter: bdf }
+      : {}),
+    borderRadius: borderRadiusToCSS(region.borderRadius, 0),
+    ...(borderEnabled
+      ? {
+          borderWidth: region.borderWidth,
+          borderColor: region.borderColor,
+          borderStyle: region.borderStyle,
+        }
+      : { border: "none" }),
+  };
+}
+
+// Inline-style builder for the Play (toggle play / pause) button. Every
+// CSS property is conditional on the matching `cardStyles.*` field being
+// set — there are NO hardcoded fallbacks here. If the designer hasn't
+// configured a property, the button renders without that declaration
+// (background defaults to none, color inherits via currentColor, no
+// border, no radius, etc.). Default values live in the theme settings
+// layer; the renderer just paints whatever the theme has.
+//
+// Each border property is applied independently so changing only one
+// (e.g. switching style from "solid" to "dashed") takes effect on its
+// own. CSS itself decides whether a border actually paints — a style
+// without a width gets the browser's `medium` width default, a width
+// without a style gets `border-style: none` and no border. That matches
+// the semantics of the corresponding HTML border-style spec.
+function playButtonStyle(cardStyles?: CardStyles): React.CSSProperties {
+  return {
+    ...(cardStyles?.playButtonBorderRadius !== undefined
+      ? {
+          borderRadius: borderRadiusToCSS(
+            cardStyles.playButtonBorderRadius,
+            0
+          ),
+        }
+      : {}),
+    ...(cardStyles?.playButtonBg
+      ? cardStyles.playButtonBgIsGradient
+        ? { background: cardStyles.playButtonBg }
+        : { backgroundColor: cardStyles.playButtonBg }
+      : {}),
+    ...(cardStyles?.playButtonIconColor
+      ? { color: cardStyles.playButtonIconColor }
+      : {}),
+    ...(cardStyles?.playButtonBorderWidth &&
+    cardStyles.playButtonBorderWidth !== "0"
+      ? { borderWidth: cardStyles.playButtonBorderWidth }
+      : {}),
+    ...(cardStyles?.playButtonBorderStyle &&
+    cardStyles.playButtonBorderStyle !== "none"
+      ? { borderStyle: cardStyles.playButtonBorderStyle }
+      : {}),
+    ...(cardStyles?.playButtonBorderColor
+      ? { borderColor: cardStyles.playButtonBorderColor }
+      : {}),
+  };
+}
+
+// Same shape as `playButtonStyle` but bound to the `skipButton*` theme
+// fields. Used for both the Previous-track and Next-track buttons —
+// they share the same theme settings group and render identically apart
+// from their icon glyph.
+function skipButtonStyle(cardStyles?: CardStyles): React.CSSProperties {
+  return {
+    ...(cardStyles?.skipButtonBorderRadius !== undefined
+      ? {
+          borderRadius: borderRadiusToCSS(
+            cardStyles.skipButtonBorderRadius,
+            0
+          ),
+        }
+      : {}),
+    ...(cardStyles?.skipButtonBg
+      ? cardStyles.skipButtonBgIsGradient
+        ? { background: cardStyles.skipButtonBg }
+        : { backgroundColor: cardStyles.skipButtonBg }
+      : {}),
+    ...(cardStyles?.skipButtonIconColor
+      ? { color: cardStyles.skipButtonIconColor }
+      : {}),
+    ...(cardStyles?.skipButtonBorderWidth &&
+    cardStyles.skipButtonBorderWidth !== "0"
+      ? { borderWidth: cardStyles.skipButtonBorderWidth }
+      : {}),
+    ...(cardStyles?.skipButtonBorderStyle &&
+    cardStyles.skipButtonBorderStyle !== "none"
+      ? { borderStyle: cardStyles.skipButtonBorderStyle }
+      : {}),
+    ...(cardStyles?.skipButtonBorderColor
+      ? { borderColor: cardStyles.skipButtonBorderColor }
+      : {}),
+  };
 }
 
 interface CardContainerProps {
   cardStyles?: CardStyles;
   children: React.ReactNode;
   className?: string;
+  /** When provided AND `regionOverride.enabled === true`, CardContainer
+   *  skips its own bg/border code path and renders a plain `<div>` with
+   *  the region's chrome. Lets the player's new per-region settings own
+   *  the wrapper styling without stacking on top of CardContainer's
+   *  legacy card chrome. When the region is disabled or unset, falls
+   *  through to the legacy CardContainer behaviour. */
+  regionOverride?: PlayerRegionStyle;
 }
 
-function CardContainer({ cardStyles, children, className }: CardContainerProps) {
+function CardContainer({
+  cardStyles,
+  children,
+  className,
+  regionOverride,
+}: CardContainerProps) {
+  // Region override short-circuit — the player's new toggleable chrome
+  // wins. CardContainer's gradient-border / solid-border branches below
+  // would otherwise paint stacking surfaces on top of the region's bg.
+  if (regionOverride?.enabled) {
+    return (
+      <div className={className} style={playerRegionStyle(regionOverride)}>
+        {children}
+      </div>
+    );
+  }
   // Route the BorderRadius (number or per-corner object) through the helper so
   // both uniform and per-corner cases render correctly. The gradient-border
   // branch needs an outer radius and an inset inner radius; for the per-corner
@@ -1537,6 +1748,11 @@ export function PlayerView({
   return (
     <div
       className={embedded ? "relative" : "relative min-h-screen"}
+      // Player container chrome — when `playerContainerEnabled` is true,
+      // the theme-driven bg / backdrop / border / radius wrap the entire
+      // player frame. Disabled state is a no-op object (empty `style`),
+      // so the legacy unstyled wrapper renders identically.
+      style={playerRegionStyle(cardStyles?.playerContainer)}
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* Keyframes for the track-title marquee. Ping-pong: hold-start →
@@ -1699,16 +1915,37 @@ export function PlayerView({
                   <AudioVisualizer
                     {...visualizerProps}
                     pcmAnalyser={pcmAnalyser}
-                    // Always read from the real audio element. The page-builder
-                    // canvas previously forced `demoMode={isDesignerMode}`, but
-                    // now that designer playback is fully wired (PlayerBlock no
-                    // longer mutes the <audio>), the visualizer should react to
-                    // the actual track. Matches the lobby's behaviour.
-                    demoMode={false}
+                    // Switch demoMode based on designer + play state so the
+                    // page-builder canvas updates the visualizer the moment
+                    // a designer changes a color, without breaking real
+                    // playback:
+                    //   - design mode & not playing → demoMode (synthetic
+                    //     animation reads the current theme colors every
+                    //     frame, so edits show up live).
+                    //   - design mode & playing     → real audio path.
+                    //   - lobby mode (any state)    → real audio path.
+                    demoMode={isDesignerMode && !isPlaying}
                   />
                 );
 
-                return cardStyles?.visualizerUseCardBg ? (
+                // Visualizer container chrome — when the new
+                // `visualizerContainer.enabled` is true, the theme's
+                // bg/backdrop/border/radius wrap the visualizer banner.
+                // Falls back to the legacy `visualizerUseCardBg` toggle
+                // when the new chrome isn't enabled, so existing lobbies
+                // that opted into "use card background" keep rendering
+                // their old CardContainer wrap until the designer flips
+                // the new toggle.
+                const containerChrome = playerRegionStyle(
+                  cardStyles?.visualizerContainer
+                );
+                const hasContainerChrome =
+                  Object.keys(containerChrome).length > 0;
+                return hasContainerChrome ? (
+                  <div className="overflow-hidden" style={containerChrome}>
+                    {VisualizerEl}
+                  </div>
+                ) : cardStyles?.visualizerUseCardBg ? (
                   <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
                     {VisualizerEl}
                   </CardContainer>
@@ -1719,15 +1956,44 @@ export function PlayerView({
                 );
               })()}
 
+            {/* Transport container — wraps the current-song info + progress
+                bar + transport buttons in a single region the theme can
+                style independently. When `transportContainer.enabled` is
+                false, the wrapper renders with NO chrome (empty `style`),
+                so layout matches the legacy three-siblings-in-space-y-6
+                arrangement exactly. The inner padding comes from the
+                content-level `transportPaddingCSS` (independent of the
+                container toggle) so a designer can pad the controls even
+                when the container chrome stays invisible. */}
+            <div
+              className="space-y-6"
+              style={{
+                ...playerRegionStyle(cardStyles?.transportContainer),
+                ...(cardStyles?.transportPaddingCSS
+                  ? { padding: cardStyles.transportPaddingCSS }
+                  : {}),
+              }}
+            >
             {currentTrack && (
               <div className="text-center max-w-full overflow-hidden">
-                <h2 className="text-2xl font-bold">
+                <h2
+                  className="text-2xl font-bold"
+                  style={
+                    cardStyles?.transportTextColor
+                      ? { color: cardStyles.transportTextColor }
+                      : undefined
+                  }
+                >
                   <TrackTitle text={currentTrack.title} playing={isPlaying} />
                 </h2>
                 {currentTrack.artist && (
                   <p
                     className="truncate"
-                    style={{ color: "var(--color-text-secondary)" }}
+                    style={{
+                      color:
+                        cardStyles?.transportTextColor ??
+                        "var(--color-text-secondary)",
+                    }}
                   >
                     {currentTrack.artist}
                   </p>
@@ -1746,7 +2012,11 @@ export function PlayerView({
                 aria-valuenow={Math.round(isDragging ? dragPercent * 100 : progress)}
                 aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration || estimatedDuration)}`}
                 className="group relative h-2 rounded-full cursor-pointer touch-none focus-visible:ring-2 focus-visible:ring-offset-2"
-                style={{ backgroundColor: "color-mix(in srgb, var(--color-accent) 20%, transparent)" }}
+                style={{
+                  backgroundColor:
+                    cardStyles?.progressBarColor ??
+                    "color-mix(in srgb, var(--color-accent) 20%, transparent)",
+                }}
                 onClick={seek}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleProgressHover}
@@ -1801,13 +2071,20 @@ export function PlayerView({
                 )}
                 <div
                   className="absolute top-0 bottom-0 rounded-full"
-                  style={{ width: `${isDragging ? dragPercent * 100 : progress}%`, backgroundColor: "var(--color-accent)" }}
+                  style={{
+                    width: `${isDragging ? dragPercent * 100 : progress}%`,
+                    backgroundColor:
+                      cardStyles?.progressBarActiveColor ??
+                      "var(--color-accent)",
+                  }}
                 />
                 <div
                   className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full shadow-md opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
                   style={{
                     left: `calc(${isDragging ? dragPercent * 100 : progress}% - 8px)`,
-                    backgroundColor: "var(--color-accent)",
+                    backgroundColor:
+                      cardStyles?.progressBarActiveColor ??
+                      "var(--color-accent)",
                   }}
                 />
                 {hoverPercent !== null && (duration || estimatedDuration) > 0 && (
@@ -1827,7 +2104,14 @@ export function PlayerView({
                   </div>
                 )}
               </div>
-              <div className="flex justify-between text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
+              <div
+                className="flex justify-between text-sm mt-1"
+                style={{
+                  color:
+                    cardStyles?.progressBarTextColor ??
+                    "var(--color-text-secondary)",
+                }}
+              >
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration || estimatedDuration)}</span>
               </div>
@@ -1844,7 +2128,7 @@ export function PlayerView({
                 onClick={playPrev}
                 aria-label="Previous track"
                 className="p-3 transition hover:opacity-80 cursor-pointer"
-                style={{ borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24) }}
+                style={skipButtonStyle(cardStyles)}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -1856,18 +2140,7 @@ export function PlayerView({
                 aria-label={isLoading || seekLoading ? "Loading" : isPlaying ? "Pause" : "Play"}
                 aria-busy={isLoading || seekLoading}
                 className="p-4 hover:scale-105 transition cursor-pointer"
-                style={{
-                  // Play button uses `%` units (50% = circle) instead of px so
-                  // it stays circular regardless of size. The BorderRadius
-                  // value's numbers are reinterpreted as percentages here.
-                  borderRadius: (() => {
-                    const r = cardStyles?.playButtonBorderRadius ?? 50;
-                    if (typeof r === "number") return `${r}%`;
-                    return `${r.tl}% ${r.tr}% ${r.br}% ${r.bl}%`;
-                  })(),
-                  backgroundColor: "var(--color-primary)",
-                  color: "var(--color-primary-text)",
-                }}
+                style={playButtonStyle(cardStyles)}
               >
                 {isLoading || seekLoading ? (
                   <svg className="w-10 h-10 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
@@ -1889,16 +2162,21 @@ export function PlayerView({
                 onClick={playNext}
                 aria-label="Next track"
                 className="p-3 transition hover:opacity-80 cursor-pointer"
-                style={{ borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24) }}
+                style={skipButtonStyle(cardStyles)}
               >
                 <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
                 </svg>
               </button>
             </div>
+            </div>{/* end transport container */}
 
             {showPlaylist && (
-            <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4 max-w-full overflow-hidden">
+            <CardContainer
+              cardStyles={cardStyles}
+              className="backdrop-blur p-4 max-w-full overflow-hidden"
+              regionOverride={cardStyles?.playlistContainer}
+            >
               <h3
                 id="playlist-heading"
                 className="text-lg font-semibold mb-4 ml-3"

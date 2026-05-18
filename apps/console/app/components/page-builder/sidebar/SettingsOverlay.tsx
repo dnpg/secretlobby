@@ -315,6 +315,13 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
                 content,
               })
             }
+            onUpdateMeta={(partial) =>
+              dispatch({
+                type: "updateBlockMeta",
+                blockId: child.id,
+                partial,
+              })
+            }
           />
         ),
         deleteLabel: "Delete block",
@@ -384,6 +391,13 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
               columnId: column.id,
               blockId: block.id,
               content,
+            })
+          }
+          onUpdateMeta={(partial) =>
+            dispatch({
+              type: "updateBlockMeta",
+              blockId: block.id,
+              partial,
             })
           }
         />
