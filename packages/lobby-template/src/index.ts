@@ -68,6 +68,19 @@ export {
   type LoginAutoplayToggleProps,
 } from "./LoginAutoplayToggle";
 
+// Layout views — pure, view-only renderers for the page-builder's section /
+// column primitives. The lobby uses these directly to render
+// `pageLayout.sections`; the editor will compose them and add its selection /
+// drag / resize chrome on top in a follow-up pass.
+export { SectionView, type SectionViewProps } from "./blocks/SectionView";
+export { ColumnView, type ColumnViewProps } from "./blocks/ColumnView";
+export {
+  VIEWPORT_WIDTHS,
+  parseGapValue,
+  parseWidthToPercent,
+  normalizePercents,
+} from "./blocks/layoutHelpers";
+
 // Page-builder block schema — the shape both the editor saves and the lobby
 // renders. New consumers should import from here; the editor's old
 // `state/types` module re-exports these for back-compat.
