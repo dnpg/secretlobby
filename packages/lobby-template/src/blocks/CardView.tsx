@@ -49,6 +49,13 @@ export interface CardViewProps {
    *  rely on the same fallback as top-level blocks (a `player` block inside
    *  a card would still call the lobby's renderPlayer, for example). */
   renderFallback?: (block: Block) => React.ReactNode;
+  /** Override the default child rendering. When provided, CardView paints
+   *  the themed wrapper (bg / border / padding / radius / heading + content
+   *  CSS vars) and renders `children` inside instead of looping
+   *  `content.blocks` through BlockView. The editor uses this to plug its
+   *  BlockListSurface (slash menu, drag-reorder, nested selection) into
+   *  the same card chrome the lobby sees. */
+  children?: React.ReactNode;
 }
 
 // Same rule the editor's CardBlock uses for the on/off paint decision:
@@ -100,6 +107,7 @@ export function CardView({
   theme,
   socialLinks,
   renderFallback,
+  children,
 }: CardViewProps) {
   // The page-builder Card editor only writes solid borders; strip the
   // legacy gradient-border fields so `getCardBorderCSS` falls through to
@@ -177,19 +185,27 @@ export function CardView({
     ]
   );
 
-  const children = Array.isArray(content.blocks) ? content.blocks : [];
+  // Caller-supplied children win — the editor passes its BlockListSurface
+  // here so the card chrome wraps the editing surface 1:1. When no children
+  // are passed (the lobby's default path), we loop the persisted block list
+  // through BlockView.
+  const nestedBlocks = Array.isArray(content.blocks) ? content.blocks : [];
+  const body =
+    children !== undefined
+      ? children
+      : nestedBlocks.map((child) => (
+          <BlockView
+            key={child.id}
+            block={child}
+            theme={theme}
+            socialLinks={socialLinks}
+            renderFallback={renderFallback}
+          />
+        ));
 
   return (
     <div className="w-full" style={wrapperStyle}>
-      {children.map((child) => (
-        <BlockView
-          key={child.id}
-          block={child}
-          theme={theme}
-          socialLinks={socialLinks}
-          renderFallback={renderFallback}
-        />
-      ))}
+      {body}
     </div>
   );
 }
