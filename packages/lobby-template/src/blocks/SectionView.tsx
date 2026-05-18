@@ -90,7 +90,17 @@ export function SectionView({ section, viewport, renderBlock }: SectionViewProps
   };
 
   return (
-    <div className="relative">
+    // Wrapper mirrors the editor's preview SectionComponent (in apps/console)
+    // so widths line up byte-for-byte between the canvas and the published
+    // lobby. `border-2 border-transparent` is intentional — the editor
+    // swaps it for a dashed violet border when layout-edit is on, and the
+    // 4px (2px × 2 sides) the transparent border consumes is part of how
+    // sections size themselves. Without it sections render 4px wider on
+    // the lobby than in the editor preview.
+    <div
+      className="relative rounded-lg transition-all border-2 border-transparent"
+      style={{ "--section-gap": gapValue } as React.CSSProperties}
+    >
       <div
         className={
           displayMode === "stack"
