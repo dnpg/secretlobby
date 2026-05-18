@@ -63,3 +63,7 @@ export {
   type LoginPanelProps,
   type LoginPageSettings,
 } from "./LoginPanel";
+export {
+  LoginAutoplayToggle,
+  type LoginAutoplayToggleProps,
+} from "./LoginAutoplayToggle";

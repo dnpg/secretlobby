@@ -14,6 +14,7 @@ import {
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import {
+  LoginAutoplayToggle,
   LoginPanel,
   LogoutButton,
   PlayerView,
@@ -51,6 +52,22 @@ interface LoginPageSettings {
   logoImage: string;
   logoMaxWidth: number;
   bgColor: string;
+  /** Optional background image overlay. Layered on top of `bgColor` by
+   *  LoginPanel — same shape as `theme.background.image`. Kept as a loose
+   *  shape here (this file already locally re-declares ThemeSettings to
+   *  avoid a package import) so we don't pull in `@secretlobby/theme` for
+   *  one type. The shared LoginPanel re-types it against the canonical
+   *  `ImageBackground` on the way in. */
+  bgImage?: {
+    type: "image";
+    mediaId: string;
+    mediaUrl: string;
+    size: "cover" | "contain" | "auto";
+    position: string;
+    repeat: "no-repeat" | "repeat" | "repeat-x" | "repeat-y";
+    attachment?: "scroll" | "fixed";
+    overlay?: { color: string; opacity: number };
+  };
   panelBgColor: string;
   panelBorderColor: string;
   textColor: string;
@@ -1358,94 +1375,29 @@ export default function LobbyIndex() {
       {requiresPassword ? (
         // Login page content — LoginPanel renders the bg wrapper + the panel
         // card; the audio-autoplay toggle slots in below via `belowPanel`.
-        <main id="main-content" aria-label="Login">
+        //
+        // `style={data.themeVars}` MUST be set here (same as the
+        // authenticated branch below) so the LoginPanel's submit button —
+        // styled entirely from the global `--btn-*` theme vars — actually
+        // paints. Without this, the buttons read undefined vars and render
+        // with no background. Mirrors how the editor's <LoginPagePreview>
+        // wraps the panel in a themed surface.
+        <main
+          id="main-content"
+          aria-label="Login"
+          style={data.themeVars as React.CSSProperties}
+        >
           <LoginPanel
             settings={lp}
             logoImageUrl={loginLogoImageUrl}
             errorMessage={actionData?.error ?? null}
             csrfToken={data.csrfToken}
             belowPanel={
-              // Audio autoplay toggle - separate box below login panel.
-              // Uses same panel colors as login box for consistent contrast.
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoplayEnabled}
-                aria-label={autoplayEnabled ? "Autoplay is on. Press to disable autoplay" : "Autoplay is off. Press to enable autoplay"}
-                onClick={() => setAutoplayEnabled(!autoplayEnabled)}
-                className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2"
-                style={{
-                  backgroundColor: lp.panelBgColor,
-                  border: `1px solid ${lp.panelBorderColor}`,
-                  // Use panel border color for focus ring offset to match the background
-                  // @ts-expect-error CSS custom property
-                  "--tw-ring-offset-color": lp.bgColor,
-                  "--tw-ring-color": "#3b82f6",
-                }}
-              >
-                <span
-                  className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-200"
-                  style={{
-                    backgroundColor: autoplayEnabled ? "rgba(59, 130, 246, 0.25)" : "rgba(128, 128, 128, 0.25)",
-                  }}
-                  aria-hidden="true"
-                >
-                  {autoplayEnabled ? (
-                    <svg
-                      className="w-5 h-5"
-                      style={{ color: "#3b82f6" }}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-5 h-5"
-                      style={{ color: lp.textColor, opacity: 0.5 }}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                      />
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
-                      />
-                    </svg>
-                  )}
-                </span>
-                <span className="flex-1 text-left">
-                  <span
-                    className="block text-sm font-medium"
-                    style={{ color: lp.textColor }}
-                    aria-live="polite"
-                  >
-                    {autoplayEnabled ? "Music will play automatically" : "Autoplay disabled"}
-                  </span>
-                  <span
-                    className="block text-xs"
-                    style={{ color: lp.textColor, opacity: 0.7 }}
-                  >
-                    {autoplayEnabled
-                      ? "Click to enter silently"
-                      : "Click to enable autoplay"}
-                  </span>
-                </span>
-              </button>
+              <LoginAutoplayToggle
+                enabled={autoplayEnabled}
+                onToggle={() => setAutoplayEnabled(!autoplayEnabled)}
+                settings={lp}
+              />
             }
           />
         </main>

@@ -110,9 +110,19 @@ export function LeftRail(props: LeftRailProps) {
   // login-page settings form. The thin shell here keeps React's hook-order
   // rule happy: the layers panel (LayersRail) owns its own hooks and only
   // mounts when the page-builder is editing the main lobby page.
+  //
+  // The global theme overlay (paint brush) is forwarded to both branches so
+  // designers can edit global tokens (button colors, text colors, etc.) from
+  // either page-kind — the login template shares the same global theme as
+  // the main lobby page and the user expects one editor surface for both.
   const { state } = usePageBuilder();
   if (state.pageKind === "login") {
-    return <LoginPageSettingsPanel />;
+    return (
+      <LoginPageSettingsPanel
+        themeOverlayOpen={props.themeOverlayOpen}
+        onCloseThemeOverlay={props.onCloseThemeOverlay}
+      />
+    );
   }
   return <LayersRail {...props} />;
 }

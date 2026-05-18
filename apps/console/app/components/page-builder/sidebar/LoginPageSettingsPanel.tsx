@@ -11,6 +11,7 @@
 // merged record on a 600ms debounce.
 // =============================================================================
 
+import type { ImageBackground } from "@secretlobby/theme";
 import { MediaPicker, type MediaItem } from "@secretlobby/ui";
 import type { LoginPageSettings } from "../state/types";
 import { usePageBuilder } from "../state/provider";
@@ -20,10 +21,23 @@ import {
   SelectRow,
   TextRow,
 } from "./ThemeFieldRows";
+import { ThemeOverlay } from "./ThemeOverlay";
 
-export function LoginPageSettingsPanel() {
+interface LoginPageSettingsPanelProps {
+  /** Driven by the paint-brush button in TopHeader; same prop the layers
+   *  navigator (LayersRail) receives. When true the global theme overlay
+   *  slides in over this settings form. */
+  themeOverlayOpen: boolean;
+  onCloseThemeOverlay: () => void;
+}
+
+export function LoginPageSettingsPanel({
+  themeOverlayOpen,
+  onCloseThemeOverlay,
+}: LoginPageSettingsPanelProps) {
   const { state, dispatch } = usePageBuilder();
   const lp = state.loginPage;
+  const isPreview = state.mode === "preview";
 
   // Convenience writer — shorthand for the common single-field updateLoginPage
   // dispatch. Centralised here so the form below stays compact.
@@ -199,6 +213,15 @@ export function LoginPageSettingsPanel() {
             value={lp.bgColor}
             onChange={(v) => set("bgColor", v)}
           />
+          {/* Background image — mirrors the lobby template's image-layer
+              support. Layers ON TOP of `bgColor` so a transparent / dimmed
+              image lets the underlying color show through. When unset, the
+              login bg is a flat color; when set we expose size / position /
+              repeat knobs that match the lobby's ImageBackground shape. */}
+          <BgImageSection
+            value={lp.bgImage}
+            onChange={(next) => set("bgImage", next)}
+          />
           <HexPickerRow
             label="Panel background"
             value={lp.panelBgColor}
@@ -216,6 +239,153 @@ export function LoginPageSettingsPanel() {
           />
         </section>
       </div>
+
+      {/* Global theme overlay — mirrors LayersRail. Driven by the paint-brush
+          button in TopHeader. The login template shares the lobby's global
+          theme tokens (button colors, text colors, etc.), so the user can
+          edit them from either page-kind. Gated on `!isPreview` for the
+          same reason as the layers branch: the overlay isn't useful while
+          previewing the published lobby. */}
+      {!isPreview && themeOverlayOpen && (
+        <ThemeOverlay onClose={onCloseThemeOverlay} />
+      )}
     </aside>
+  );
+}
+
+// =============================================================================
+// BgImageSection — inline image picker + size/position/repeat knobs. Kept
+// local to this file because no other settings panel reuses the exact same
+// layout (the global theme uses <BackgroundPicker>, which operates on a full
+// ThemeBackground value; the login page intentionally stays on a simpler
+// bgColor + optional bgImage split so a designer can flip between "just a
+// color" and "color + image" without learning the gradient editor).
+//
+// Defaults when adding an image — cover / center / no-repeat / scroll —
+// match the lobby template's `theme.background.image` defaults so the two
+// surfaces feel identical to a designer toggling between them.
+// =============================================================================
+interface BgImageSectionProps {
+  value: ImageBackground | undefined;
+  onChange: (next: ImageBackground | undefined) => void;
+}
+
+function BgImageSection({ value, onChange }: BgImageSectionProps) {
+  const handlePick = (media: MediaItem) => {
+    onChange({
+      type: "image",
+      mediaId: media.id,
+      mediaUrl: media.url,
+      size: value?.size ?? "cover",
+      position: value?.position ?? "center",
+      repeat: value?.repeat ?? "no-repeat",
+      attachment: value?.attachment ?? "scroll",
+    });
+  };
+
+  const handleRemove = () => onChange(undefined);
+
+  if (!value) {
+    return (
+      <div>
+        <label className="block text-xs text-theme-secondary mb-1">
+          Background image
+        </label>
+        <MediaPicker
+          accept={["image/*"]}
+          tabs={["library", "upload"]}
+          onSelect={handlePick}
+        >
+          <button
+            type="button"
+            className="w-full py-3 border-2 border-dashed border-theme rounded-lg text-theme-muted hover:text-theme-primary hover:border-(--color-brand-red)/50 transition-colors cursor-pointer text-xs"
+          >
+            + Add background image
+          </button>
+        </MediaPicker>
+      </div>
+    );
+  }
+
+  // Set helper for the layout knobs — value is guaranteed non-null in this
+  // branch, so we can spread it without narrowing each call site.
+  const setField = <K extends keyof ImageBackground>(
+    key: K,
+    next: ImageBackground[K]
+  ) => {
+    onChange({ ...value, [key]: next });
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs text-theme-secondary">
+        Background image
+      </label>
+      <div className="w-full h-24 rounded-lg border border-theme overflow-hidden bg-theme-tertiary">
+        <img
+          src={value.mediaUrl}
+          alt="Login background"
+          className="w-full h-full object-cover"
+        />
+      </div>
+      <div className="flex gap-2">
+        <MediaPicker
+          accept={["image/*"]}
+          tabs={["library", "upload"]}
+          onSelect={handlePick}
+        >
+          <button
+            type="button"
+            className="flex-1 px-3 py-2 text-xs bg-theme-tertiary border border-theme rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-secondary transition-colors cursor-pointer"
+          >
+            Change
+          </button>
+        </MediaPicker>
+        <button
+          type="button"
+          onClick={handleRemove}
+          className="px-3 py-2 text-xs border border-red-500/30 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer"
+        >
+          Remove
+        </button>
+      </div>
+      <SelectRow
+        label="Size"
+        value={value.size}
+        options={[
+          { value: "cover", label: "Cover (fill)" },
+          { value: "contain", label: "Contain (fit)" },
+          { value: "auto", label: "Auto" },
+        ]}
+        onChange={(v) => setField("size", v as ImageBackground["size"])}
+      />
+      <TextRow
+        label="Position"
+        value={value.position}
+        onChange={(v) => setField("position", v)}
+      />
+      <SelectRow
+        label="Repeat"
+        value={value.repeat}
+        options={[
+          { value: "no-repeat", label: "No repeat" },
+          { value: "repeat", label: "Repeat" },
+          { value: "repeat-x", label: "Repeat X" },
+          { value: "repeat-y", label: "Repeat Y" },
+        ]}
+        onChange={(v) => setField("repeat", v as ImageBackground["repeat"])}
+      />
+      <SelectRow
+        label="Attachment"
+        value={value.attachment ?? "scroll"}
+        options={[
+          { value: "scroll", label: "Scroll" },
+          { value: "fixed", label: "Fixed (parallax)" },
+        ]}
+        onChange={(v) =>
+          setField("attachment", v as ImageBackground["attachment"])
+        }
+      />
+    </div>
   );
 }

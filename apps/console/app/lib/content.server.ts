@@ -3,6 +3,7 @@ import { join } from "path";
 import { prisma } from "@secretlobby/db";
 import {
   type ColorMode,
+  type ImageBackground,
   type ThemeSettings,
   defaultDarkTheme,
   defaultLightTheme,
@@ -118,6 +119,11 @@ export interface LoginPageSettings {
   logoImage: string;
   logoMaxWidth: number; // percentage 10-100
   bgColor: string;
+  /** Optional background image layered on top of `bgColor`. Same shape the
+   *  lobby template's `theme.background.image` uses (see
+   *  `@secretlobby/theme#ImageBackground`) so the editor surfaces the same
+   *  size / position / repeat / overlay knobs. */
+  bgImage?: ImageBackground;
   panelBgColor: string;
   panelBorderColor: string;
   textColor: string;

@@ -13,10 +13,18 @@
 // @secretlobby/player-view onto the console app. The shape mirrors the
 // canonical type in apps/console/app/lib/content.server.ts — keep the two
 // in sync (small + stable; both are written by the same team).
+//
+// Submit button styling: the button reads its bg / text / border / radius
+// from the GLOBAL theme button CSS vars (`--btn-bg`, `--btn-text`,
+// `--btn-border-*`, `--btn-border-radius`), so it stays in lock-step with
+// the same Buttons theme section that drives every other lobby button
+// (LogoutButton + per-block buttons). Hover and pressed states are wired
+// the same way as LogoutButton — see HOVER_STYLE_CSS below.
 // =============================================================================
 
 import { Form } from "react-router";
 import { ResponsiveImage } from "@secretlobby/ui";
+import type { ImageBackground } from "@secretlobby/theme";
 
 export interface LoginPageSettings {
   title: string;
@@ -27,6 +35,12 @@ export interface LoginPageSettings {
   /** Percentage 10–100, controls the logo's max width relative to the panel. */
   logoMaxWidth: number;
   bgColor: string;
+  /** Optional background image layered ON TOP of `bgColor`. Mirrors the
+   *  `theme.background.image` shape used by the lobby template so the
+   *  designer gets the same size / position / repeat / overlay knobs.
+   *  Absent for legacy / fresh login pages; LoginPanel only renders the
+   *  image layer when this is set. */
+  bgImage?: ImageBackground;
   panelBgColor: string;
   panelBorderColor: string;
   textColor: string;
@@ -54,6 +68,36 @@ export interface LoginPanelProps {
   belowPanel?: React.ReactNode;
 }
 
+// All theme-var-driven styling for the submit button lives in this CSS
+// block (NOT inline `style`) — inline styles outrank `:hover` / `:active`
+// class rules, so an inline `background: var(--btn-bg)` would silently
+// win and the button would never paint its hover / pressed state. Same
+// trade-off the LogoutButton makes; keep the two patterns aligned.
+//
+// `background` (not `background-color`) so the var can carry a gradient
+// string when the user picks a gradient swatch.
+//
+// `:active` maps to the `pressed` state vars (which is what `:active`
+// semantically represents in CSS — the mouse-down moment).
+const LOGIN_SUBMIT_CSS = `
+.lobby-login-submit {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border-radius: var(--btn-border-radius);
+  border-width: var(--btn-border-width);
+  border-style: var(--btn-border-style, solid);
+  border-color: var(--btn-border-color);
+}
+.lobby-login-submit:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+.lobby-login-submit:active {
+  background: var(--btn-pressed-bg);
+  color: var(--btn-pressed-text);
+}
+`;
+
 export function LoginPanel({
   settings,
   logoImageUrl,
@@ -68,6 +112,11 @@ export function LoginPanel({
   const description = lp.description || null;
   const showImage = lp.logoType === "image" && !!logoImageUrl;
   const showSvg = lp.logoType === "svg" && !!lp.logoSvg.trim();
+  // Layered background — bgColor underneath, optional image overlay on top.
+  // Matches the lobby template's themed-surface pattern so designers can drop
+  // an image into the login page and have it composite the same way (with
+  // the color layer showing through any transparency).
+  const wrapperStyle = computeWrapperStyle(lp);
 
   // Common inner content — logo block + heading + description + error +
   // password input + submit button. Used by both the preview (no Form wrapper)
@@ -148,8 +197,12 @@ export function LoginPanel({
         </div>
         <button
           type={preview ? "button" : "submit"}
-          disabled={preview}
-          className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          // Preview mode renders a non-interactive button (no `disabled`
+          // because `:active` doesn't fire on disabled buttons in some
+          // browsers, and we want the designer to see the pressed-state
+          // preview when they click it inside the editor canvas).
+          onClick={preview ? (e) => e.preventDefault() : undefined}
+          className={`lobby-login-submit w-full py-3 px-4 font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${preview ? "cursor-default" : "cursor-pointer"}`}
         >
           {lp.buttonLabel || "Enter Lobby"}
         </button>
@@ -181,15 +234,37 @@ export function LoginPanel({
   );
 
   return (
-    <div
-      className="min-h-dvh flex items-center justify-center overflow-hidden"
-      style={{ backgroundColor: lp.bgColor }}
-      aria-label="Login"
-    >
-      <div className="w-full max-w-md p-8">
-        {panel}
-        {belowPanel}
+    <>
+      <style>{LOGIN_SUBMIT_CSS}</style>
+      <div
+        className="min-h-dvh flex items-center justify-center overflow-hidden"
+        style={wrapperStyle}
+        aria-label="Login"
+      >
+        <div className="w-full max-w-md p-8">
+          {panel}
+          {belowPanel}
+        </div>
       </div>
-    </div>
+    </>
   );
+}
+
+// Build the outer wrapper's CSS. `bgColor` is the always-present base; when
+// `bgImage` is set we add `background-image` + supporting properties so it
+// layers on top exactly the way the lobby template's themed surface does.
+// Kept as a free function (not a hook) so it stays cheap and trivially
+// shareable between SSR and CSR — no memoisation needed for a flat object.
+function computeWrapperStyle(lp: LoginPageSettings): React.CSSProperties {
+  const base: React.CSSProperties = { backgroundColor: lp.bgColor };
+  const img = lp.bgImage;
+  if (!img) return base;
+  return {
+    ...base,
+    backgroundImage: `url("${img.mediaUrl}")`,
+    backgroundSize: img.size,
+    backgroundPosition: img.position,
+    backgroundRepeat: img.repeat,
+    backgroundAttachment: img.attachment ?? "scroll",
+  };
 }

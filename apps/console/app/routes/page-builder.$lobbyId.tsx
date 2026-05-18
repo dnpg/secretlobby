@@ -579,5 +579,12 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 export default function PageBuilderPage() {
   const data = useLoaderData<typeof loader>();
-  return <PageBuilderRoot loaderData={data} />;
+  // Remount the editor whenever the page-kind changes (lobby ↔ login). The
+  // reducer seeds itself from `loaderData` exactly once via `useMemo([])`, so
+  // a plain prop update wouldn't propagate the new pageKind / sections /
+  // loginPage payload into running state — the canvas + left rail would
+  // keep showing the previous template. Keying on `pageKind` gives us a
+  // clean reset (history, save status, dirty flags all start fresh) which
+  // matches the user's mental model of "I switched to a different page".
+  return <PageBuilderRoot key={data.pageKind} loaderData={data} />;
 }

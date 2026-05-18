@@ -69,34 +69,37 @@ export interface LogoutButtonProps {
   className?: string;
 }
 
-// Every property reads from the theme's button-* CSS variables. The border
-// collapses to nothing when `--btn-border-style` resolves to `none`, so the
-// legacy borderless default keeps working without a separate `show` gate.
-// `background` (not `background-color`) so the var can carry a gradient
-// string — see file header for the full reasoning.
-const buttonStyle: React.CSSProperties = {
-  background: "var(--btn-bg)",
-  color: "var(--btn-text)",
-  borderRadius: "var(--btn-border-radius)",
-  borderWidth: "var(--btn-border-width)",
-  borderStyle: "var(--btn-border-style, solid)",
-  borderColor: "var(--btn-border-color)",
-};
-
-// Hover and pressed CSS lives in a sibling <style> tag rather than inline
-// `style` because React's inline styles can't express pseudo-classes. Using
-// `background` here (not `background-color`) for the same gradient-support
-// reason as the base style. The selectors target a stable class so the
-// rules apply to every LogoutButton instance regardless of host app
-// (console canvas preview + published lobby) without requiring each
-// consumer to import a separate stylesheet.
+// All theme-var-driven properties live in a sibling <style> block rather
+// than React's inline `style`. Inline styles have higher specificity than
+// `:hover` / `:active` class rules, so an inline `background: var(--btn-bg)`
+// would silently win over `.cls:hover { background: var(--btn-hover-bg) }`
+// and the button would never paint its hover / pressed state. Keeping every
+// theme-var read in CSS lets the pseudo-classes do their job.
+//
+// The selectors target a stable class so the rules apply to every
+// LogoutButton instance regardless of host app (console canvas preview +
+// published lobby) without requiring each consumer to import a separate
+// stylesheet.
 //
 // `:active` maps to the `pressed` state vars (which is what `:active`
 // semantically represents in CSS — the mouse-down moment). The `active`
 // state vars (`--btn-active-*`) are reserved for selected/toggled buttons
 // like nav links and aren't surfaced here because LogoutButton is never
 // "active" in that sense.
-const HOVER_STYLE_CSS = `
+//
+// `background` (not `background-color`) so the var can carry a gradient
+// string — `--btn-bg` resolves to `linear-gradient(...)` when the user
+// picks a gradient swatch, and `background-color` only accepts a single
+// colour, so a gradient would silently fall back to transparent.
+const LOGOUT_BUTTON_CSS = `
+.lobby-logout-button {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border-radius: var(--btn-border-radius);
+  border-width: var(--btn-border-width);
+  border-style: var(--btn-border-style, solid);
+  border-color: var(--btn-border-color);
+}
 .lobby-logout-button:hover {
   background: var(--btn-hover-bg);
   color: var(--btn-hover-text);
@@ -115,14 +118,13 @@ export function LogoutButton({
   if (preview) {
     return (
       <>
-        <style>{HOVER_STYLE_CSS}</style>
+        <style>{LOGOUT_BUTTON_CSS}</style>
         <button
           type="button"
           // No-op handler — the preview button is non-interactive but we
           // still want the visual :hover / :active states for the designer.
           onClick={(e) => e.preventDefault()}
           className={`lobby-logout-button px-4 py-2 text-sm cursor-default transition-colors ${className ?? ""}`.trim()}
-          style={buttonStyle}
           aria-label="Logout (preview)"
         >
           Logout
@@ -133,7 +135,7 @@ export function LogoutButton({
 
   return (
     <>
-      <style>{HOVER_STYLE_CSS}</style>
+      <style>{LOGOUT_BUTTON_CSS}</style>
       <Form
         method="post"
         action="/logout"
@@ -144,7 +146,6 @@ export function LogoutButton({
         <button
           type="submit"
           className="lobby-logout-button px-4 py-2 text-sm transition-colors cursor-pointer"
-          style={buttonStyle}
           onClick={() => {
             trackEvent("logout", {
               event_category: "authentication",

@@ -11,9 +11,9 @@
 // extension that reads them works without further plumbing.
 // =============================================================================
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { cn } from "@secretlobby/ui";
-import { LoginPanel } from "@secretlobby/player-view";
+import { LoginAutoplayToggle, LoginPanel } from "@secretlobby/player-view";
 import { generateThemeCSS } from "~/lib/theme";
 import { useSwatches } from "../PageBuilderRoot";
 import { usePageBuilder } from "../state/provider";
@@ -23,6 +23,12 @@ export function LoginPagePreview() {
   const { state } = usePageBuilder();
   const { theme, viewport, loginPage, loginLogoImageUrl } = state;
   const { swatches, drafts } = useSwatches();
+  // Designer-facing toggle for the "Music will play automatically" preview.
+  // Defaults to `true` to match the published lobby's initial state (see
+  // apps/lobby/app/routes/_index.tsx — autoplayEnabled starts true). The
+  // designer can click the toggle to inspect both visual states; the value
+  // doesn't persist and never reaches the lobby session.
+  const [autoplayPreview, setAutoplayPreview] = useState(true);
 
   // Same theme-style derivation Canvas.tsx uses — we re-derive locally so the
   // login-page wrapper can fall on top of the same CSS variables.
@@ -63,6 +69,13 @@ export function LoginPagePreview() {
             settings={loginPage}
             logoImageUrl={loginLogoImageUrl}
             preview
+            belowPanel={
+              <LoginAutoplayToggle
+                enabled={autoplayPreview}
+                onToggle={() => setAutoplayPreview((v) => !v)}
+                settings={loginPage}
+              />
+            }
           />
         </div>
       </div>

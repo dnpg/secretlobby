@@ -792,13 +792,21 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
   const hasUnsaved = dirty || themeDirty || loginPageDirty;
 
   // Block in-app navigation while there are unsaved changes — but ONLY when
-  // the user is actually leaving the page builder. Selection/viewport/mode
-  // changes call `setSearchParams({ replace: true })` which counts as a
-  // navigation; those are same-pathname and should never prompt.
+  // the user is actually leaving the editor or switching to a different page
+  // template. Selection/viewport/mode changes call `setSearchParams({ replace:
+  // true })` which counts as a navigation; those are same-pathname AND
+  // same-`page` and should never prompt. Switching the page dropdown (lobby ↔
+  // login) is same-pathname but a different `page` param, and DOES need the
+  // warning because the editor remounts and unsaved edits in the current
+  // template would be lost.
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (!hasUnsaved) return false;
-    if (currentLocation.pathname === nextLocation.pathname) return false;
-    return true;
+    if (currentLocation.pathname !== nextLocation.pathname) return true;
+    const currPage =
+      new URLSearchParams(currentLocation.search).get("page") ?? "lobby";
+    const nextPage =
+      new URLSearchParams(nextLocation.search).get("page") ?? "lobby";
+    return currPage !== nextPage;
   });
 
   // Guard full page reloads / tab close. The browser renders its own native
