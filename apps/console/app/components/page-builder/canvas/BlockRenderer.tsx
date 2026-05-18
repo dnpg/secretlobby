@@ -1,5 +1,9 @@
 import { useMemo } from "react";
 import { cn } from "@secretlobby/ui";
+import {
+  DividerView,
+  SocialLinksBlockView,
+} from "@secretlobby/lobby-template";
 import type {
   Block,
   BlockContent,
@@ -7,7 +11,6 @@ import type {
   CardBlockContent,
   CodeBlockBlockContent,
   CodeBlockContent,
-  DividerBlockContent,
   GalleryBlockContent,
   HeadingBlockContent,
   ImageBlockContent,
@@ -32,8 +35,6 @@ import { QuoteBlock } from "./blocks/QuoteBlock";
 import { CodeBlock } from "./blocks/CodeBlock";
 import { CodeBlockBlock } from "./blocks/CodeBlockBlock";
 import { TableBlock } from "./blocks/TableBlock";
-import { DividerBlock } from "./blocks/DividerBlock";
-import { SocialLinksBlock } from "./blocks/SocialLinksBlock";
 
 interface BlockRendererProps {
   block: Block;
@@ -211,16 +212,19 @@ export function BlockRenderer({
           />
         );
       case "divider":
-        return (
-          <DividerBlock
-            content={block.content as DividerBlockContent}
-            theme={effectiveTheme}
-          />
-        );
+        // Divider has no editor-specific behaviour (no Tiptap, no edit
+        // state). Drop through to the shared view in @secretlobby/lobby-template
+        // so the editor and the published lobby render identical markup.
+        return <DividerView />;
       case "socialLinks":
+        // Same pattern as divider — the social-links block is purely
+        // display, just configured. We hand it the lobby's resolved
+        // social-links settings from page-builder state so it can merge
+        // the block's per-instance overrides on top.
         return (
-          <SocialLinksBlock
+          <SocialLinksBlockView
             content={block.content as SocialLinksBlockContent}
+            socialLinks={state.socialLinks}
           />
         );
     }
