@@ -74,6 +74,19 @@ export {
 // drag / resize chrome on top in a follow-up pass.
 export { SectionView, type SectionViewProps } from "./blocks/SectionView";
 export { ColumnView, type ColumnViewProps } from "./blocks/ColumnView";
+
+// Per-block views — same rule as SectionView / ColumnView: view-only, no
+// editor chrome, drive everything from the persisted block content + theme.
+// The editor will wrap each view in an <EditableBlock> overlay (selection
+// ring, drag handle, settings trigger) when its BlockRenderer migrates;
+// nothing in these files cares whether they're inside the editor or the
+// published lobby.
+export { DividerView } from "./blocks/DividerView";
+export { ImageBlockView, type ImageBlockViewProps } from "./blocks/ImageBlockView";
+export {
+  SocialLinksBlockView,
+  type SocialLinksBlockViewProps,
+} from "./blocks/SocialLinksBlockView";
 export {
   VIEWPORT_WIDTHS,
   parseGapValue,
