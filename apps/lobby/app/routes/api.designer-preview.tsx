@@ -11,7 +11,7 @@ import {
   type Track,
   type ImageUrls,
   type SocialLinksSettings,
-} from "@secretlobby/player-view";
+} from "@secretlobby/lobby-template";
 import { ResponsiveImage } from "@secretlobby/ui";
 
 interface LoginPageSettings {

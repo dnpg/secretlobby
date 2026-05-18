@@ -23,7 +23,7 @@
     "@secretlobby/email": "workspace:*",
     "@secretlobby/logger": "workspace:*",
     "@secretlobby/payments": "workspace:*",
-    "@secretlobby/player-view": "workspace:*",
+    "@secretlobby/lobby-template": "workspace:*",
     "@secretlobby/storage": "workspace:*",
     "@secretlobby/theme": "workspace:*",
     "@secretlobby/ui": "workspace:*",

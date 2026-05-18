@@ -4,7 +4,7 @@ import {
   useHlsAudio,
   type ImageUrls,
   type PlayerRegionStyle,
-} from "@secretlobby/player-view";
+} from "@secretlobby/lobby-template";
 import {
   backdropFilterToCSS,
   borderRadiusToCSS,

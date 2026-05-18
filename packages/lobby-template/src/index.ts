@@ -1,5 +1,5 @@
 // =============================================================================
-// @secretlobby/player-view
+// @secretlobby/lobby-template
 // -----------------------------------------------------------------------------
 // PlayerView and supporting components/hooks. Hoisted out of apps/lobby so
 // the page-builder canvas can render the same UI inside the editor.

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import {
   SocialLinks,
   type SocialLinksSettings,
-} from "@secretlobby/player-view";
+} from "@secretlobby/lobby-template";
 import { usePageBuilder } from "../../state/provider";
 import type { SocialLinksBlockContent } from "../../state/types";
 
@@ -11,7 +11,7 @@ interface SocialLinksBlockProps {
 }
 
 // Renders the lobby's globally-configured social media links via the shared
-// `<SocialLinks />` component from `@secretlobby/player-view` — same nav +
+// `<SocialLinks />` component from `@secretlobby/lobby-template` — same nav +
 // anchor + icon markup the lobby home page uses, so the page-builder preview
 // and the published lobby render identically.
 //

@@ -90,7 +90,7 @@ export interface PlayerBlockContent {
 
 // Lightweight summary of a playlist surfaced to the page builder UI. Built
 // from the loader's `playlists` include + the matching tracks. Tracks here
-// match the @secretlobby/player-view Track shape so PlayerBlock can hand
+// match the @secretlobby/lobby-template Track shape so PlayerBlock can hand
 // them straight to <PlayerView />.
 export interface PlaylistTrackSummary {
   id: string;
@@ -216,7 +216,7 @@ export interface DividerBlockContent {}
 
 // Social Links block — renders the lobby's globally-configured social media
 // links (Instagram, Facebook, etc.) using the shared SocialLinks renderer
-// from `@secretlobby/player-view`. The block carries optional overrides so
+// from `@secretlobby/lobby-template`. The block carries optional overrides so
 // users can place multiple Social Links blocks with different visual
 // treatments (e.g. brand-color icons on a hero, mono icons in a footer)
 // without changing the lobby-level settings every time. All fields default

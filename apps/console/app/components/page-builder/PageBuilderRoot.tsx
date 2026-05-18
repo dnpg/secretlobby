@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useBlocker, useFetcher, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { cn } from "@secretlobby/ui";
-import type { SocialLinksSettings } from "@secretlobby/player-view";
+import type { SocialLinksSettings } from "@secretlobby/lobby-template";
 import type {
   LoginPageSettings,
   PlaylistSummary,

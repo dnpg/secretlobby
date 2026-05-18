@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Checkbox } from "@secretlobby/ui";
-import { AudioVisualizer } from "@secretlobby/player-view";
+import { AudioVisualizer } from "@secretlobby/lobby-template";
 import {
   type BackdropFilter,
   type BorderRadius,

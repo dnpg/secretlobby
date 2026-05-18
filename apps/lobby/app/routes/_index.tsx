@@ -24,7 +24,7 @@ import {
   type Track,
   type ImageUrls,
   type SocialLinksSettings,
-} from "@secretlobby/player-view";
+} from "@secretlobby/lobby-template";
 
 /**
  * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)

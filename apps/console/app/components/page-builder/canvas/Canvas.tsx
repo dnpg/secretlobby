@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@secretlobby/ui";
-import { LogoutButton } from "@secretlobby/player-view";
+import { LogoutButton } from "@secretlobby/lobby-template";
 import { generateThemeCSS } from "~/lib/theme";
 import { useSwatches } from "../PageBuilderRoot";
 import {

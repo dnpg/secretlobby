@@ -13,7 +13,7 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "@secretlobby/ui";
-import { LoginAutoplayToggle, LoginPanel } from "@secretlobby/player-view";
+import { LoginAutoplayToggle, LoginPanel } from "@secretlobby/lobby-template";
 import { generateThemeCSS } from "~/lib/theme";
 import { useSwatches } from "../PageBuilderRoot";
 import { usePageBuilder } from "../state/provider";

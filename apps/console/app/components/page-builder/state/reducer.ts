@@ -1,5 +1,5 @@
 import { arrayMove } from "@dnd-kit/sortable";
-import type { SocialLinksSettings } from "@secretlobby/player-view";
+import type { SocialLinksSettings } from "@secretlobby/lobby-template";
 import { createBlock, createEmptyParagraphBlock } from "./helpers";
 import type {
   Block,

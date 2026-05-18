@@ -10,7 +10,7 @@
 // inline keeps the visual treatment portable.
 //
 // `LoginPageSettings` is defined locally to avoid a workspace dep from
-// @secretlobby/player-view onto the console app. The shape mirrors the
+// @secretlobby/lobby-template onto the console app. The shape mirrors the
 // canonical type in apps/console/app/lib/content.server.ts — keep the two
 // in sync (small + stable; both are written by the same team).
 //

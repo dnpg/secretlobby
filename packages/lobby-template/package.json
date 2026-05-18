@@ -1,5 +1,5 @@
 {
-  "name": "@secretlobby/player-view",
+  "name": "@secretlobby/lobby-template",
   "version": "0.0.0",
   "private": true,
   "type": "module",
