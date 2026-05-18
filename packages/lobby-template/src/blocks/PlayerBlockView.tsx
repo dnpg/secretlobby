@@ -57,6 +57,22 @@ export interface PlayerBlockViewProps {
   /** Notifies the host when the active track changes — drives URL-state /
    *  analytics in the lobby and selection sync in the editor canvas. */
   onTrackChange: (id: string | null) => void;
+  /** When true (default), PlayerView renders inline — no `min-h-screen`,
+   *  no fixed-position background image overlay, no outer `container
+   *  mx-auto`. Every page-builder use of PlayerView is inline because the
+   *  block lives inside a SectionView column that owns the page chrome.
+   *  Set to false only if a host genuinely wants PlayerView to BE the
+   *  page (legacy un-section-ised lobby paths). */
+  embedded?: boolean;
+  /** Forwarded to PlayerView. The editor canvas previews HLS streams
+   *  cross-origin against the lobby app; the lobby itself is same-origin
+   *  so this is unset there. */
+  apiBaseUrl?: string;
+  /** Forwarded to PlayerView. When true, PlayerView skips playback wiring
+   *  on click events and renders the controls as styling-only — the page-
+   *  builder canvas uses this so the designer can click around without
+   *  starting HLS streams. Default false. */
+  isDesignerMode?: boolean;
 }
 
 export function PlayerBlockView({
@@ -74,6 +90,9 @@ export function PlayerBlockView({
   isPlaying,
   onPlayingChange,
   onTrackChange,
+  embedded = true,
+  apiBaseUrl,
+  isDesignerMode,
 }: PlayerBlockViewProps) {
   return (
     <PlayerView
@@ -90,6 +109,9 @@ export function PlayerBlockView({
       technicalInfo={technicalInfo}
       initialTrackId={initialTrackId}
       csrfToken={csrfToken}
+      embedded={embedded}
+      apiBaseUrl={apiBaseUrl}
+      isDesignerMode={isDesignerMode}
       // Content-driven knobs. The defaults match PlayerView's own defaults
       // so a persisted block with these fields unset still paints the full
       // hero / visualiser / playlist combo.

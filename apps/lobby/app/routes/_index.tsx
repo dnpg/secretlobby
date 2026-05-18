@@ -1481,30 +1481,34 @@ export default function LobbyIndex() {
           />
         </main>
       ) : (
-        // Authenticated player content. We render the lobby's page-builder
-        // sections when the designer has saved a layout; otherwise we fall
-        // back to the legacy hardcoded PlayerView so un-migrated lobbies
-        // keep working with no behaviour change.
+        // Authenticated lobby content — renders the page-builder layout
+        // through the same `SectionView` + `BlockView` pipeline the editor
+        // preview uses, so the published lobby paints exactly what
+        // designers see in the canvas. Page chrome (centered max-width
+        // container + padding) mirrors the editor's desktop preview branch
+        // in Canvas.tsx so widths line up. Body background flows from the
+        // `bodyBg` useEffect that writes to `document.body.style`.
         //
-        // For lobbies WITH a saved layout, BlockView dispatches each block
-        // to its per-type view in `@secretlobby/lobby-template`. The `player`
-        // block type isn't yet extracted into a PlayerBlockView — its
-        // `renderFallback` returns the same PlayerView (with audio + track
-        // state captured from this component's scope) so designers can use
-        // a player block today and we'll swap in the proper view later
-        // without changing what gets rendered on screen.
+        // For lobbies WITHOUT a saved layout, the in-memory
+        // DEFAULT_LOBBY_PAGE_LAYOUT (single section, single full-variant
+        // player block) flows through the same pipeline — one render
+        // path, no special-case branch.
         <main id="main-content" style={data.themeVars as React.CSSProperties}>
-          {/* Logout button — part of the lobby PAGE, top-right. Renders
-              only when the lobby is password-gated; a visitor on a
-              passwordless lobby has nothing to log out from. Styling is
-              driven entirely by the theme's button CSS vars, so the
-              button matches whatever the designer configured globally. */}
-          {data.lobby?.hasPassword && (
-            <div className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end">
-              <LogoutButton csrfToken={data.csrfToken} />
-            </div>
-          )}
-          {(() => {
+          <div
+            className="mx-auto w-full px-4"
+            style={{ maxWidth: 1152 }}
+          >
+            <div className="py-4 space-y-4 min-h-screen">
+              {/* Logout button — part of the lobby PAGE, top-right.
+                  Renders only when the lobby is password-gated; styling
+                  flows from the theme's button CSS vars so the button
+                  matches whatever the designer configured globally. */}
+              {data.lobby?.hasPassword && (
+                <div className="flex justify-end">
+                  <LogoutButton csrfToken={data.csrfToken} />
+                </div>
+              )}
+              {(() => {
             // `renderPlayer(content)` is the host's bridge to PlayerBlockView.
             // Captures every audio + track prop from this component's scope so
             // the hidden `<audio>` element and the autoplay state are shared
@@ -1585,6 +1589,8 @@ export default function LobbyIndex() {
               />
             ));
           })()}
+            </div>
+          </div>
         </main>
       )}
       {/* Audio element - always rendered in the same position to persist across login */}
