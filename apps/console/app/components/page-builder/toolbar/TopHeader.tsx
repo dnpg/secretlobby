@@ -33,6 +33,10 @@ interface TopHeaderProps {
     slug: string;
     title: string | null;
     isDefault: boolean;
+    // True when the lobby has a password gate. Drives the Logout-button
+    // preview in the right cluster so designers see how the published lobby
+    // will look when the gate is on.
+    hasPassword: boolean;
   };
   pageKind: "lobby" | "login";
   themeOverlayOpen: boolean;
@@ -122,7 +126,7 @@ export function TopHeader({
   const pageKindLabel = pageKind === "login" ? "Login page" : "Lobby page";
 
   return (
-    <header className="flex-shrink-0 h-12 bg-theme-secondary border-b border-theme flex items-center pr-4">
+    <header className="shrink-0 h-12 bg-theme-secondary border-b border-theme flex items-center pr-4">
       {/* Left cluster */}
       <div className="flex items-center h-full">
         <Link
@@ -140,7 +144,7 @@ export function TopHeader({
           className={cn(
             "h-full px-3 flex items-center gap-2 border-r border-theme transition-colors cursor-pointer",
             themeOverlayOpen
-              ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
+              ? "bg-(--color-brand-red-muted) text-(--color-brand-red)"
               : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
           )}
           title="Theme settings"
@@ -150,25 +154,29 @@ export function TopHeader({
           <PaintBrushIcon className="w-5 h-5" />
         </button>
 
-        <button
-          type="button"
-          onClick={onToggleLayoutEdit}
-          className={cn(
-            "h-full px-3 flex items-center gap-2 border-r border-theme transition-colors cursor-pointer",
-            showLayoutEdit
-              ? "bg-[var(--color-brand-red-muted)] text-[var(--color-brand-red)]"
-              : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
-          )}
-          title={
-            showLayoutEdit
-              ? "Hide section & column edit affordances"
-              : "Show section & column edit affordances"
-          }
-          aria-pressed={showLayoutEdit}
-          aria-label="Toggle section and column editing"
-        >
-          <DashedSquareIcon className="w-5 h-5" />
-        </button>
+        {/* Layout-edit toggle is hidden for the login-page template — that
+            view is a fixed template with no sections/columns to restructure. */}
+        {pageKind !== "login" && (
+          <button
+            type="button"
+            onClick={onToggleLayoutEdit}
+            className={cn(
+              "h-full px-3 flex items-center gap-2 border-r border-theme transition-colors cursor-pointer",
+              showLayoutEdit
+                ? "bg-(--color-brand-red-muted) text-(--color-brand-red)"
+                : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
+            )}
+            title={
+              showLayoutEdit
+                ? "Hide section & column edit affordances"
+                : "Show section & column edit affordances"
+            }
+            aria-pressed={showLayoutEdit}
+            aria-label="Toggle section and column editing"
+          >
+            <DashedSquareIcon className="w-5 h-5" />
+          </button>
+        )}
 
         <button
           type="button"
@@ -178,7 +186,7 @@ export function TopHeader({
           className={cn(
             "h-full px-3 flex items-center gap-2 border-r border-theme transition-colors cursor-pointer",
             isPreview
-              ? "bg-[var(--color-brand-red)] text-white hover:bg-[var(--color-brand-red)]/90"
+              ? "bg-(--color-brand-red) text-white hover:bg-(--color-brand-red)/90"
               : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
           )}
           title={isPreview ? "Return to edit mode" : "Preview the page"}
@@ -220,7 +228,7 @@ export function TopHeader({
           {pageMenuOpen && (
             <div
               role="menu"
-              className="absolute left-0 top-full mt-1 min-w-[200px] bg-theme-secondary border border-theme rounded-md shadow-lg py-1 z-50"
+              className="absolute left-0 top-full mt-1 min-w-50 bg-theme-secondary border border-theme rounded-md shadow-lg py-1 z-50"
             >
               {(["lobby", "login"] as const).map((kind) => {
                 const label = kind === "login" ? "Login page" : "Lobby page";
@@ -235,7 +243,7 @@ export function TopHeader({
                     className={cn(
                       "w-full text-left px-3 py-1.5 text-sm flex items-center justify-between gap-2 cursor-pointer transition-colors",
                       active
-                        ? "text-[var(--color-brand-red)] bg-[var(--color-brand-red-muted)]"
+                        ? "text-(--color-brand-red) bg-(--color-brand-red-muted)"
                         : "text-theme-secondary hover:text-theme-primary hover:bg-theme-tertiary"
                     )}
                   >
@@ -283,7 +291,7 @@ export function TopHeader({
             disabled={isSaving}
             className={cn(
               "px-3 py-1.5 rounded-md text-sm font-medium cursor-pointer transition-colors",
-              "bg-[var(--color-brand-red)] text-white hover:bg-[var(--color-brand-red)]/90",
+              "bg-(--color-brand-red) text-white hover:bg-(--color-brand-red)/90",
               "disabled:opacity-60 disabled:cursor-not-allowed"
             )}
             title={isSaving ? "Saving changes…" : "Save changes"}

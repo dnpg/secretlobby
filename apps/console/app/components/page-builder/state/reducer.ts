@@ -7,6 +7,7 @@ import type {
   BlockType,
   CardBlockContent,
   Column,
+  LoginPageSettings,
   PlaylistSummary,
   Section,
   ThemeSettings,
@@ -88,6 +89,17 @@ export interface PageBuilderState {
   // page or the dedicated login page. Sourced from the `?page=` query param;
   // routes the autosave action to the correct settings field.
   pageKind: "lobby" | "login";
+  // Login-page template settings. The login page is a fixed template — the
+  // canvas renders a single LoginPanel preview against this data and the
+  // LeftRail exposes a form for editing every field. Persisted under
+  // `Lobby.settings.loginPage` via the dedicated `update_login_page` action
+  // intent, with its own dirty/saveStatus/lastSavedAt channel so it can
+  // autosave independently of the layout + theme channels.
+  loginPage: LoginPageSettings;
+  loginLogoImageUrl: string | null;
+  loginPageDirty: boolean;
+  loginPageSaveStatus: SaveStatus;
+  loginPageLastSavedAt: number | null;
 }
 
 export type PageBuilderAction =
@@ -315,7 +327,21 @@ export type PageBuilderAction =
       type: "updateBlockMeta";
       blockId: string;
       partial: Partial<Omit<Block, "id" | "type" | "content">>;
-    };
+    }
+  // Login-page template — flows through the dedicated update_login_page
+  // fetcher. Mirrors the theme channel: a partial merge action plus
+  // status/dirty plumbing. `setLoginLogoImageUrl` lets MediaPicker stage
+  // the freshly-uploaded URL so the canvas preview refreshes without a
+  // loader round-trip.
+  | { type: "updateLoginPage"; partial: Partial<LoginPageSettings> }
+  | { type: "setLoginLogoImageUrl"; url: string | null }
+  | {
+      type: "setLoginPageSaveStatus";
+      status: SaveStatus;
+      at?: number | null;
+    }
+  | { type: "markLoginPageDirty" }
+  | { type: "markLoginPageClean"; at?: number };
 
 // Action types that mutate persisted layout — used to flip the dirty flag.
 export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
@@ -360,6 +386,12 @@ export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
 export const THEME_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
   "updateTheme",
   "resetTheme",
+]);
+
+// Action types that mutate the login-page template — flip the
+// loginPageDirty flag and trigger the dedicated login-page fetcher.
+export const LOGIN_PAGE_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
+  "updateLoginPage",
 ]);
 
 export function findBlockLocation(
@@ -1415,6 +1447,38 @@ export function pageBuilderReducer(
       next = { ...state, sections: sectionsMapped };
       break;
     }
+    case "updateLoginPage": {
+      next = {
+        ...state,
+        loginPage: { ...state.loginPage, ...action.partial },
+      };
+      break;
+    }
+    case "setLoginLogoImageUrl": {
+      next = { ...state, loginLogoImageUrl: action.url };
+      break;
+    }
+    case "setLoginPageSaveStatus": {
+      next = {
+        ...state,
+        loginPageSaveStatus: action.status,
+        loginPageLastSavedAt:
+          action.at !== undefined ? action.at : state.loginPageLastSavedAt,
+      };
+      break;
+    }
+    case "markLoginPageDirty": {
+      next = { ...state, loginPageDirty: true };
+      break;
+    }
+    case "markLoginPageClean": {
+      next = {
+        ...state,
+        loginPageDirty: false,
+        loginPageLastSavedAt: action.at ?? state.loginPageLastSavedAt,
+      };
+      break;
+    }
     default: {
       // Exhaustiveness check; if a new action is added but not handled,
       // TypeScript will flag it.
@@ -1429,6 +1493,9 @@ export function pageBuilderReducer(
   }
   if (THEME_MUTATING_ACTIONS.has(action.type) && next !== state) {
     next = { ...next, themeDirty: true };
+  }
+  if (LOGIN_PAGE_MUTATING_ACTIONS.has(action.type) && next !== state) {
+    next = { ...next, loginPageDirty: true };
   }
 
   return next;

@@ -8,8 +8,9 @@ import type {
   BoxPadding,
   ThemeSettings,
 } from "~/lib/theme";
+import type { LoginPageSettings } from "~/lib/content.server";
 
-export type { ThemeSettings };
+export type { ThemeSettings, LoginPageSettings };
 
 export type ViewportSize = "desktop" | "tablet" | "mobile";
 export type MobileLayout = "stack" | "keep" | "slider";

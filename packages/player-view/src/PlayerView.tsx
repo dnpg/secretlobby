@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, memo } from "react";
-import { Form } from "react-router";
 import { ResponsiveImage, PictureImage } from "@secretlobby/ui";
 import { createLogger, formatError } from "@secretlobby/logger/client";
 import {
@@ -1794,41 +1793,22 @@ export function PlayerView({
       )}
       {!embedded && <div className="fixed inset-0 -z-10 bg-black/70" />}
 
-      {!embedded && (
+      {!embedded && isDesignerMode && (
+        // Designer-mode badge only — the Logout button moved out of the
+        // player entirely (it's part of the lobby page now, rendered by
+        // the consuming route at `apps/lobby/app/routes/_index.tsx`). The
+        // badge stays here because it's a player-specific designer hint.
         <header className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end items-center gap-3">
-          {isDesignerMode ? (
-            <span
-              className="px-4 py-2 text-sm"
-              style={{
-                borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
-                backgroundColor: "rgba(59, 130, 246, 0.2)",
-                color: "#60a5fa",
-              }}
-            >
-              Designer Preview
-            </span>
-          ) : (
-            <Form method="post" action="/logout" reloadDocument>
-              <input type="hidden" name="_csrf" value={csrfToken} />
-              <button
-                type="submit"
-                className="px-4 py-2 text-sm transition cursor-pointer"
-                style={{
-                  borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
-                  backgroundColor: "var(--color-secondary)",
-                  color: "var(--color-secondary-text)",
-                }}
-                onClick={() => {
-                  trackEvent('logout', {
-                    event_category: 'authentication',
-                    method: 'button_click',
-                  });
-                }}
-              >
-                Logout
-              </button>
-            </Form>
-          )}
+          <span
+            className="px-4 py-2 text-sm"
+            style={{
+              borderRadius: borderRadiusToCSS(cardStyles?.buttonBorderRadius, 24),
+              backgroundColor: "rgba(59, 130, 246, 0.2)",
+              color: "#60a5fa",
+            }}
+          >
+            Designer Preview
+          </span>
         </header>
       )}
 

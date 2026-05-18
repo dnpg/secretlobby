@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@secretlobby/ui";
+import { LogoutButton } from "@secretlobby/player-view";
 import { generateThemeCSS } from "~/lib/theme";
 import { useSwatches } from "../PageBuilderRoot";
 import {
@@ -35,6 +36,7 @@ import { createBlock, VIEWPORT_WIDTHS } from "../state/helpers";
 import { findBlockLocation } from "../state/reducer";
 import { usePageBuilder } from "../state/provider";
 import { BlockRenderer } from "./BlockRenderer";
+import { LoginPagePreview } from "./LoginPagePreview";
 import { SectionComponent } from "./SectionComponent";
 import { SortableSection } from "./SortableSection";
 
@@ -43,9 +45,35 @@ import { SortableSection } from "./SortableSection";
 // the callback props produced here, mirroring the legacy prop API.
 interface CanvasProps {
   showLayoutEdit: boolean;
+  /** True when the lobby being edited has a password set. Drives the
+   *  Logout-button preview rendered at the top-right of the lobby
+   *  canvas — the same button the published lobby paints. */
+  hasPassword: boolean;
+  /** Forwarded to the LogoutButton's real-mode <Form>. The editor only
+   *  renders the button in preview mode (no CSRF needed), but the prop
+   *  exists for symmetry with the lobby render path. */
+  csrfToken: string;
 }
 
-export function Canvas({ showLayoutEdit }: CanvasProps) {
+export function Canvas({ showLayoutEdit, hasPassword, csrfToken }: CanvasProps) {
+  const { state } = usePageBuilder();
+  // Login-page template branch: short-circuit before any DndContext or
+  // section-list machinery mounts. We delegate to LobbyCanvas (everything
+  // below) for the main lobby page so React's hook-order rule stays
+  // satisfied — LobbyCanvas owns all the section/block hooks.
+  if (state.pageKind === "login") {
+    return <LoginPagePreview />;
+  }
+  return (
+    <LobbyCanvas
+      showLayoutEdit={showLayoutEdit}
+      hasPassword={hasPassword}
+      csrfToken={csrfToken}
+    />
+  );
+}
+
+function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
   const { state, dispatch } = usePageBuilder();
   const { sections, selection, viewport, mode, theme } = state;
   const isEditing = mode === "edit";
@@ -591,6 +619,18 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
           <div className="min-h-full w-full" style={themedSurfaceStyle}>
             <div className="mx-auto w-full px-4 transition-[max-width] duration-300" style={{ maxWidth: 1152 }}>
               <div className="py-4 space-y-4 min-h-[600px]">
+                {/* Logout button preview — part of the lobby PAGE, not the
+                    editor. Renders at the top-right of the lobby content
+                    area so the canvas matches what the published lobby
+                    paints. Styling comes entirely from the theme's button
+                    CSS vars (`--btn-bg` / `--btn-text` / etc.), so the
+                    button tracks every edit in the global Buttons theme
+                    section. */}
+                {hasPassword && (
+                  <div className="flex justify-end">
+                    <LogoutButton preview csrfToken={null} />
+                  </div>
+                )}
                 {sectionsContent}
               </div>
             </div>
@@ -613,7 +653,14 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
             ...themedSurfaceStyle,
           }}
         >
-          <div className="p-4 space-y-4 min-h-[600px]">{sectionsContent}</div>
+          <div className="p-4 space-y-4 min-h-[600px]">
+            {hasPassword && (
+              <div className="flex justify-end">
+                <LogoutButton preview csrfToken={null} />
+              </div>
+            )}
+            {sectionsContent}
+          </div>
         </div>
       </div>
     );
@@ -662,7 +709,14 @@ export function Canvas({ showLayoutEdit }: CanvasProps) {
           ...themedSurfaceStyle,
         }}
       >
-        <div className="p-4 space-y-4 min-h-[600px]">{sectionsContent}</div>
+        <div className="p-4 space-y-4 min-h-[600px]">
+          {hasPassword && (
+            <div className="flex justify-end">
+              <LogoutButton preview csrfToken={null} />
+            </div>
+          )}
+          {sectionsContent}
+        </div>
       </div>
     </div>
   );

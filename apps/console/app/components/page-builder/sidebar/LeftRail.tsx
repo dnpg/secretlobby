@@ -63,6 +63,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from "../icons";
+import { LoginPageSettingsPanel } from "./LoginPageSettingsPanel";
 import { SettingsOverlay } from "./SettingsOverlay";
 import { ThemeOverlay } from "./ThemeOverlay";
 
@@ -104,7 +105,19 @@ interface SectionConfirm {
   blockCount: number;
 }
 
-export function LeftRail({
+export function LeftRail(props: LeftRailProps) {
+  // Login-page template branch — replaces the layers navigator with the
+  // login-page settings form. The thin shell here keeps React's hook-order
+  // rule happy: the layers panel (LayersRail) owns its own hooks and only
+  // mounts when the page-builder is editing the main lobby page.
+  const { state } = usePageBuilder();
+  if (state.pageKind === "login") {
+    return <LoginPageSettingsPanel />;
+  }
+  return <LayersRail {...props} />;
+}
+
+function LayersRail({
   themeOverlayOpen,
   onCloseThemeOverlay,
   showLayoutEdit,

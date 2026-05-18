@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { Form, useLoaderData, useActionData } from "react-router";
+import { useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
@@ -14,6 +14,8 @@ import {
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import {
+  LoginPanel,
+  LogoutButton,
   PlayerView,
   PreviewBar,
   useHlsAudio,
@@ -22,7 +24,6 @@ import {
   type ImageUrls,
   type SocialLinksSettings,
 } from "@secretlobby/player-view";
-import { ResponsiveImage } from "@secretlobby/ui";
 
 /**
  * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
@@ -236,6 +237,10 @@ interface ThemeSettings {
   buttonBorderShow?: boolean;
   buttonBorderColor?: string;
   buttonBorderWidth?: string;
+  /** Border style — `"none"` collapses the border regardless of width/color.
+   *  When absent the CSS layer falls back to the legacy `buttonBorderShow`
+   *  boolean (true → "solid", false → "none"). */
+  buttonBorderStyle?: string;
   buttonHoverBg?: ThemeBackgroundColor;
   buttonHoverText?: string;
   buttonHoverTextRich?: TextColorValue;
@@ -572,6 +577,8 @@ function generateThemeCSSVars(
   const btnBorderShow = theme.buttonBorderShow ?? false;
   const btnBorderColor = theme.buttonBorderColor ?? theme.border;
   const btnBorderWidth = theme.buttonBorderWidth ?? "1px";
+  const btnBorderStyle =
+    theme.buttonBorderStyle ?? (btnBorderShow ? "solid" : "none");
   const hoverBg: ThemeBackgroundColor = theme.buttonHoverBg ?? { type: "solid", color: btnText, opacity: 100 };
   const hoverText = theme.buttonHoverText ?? colorPartFirstColor(btnBg, swatches);
   const pressedBg: ThemeBackgroundColor = theme.buttonPressedBg ?? darkenColorPartBtn(hoverBg, 0.1, swatches);
@@ -651,7 +658,8 @@ function generateThemeCSSVars(
     "--btn-text-image": btnTextCSS.image,
     "--btn-border-color": btnBorderColor,
     "--btn-border-width": btnBorderWidth,
-    "--btn-border-show": btnBorderShow ? "1" : "0",
+    "--btn-border-style": btnBorderStyle,
+    "--btn-border-show": btnBorderStyle !== "none" ? "1" : "0",
     // Button states.
     "--btn-hover-bg": colorPartToCSS(hoverBg, swatches),
     "--btn-hover-text": btnHoverTextCSS.color,
@@ -971,6 +979,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       id: lobby.id,
       title: lobby.title,
       description: lobby.description,
+      // True when the lobby is password-gated. The authenticated render
+      // path uses this to decide whether to show the Logout button —
+      // distinct from `requiresPassword`, which is only true BEFORE
+      // login. We never expose the raw password.
+      hasPassword: !!lobby.password,
     },
     account: {
       name: account.name,
@@ -1343,176 +1356,112 @@ export default function LobbyIndex() {
       {isPreview && <div aria-hidden className="shrink-0" style={{ minHeight: 44 }} />}
 
       {requiresPassword ? (
-        // Login page content
-        <main
-          id="main-content"
-          className="min-h-dvh flex items-center justify-center overflow-hidden"
-          style={{ backgroundColor: lp.bgColor }}
-          aria-label="Login"
-        >
-          <div className="w-full max-w-md p-8">
-            <div
-              className="rounded-2xl p-8 shadow-2xl border"
-              style={{
-                backgroundColor: lp.panelBgColor,
-                borderColor: lp.panelBorderColor,
-              }}
-            >
-              <div className="text-center mb-8">
-                {lp.logoType === "image" && loginLogoImageUrl && (
-                  <div className="flex justify-center mb-4 w-full">
-                    <ResponsiveImage
-                      src={loginLogoImageUrl}
-                      alt={loginTitle || "Logo"}
-                      widths={[200, 400, 600, 800]}
-                      sizes={`(min-width: 448px) ${Math.round(384 * (lp.logoMaxWidth || 50) / 100)}px, calc((100vw - 64px) * ${(lp.logoMaxWidth || 50) / 100})`}
-                      className="object-contain"
-                      style={{ maxWidth: `${lp.logoMaxWidth || 50}%` }}
-                    />
-                  </div>
-                )}
-                {loginTitle && (
-                  <h1 className="text-2xl font-bold" style={{ color: lp.textColor }}>
-                    {loginTitle}
-                  </h1>
-                )}
-                {loginDescription && (
-                  <p className="mt-2" style={{ color: lp.textColor, opacity: 0.7 }}>
-                    {loginDescription}
-                  </p>
-                )}
-              </div>
-
-              {actionData?.error && (
-                <div
-                  className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg"
-                  role="alert"
-                  aria-live="polite"
-                >
-                  {actionData.error}
-                </div>
-              )}
-
-              <Form method="post" className="space-y-4">
-                <input type="hidden" name="_csrf" value={data.csrfToken} />
-                <div>
-                  <label
-                    htmlFor="password"
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: lp.textColor, opacity: 0.85 }}
-                  >
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    placeholder="Enter the password"
-                    required
-                    autoFocus
-                    className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style={{
-                      backgroundColor: "#ffffff",
-                      borderColor: lp.panelBorderColor,
-                      color: "#111827",
-                    }}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                >
-                  {lp.buttonLabel || "Enter Lobby"}
-                </button>
-              </Form>
-            </div>
-
-            {/* Audio autoplay toggle - separate box below login panel */}
-            {/* Uses same panel colors as login box for consistent contrast */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoplayEnabled}
-              aria-label={autoplayEnabled ? "Autoplay is on. Press to disable autoplay" : "Autoplay is off. Press to enable autoplay"}
-              onClick={() => setAutoplayEnabled(!autoplayEnabled)}
-              className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2"
-              style={{
-                backgroundColor: lp.panelBgColor,
-                border: `1px solid ${lp.panelBorderColor}`,
-                // Use panel border color for focus ring offset to match the background
-                // @ts-expect-error CSS custom property
-                "--tw-ring-offset-color": lp.bgColor,
-                "--tw-ring-color": "#3b82f6",
-              }}
-            >
-              <span
-                className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-200"
+        // Login page content — LoginPanel renders the bg wrapper + the panel
+        // card; the audio-autoplay toggle slots in below via `belowPanel`.
+        <main id="main-content" aria-label="Login">
+          <LoginPanel
+            settings={lp}
+            logoImageUrl={loginLogoImageUrl}
+            errorMessage={actionData?.error ?? null}
+            csrfToken={data.csrfToken}
+            belowPanel={
+              // Audio autoplay toggle - separate box below login panel.
+              // Uses same panel colors as login box for consistent contrast.
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoplayEnabled}
+                aria-label={autoplayEnabled ? "Autoplay is on. Press to disable autoplay" : "Autoplay is off. Press to enable autoplay"}
+                onClick={() => setAutoplayEnabled(!autoplayEnabled)}
+                className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2"
                 style={{
-                  backgroundColor: autoplayEnabled ? "rgba(59, 130, 246, 0.25)" : "rgba(128, 128, 128, 0.25)",
+                  backgroundColor: lp.panelBgColor,
+                  border: `1px solid ${lp.panelBorderColor}`,
+                  // Use panel border color for focus ring offset to match the background
+                  // @ts-expect-error CSS custom property
+                  "--tw-ring-offset-color": lp.bgColor,
+                  "--tw-ring-color": "#3b82f6",
                 }}
-                aria-hidden="true"
               >
-                {autoplayEnabled ? (
-                  <svg
-                    className="w-5 h-5"
-                    style={{ color: "#3b82f6" }}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-5 h-5"
-                    style={{ color: lp.textColor, opacity: 0.5 }}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
-                    />
-                  </svg>
-                )}
-              </span>
-              <span className="flex-1 text-left">
                 <span
-                  className="block text-sm font-medium"
-                  style={{ color: lp.textColor }}
-                  aria-live="polite"
+                  className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-200"
+                  style={{
+                    backgroundColor: autoplayEnabled ? "rgba(59, 130, 246, 0.25)" : "rgba(128, 128, 128, 0.25)",
+                  }}
+                  aria-hidden="true"
                 >
-                  {autoplayEnabled ? "Music will play automatically" : "Autoplay disabled"}
+                  {autoplayEnabled ? (
+                    <svg
+                      className="w-5 h-5"
+                      style={{ color: "#3b82f6" }}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-5 h-5"
+                      style={{ color: lp.textColor, opacity: 0.5 }}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
+                      />
+                    </svg>
+                  )}
                 </span>
-                <span
-                  className="block text-xs"
-                  style={{ color: lp.textColor, opacity: 0.7 }}
-                >
-                  {autoplayEnabled
-                    ? "Click to enter silently"
-                    : "Click to enable autoplay"}
+                <span className="flex-1 text-left">
+                  <span
+                    className="block text-sm font-medium"
+                    style={{ color: lp.textColor }}
+                    aria-live="polite"
+                  >
+                    {autoplayEnabled ? "Music will play automatically" : "Autoplay disabled"}
+                  </span>
+                  <span
+                    className="block text-xs"
+                    style={{ color: lp.textColor, opacity: 0.7 }}
+                  >
+                    {autoplayEnabled
+                      ? "Click to enter silently"
+                      : "Click to enable autoplay"}
+                  </span>
                 </span>
-              </span>
-            </button>
-          </div>
+              </button>
+            }
+          />
         </main>
       ) : (
         // Authenticated player content
         <main id="main-content" style={data.themeVars as React.CSSProperties}>
+          {/* Logout button — part of the lobby PAGE, top-right. Renders
+              only when the lobby is password-gated; a visitor on a
+              passwordless lobby has nothing to log out from. Styling is
+              driven entirely by the theme's button CSS vars, so the
+              button matches whatever the designer configured globally. */}
+          {data.lobby?.hasPassword && (
+            <div className="container mx-auto px-4 pt-4 max-w-6xl flex justify-end">
+              <LogoutButton csrfToken={data.csrfToken} />
+            </div>
+          )}
           <PlayerView
             tracks={tracks}
             imageUrls={imageUrls}

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { cn } from "@secretlobby/ui";
 import type { SocialLinksSettings } from "@secretlobby/player-view";
 import type {
+  LoginPageSettings,
   PlaylistSummary,
   StoredPageLayout,
   ThemeSettings,
@@ -35,6 +36,9 @@ interface PageBuilderLoaderData {
     slug: string;
     title: string | null;
     isDefault: boolean;
+    // True when the lobby has a password gate. Used by TopHeader to preview
+    // the Logout button — never carries the raw password string.
+    hasPassword: boolean;
   };
   pageLayout: StoredPageLayout | null;
   // Which layout the loader returned — main lobby page or the login page.
@@ -62,6 +66,12 @@ interface PageBuilderLoaderData {
     // and treat it as a SavedSwatch's `value` when handing it to the picker.
     value: unknown;
   }>;
+  // Login-page template settings — always returned by the loader (regardless
+  // of pageKind) so the autosave fetcher has a baseline to diff against and
+  // a freshly-toggled "Login page" view doesn't have to wait for a separate
+  // round-trip to hydrate.
+  loginPage: LoginPageSettings;
+  loginLogoImageUrl: string | null;
 }
 
 // =============================================================================
@@ -160,6 +170,8 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
     lobbyOrigin,
     lobbyPreviewToken,
     socialLinks,
+    loginPage,
+    loginLogoImageUrl,
   } = loaderData;
   // Loader returns the JSON column as `unknown`; the runtime shape matches
   // SavedSwatch from the picker — cast once at this boundary so the rest of
@@ -197,6 +209,11 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
       lobbyPreviewToken,
       pageKind,
       socialLinks,
+      loginPage,
+      loginLogoImageUrl,
+      loginPageDirty: false,
+      loginPageSaveStatus: "idle",
+      loginPageLastSavedAt: null,
     };
     // We intentionally seed only once; subsequent URL changes are handled by
     // selection/viewport effects inside the inner component.
@@ -454,7 +471,14 @@ function SwatchProvider({ initialSwatches, csrfToken, children }: SwatchProvider
 }
 
 interface PageBuilderInnerProps {
-  lobby: { id: string; name: string; slug: string; title: string | null; isDefault: boolean };
+  lobby: {
+    id: string;
+    name: string;
+    slug: string;
+    title: string | null;
+    isDefault: boolean;
+    hasPassword: boolean;
+  };
   csrfToken: string;
   pageKind: "lobby" | "login";
 }
@@ -474,6 +498,8 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
     theme,
     themeDirty,
     dirty,
+    loginPage,
+    loginPageDirty,
   } = state;
   const isPreview = state.mode === "preview";
 
@@ -498,12 +524,13 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
   // resize handles, add-block menu) when they want to restructure the page.
   // Blocks remain selectable / editable regardless.
   const [showLayoutEdit, setShowLayoutEdit] = useState(false);
-  // Two separate fetchers: one for layout (page sections + per-block theme
-  // overrides) and one for the global lobby theme. Keeping them split avoids
-  // cross-coordination between the two dirty channels — each fetcher has its
-  // own queue and never fights the other.
+  // Three separate fetchers: layout (page sections + per-block theme
+  // overrides), global lobby theme, and the login-page template. Keeping
+  // them split avoids cross-coordination between the three dirty channels —
+  // each fetcher has its own queue and never fights the others.
   const fetcher = useFetcher<SaveActionData>();
   const themeFetcher = useFetcher<SaveActionData>();
+  const loginPageFetcher = useFetcher<SaveActionData>();
 
   // Track client-side mounting to gate the URL-sync effect — matches the
   // original PageBuilderInner so we don't rewrite the URL on first hydrate.
@@ -635,10 +662,10 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
     return () => window.removeEventListener("keydown", handler);
   }, [isPreview, selection, dispatch]);
 
-  // Manual save: submits both fetchers in parallel for the dirty channel(s).
-  // Autosave was removed — the user clicks the Save button in TopHeader to
-  // persist changes. Each fetcher's lifecycle still drives saveStatus /
-  // themeSaveStatus back into the reducer via the effects below.
+  // Manual save: submits every fetcher in parallel for the dirty channel(s).
+  // Autosave on the login-page channel is debounced separately below; this
+  // manual save still drains it eagerly when the user clicks Save (matching
+  // the layout + theme channels' behaviour).
   const saveAll = useCallback(() => {
     if (dirty) {
       fetcher.submit(
@@ -660,7 +687,48 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
         { method: "post", encType: "application/x-www-form-urlencoded" }
       );
     }
-  }, [dirty, themeDirty, sections, theme, csrfToken, fetcher, themeFetcher]);
+    if (loginPageDirty) {
+      loginPageFetcher.submit(
+        {
+          intent: "update_login_page",
+          _csrf: csrfToken,
+          loginPage: JSON.stringify(loginPage),
+        },
+        { method: "post", encType: "application/x-www-form-urlencoded" }
+      );
+    }
+  }, [
+    dirty,
+    themeDirty,
+    loginPageDirty,
+    sections,
+    theme,
+    loginPage,
+    csrfToken,
+    fetcher,
+    themeFetcher,
+    loginPageFetcher,
+  ]);
+
+  // Autosave for the login-page channel — debounced ~600ms so a slider drag
+  // or a rapid sequence of color tweaks coalesces into a single POST. The
+  // layout + theme channels don't autosave (manual save button); login-page
+  // autosaves to match the legacy /lobby/:id/login route's "save on every
+  // change" UX.
+  useEffect(() => {
+    if (!loginPageDirty) return;
+    const handle = setTimeout(() => {
+      loginPageFetcher.submit(
+        {
+          intent: "update_login_page",
+          _csrf: csrfToken,
+          loginPage: JSON.stringify(loginPage),
+        },
+        { method: "post", encType: "application/x-www-form-urlencoded" }
+      );
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [loginPageDirty, loginPage, csrfToken, loginPageFetcher]);
 
   // Reflect fetcher state into reducer-tracked saveStatus.
   useEffect(() => {
@@ -696,10 +764,32 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
     }
   }, [themeFetcher.state, themeFetcher.data, dispatch]);
 
+  // Reflect loginPageFetcher state into reducer-tracked loginPageSaveStatus.
+  useEffect(() => {
+    if (loginPageFetcher.state === "submitting") {
+      dispatch({ type: "setLoginPageSaveStatus", status: "saving" });
+      return;
+    }
+    if (loginPageFetcher.state === "idle" && loginPageFetcher.data) {
+      if (
+        "success" in loginPageFetcher.data &&
+        loginPageFetcher.data.success
+      ) {
+        const now = Date.now();
+        dispatch({ type: "setLoginPageSaveStatus", status: "saved", at: now });
+        dispatch({ type: "markLoginPageClean", at: now });
+      } else if ("error" in loginPageFetcher.data) {
+        dispatch({ type: "setLoginPageSaveStatus", status: "error" });
+      }
+    }
+  }, [loginPageFetcher.state, loginPageFetcher.data, dispatch]);
+
   // Combined "is saving" flag for the Save button label/disabled state.
   const isSaving =
-    fetcher.state === "submitting" || themeFetcher.state === "submitting";
-  const hasUnsaved = dirty || themeDirty;
+    fetcher.state === "submitting" ||
+    themeFetcher.state === "submitting" ||
+    loginPageFetcher.state === "submitting";
+  const hasUnsaved = dirty || themeDirty || loginPageDirty;
 
   // Block in-app navigation while there are unsaved changes — but ONLY when
   // the user is actually leaving the page builder. Selection/viewport/mode
@@ -780,7 +870,11 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
 
         {/* Canvas */}
         <div className="flex-1 flex flex-col min-w-0 relative">
-          <Canvas showLayoutEdit={showLayoutEdit} />
+          <Canvas
+            showLayoutEdit={showLayoutEdit}
+            hasPassword={lobby.hasPassword}
+            csrfToken={csrfToken}
+          />
         </div>
       </div>
 

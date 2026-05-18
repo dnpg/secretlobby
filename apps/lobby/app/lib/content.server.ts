@@ -169,6 +169,9 @@ export interface ThemeSettings {
   buttonBorderShow?: boolean;
   buttonBorderColor?: string;
   buttonBorderWidth?: string;
+  /** Border style — mirrors `imageBorderStyle`. When absent the CSS layer
+   *  falls back to `buttonBorderShow` (true → "solid", false → "none"). */
+  buttonBorderStyle?: string;
   buttonHoverBg?: ThemeBackgroundColor;
   buttonHoverText?: string;
   buttonPressedBg?: ThemeBackgroundColor;
@@ -570,6 +573,10 @@ export function generateThemeCSS(
   const btnBorderShow = theme.buttonBorderShow ?? false;
   const btnBorderColor = theme.buttonBorderColor ?? theme.border;
   const btnBorderWidth = theme.buttonBorderWidth ?? "1px";
+  // Effective border style: prefer `buttonBorderStyle`, else fall back to the
+  // legacy `buttonBorderShow` boolean (true → "solid", false → "none").
+  const btnBorderStyle =
+    theme.buttonBorderStyle ?? (btnBorderShow ? "solid" : "none");
   const hoverBg: ThemeBackgroundColor = theme.buttonHoverBg ?? { type: "solid", color: btnText, opacity: 100 };
   const hoverText = theme.buttonHoverText ?? colorPartFirstColorLocal(btnBg, swatches);
   const pressedBg: ThemeBackgroundColor = theme.buttonPressedBg ?? darkenColorPartLocal(hoverBg, 0.1, swatches);
@@ -612,7 +619,8 @@ export function generateThemeCSS(
     `--btn-text: ${btnText}`,
     `--btn-border-color: ${btnBorderColor}`,
     `--btn-border-width: ${btnBorderWidth}`,
-    `--btn-border-show: ${btnBorderShow ? 1 : 0}`,
+    `--btn-border-style: ${btnBorderStyle}`,
+    `--btn-border-show: ${btnBorderStyle !== "none" ? 1 : 0}`,
     // Button states.
     `--btn-hover-bg: ${colorPartToCSS(hoverBg, swatches)}`,
     `--btn-hover-text: ${hoverText}`,

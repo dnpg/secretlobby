@@ -211,6 +211,10 @@ interface ThemeSettings {
   buttonBorderShow?: boolean;
   buttonBorderColor?: string;
   buttonBorderWidth?: string;
+  /** Border style — `"none"` collapses the border regardless of width/color.
+   *  When absent the CSS layer falls back to the legacy `buttonBorderShow`
+   *  boolean (true → "solid", false → "none"). */
+  buttonBorderStyle?: string;
   buttonHoverBg?: ThemeBackgroundColor;
   buttonHoverText?: string;
   buttonHoverTextRich?: TextColorValue;
@@ -534,6 +538,8 @@ function generateThemeCSSVars(
   const btnBorderShow = theme.buttonBorderShow ?? false;
   const btnBorderColor = theme.buttonBorderColor ?? theme.border;
   const btnBorderWidth = theme.buttonBorderWidth ?? "1px";
+  const btnBorderStyle =
+    theme.buttonBorderStyle ?? (btnBorderShow ? "solid" : "none");
   const hoverBg: ThemeBackgroundColor = theme.buttonHoverBg ?? { type: "solid", color: btnText, opacity: 100 };
   const hoverText = theme.buttonHoverText ?? colorPartFirstColor(btnBg, swatches);
   const pressedBg: ThemeBackgroundColor = theme.buttonPressedBg ?? darkenColorPartBtn(hoverBg, 0.1, swatches);
@@ -612,7 +618,8 @@ function generateThemeCSSVars(
     "--btn-text-image": btnTextCSS.image,
     "--btn-border-color": btnBorderColor,
     "--btn-border-width": btnBorderWidth,
-    "--btn-border-show": btnBorderShow ? "1" : "0",
+    "--btn-border-style": btnBorderStyle,
+    "--btn-border-show": btnBorderStyle !== "none" ? "1" : "0",
     // Button states.
     "--btn-hover-bg": colorPartToCSS(hoverBg, swatches),
     "--btn-hover-text": btnHoverTextCSS.color,

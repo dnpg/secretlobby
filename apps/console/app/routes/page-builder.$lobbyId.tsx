@@ -167,9 +167,12 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const { getLobbyById } = await import("~/models/queries/lobby.server");
   const { getAccountWithBasicInfo } = await import("~/models/queries/account.server");
   const { getLobbySettings } = await import("~/models/mutations/lobby.server");
-  const { getLobbyThemeSettings, getLobbySocialLinksSettings } = await import(
-    "~/lib/content.server"
-  );
+  const {
+    getLobbyThemeSettings,
+    getLobbySocialLinksSettings,
+    getLobbyLoginPageSettings,
+  } = await import("~/lib/content.server");
+  const { getPublicUrl } = await import("@secretlobby/storage");
   const { getPlaylistsByLobbyIdWithTracks } = await import(
     "~/models/queries/playlist.server"
   );
@@ -206,6 +209,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     lobbySettings,
     swatchesRaw,
     socialLinks,
+    loginPage,
   ] = await Promise.all([
     getLobbyById(lobbyId),
     getAccountWithBasicInfo(accountId),
@@ -216,7 +220,17 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     // Social-link settings — merged from lobby-level + account-level fallback
     // by the helper, so the page builder sees a single resolved object.
     getLobbySocialLinksSettings(lobbyId),
+    // Login-page settings — drives the login-template canvas branch + the
+    // LeftRail login-page settings panel. Same lobby/account merge fallback
+    // as theme/social-links.
+    getLobbyLoginPageSettings(lobbyId),
   ]);
+
+  // Public URL for the login-page logo image (same helper as the dedicated
+  // login-page route, kept identical so both contexts see the same path).
+  const loginLogoImageUrl = loginPage.logoImage
+    ? getPublicUrl(loginPage.logoImage)
+    : null;
 
   if (!lobby || lobby.accountId !== accountId) {
     throw redirect("/lobbies");
@@ -247,13 +261,17 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     })),
   }));
 
-  // Pull the layout matching the current page kind. `loginPageLayout` is
-  // absent on lobbies that haven't customized it yet — that's fine, the
-  // reducer seeds an empty default in PageBuilderRoot.
+  // The login page is a template (not a block canvas), so we don't seed any
+  // stored layout for it — the canvas will branch into LoginPagePreview
+  // instead of mounting the section list. The defensive read of
+  // `lobbySettings.loginPageLayout` is kept to satisfy the locked migration
+  // contract (legacy data may still exist on disk); we just don't thread it
+  // through to the client anymore.
   const rawLayout =
-    pageKind === "login"
-      ? lobbySettings.loginPageLayout
-      : lobbySettings.pageLayout;
+    pageKind === "login" ? null : lobbySettings.pageLayout;
+  // Defensive dead-code: still read the legacy field so future migrations
+  // can grep for the access site, but never feed it to the runtime.
+  void lobbySettings.loginPageLayout;
   const storedLayout = parseStoredPageLayout(rawLayout, defaultPlaylist.id);
 
   // Coerce stored swatch rows into the shape the ColorPicker expects.
@@ -302,6 +320,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       slug: lobby.slug,
       title: lobby.title,
       isDefault: lobby.isDefault,
+      // Surface whether the lobby has a password gate so the editor's
+      // TopHeader can preview the Logout button — never expose the raw
+      // password value to the client.
+      hasPassword: !!lobby.password,
     },
     lobbyOrigin,
     lobbyPreviewToken,
@@ -313,6 +335,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     defaultPlaylistId: defaultPlaylist.id,
     swatches,
     socialLinks,
+    // Login-page template settings. Always returned so the autosave fetcher
+    // in the editor has a baseline to diff against — independent of pageKind.
+    loginPage,
+    loginLogoImageUrl,
   };
 }
 
@@ -321,7 +347,9 @@ export async function action({ request, params }: Route.ActionArgs) {
   const { csrfProtect } = await import("@secretlobby/auth/csrf");
   const { getLobbyById } = await import("~/models/queries/lobby.server");
   const { mergeLobbySettings } = await import("~/models/mutations/lobby.server");
-  const { updateLobbyThemeSettings } = await import("~/lib/content.server");
+  const { updateLobbyThemeSettings, updateLobbyLoginPageSettings } = await import(
+    "~/lib/content.server"
+  );
 
   // CSRF validation first - reject before we touch any state.
   await csrfProtect(request);
@@ -401,6 +429,35 @@ export async function action({ request, params }: Route.ActionArgs) {
       // updateLobbyThemeSettings merges + writes; we send the full theme
       // object so the merge collapses to a write of the new state.
       await updateLobbyThemeSettings(lobbyId, parsed as Record<string, unknown>);
+      return { success: true as const };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Save failed" };
+    }
+  }
+
+  if (intent === "update_login_page") {
+    const loginPageRaw = formData.get("loginPage");
+    if (typeof loginPageRaw !== "string") {
+      return { error: "Missing loginPage payload" };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(loginPageRaw);
+    } catch {
+      return { error: "Invalid loginPage JSON" };
+    }
+    if (!parsed || typeof parsed !== "object") {
+      return { error: "Invalid loginPage payload" };
+    }
+    // Narrow the parsed payload to `Partial<LoginPageSettings>`. The
+    // mutation merges on top of the existing record (see
+    // `updateLobbyLoginPageSettings`), so any missing fields keep their
+    // current values — safe to pass through directly.
+    try {
+      await updateLobbyLoginPageSettings(
+        lobbyId,
+        parsed as Record<string, unknown>
+      );
       return { success: true as const };
     } catch (err) {
       return { error: err instanceof Error ? err.message : "Save failed" };

@@ -26,20 +26,25 @@ import {
   NumberRow,
   SelectRow,
   TextColorRow,
-  TextRow,
-  ToggleRow,
 } from "./ThemeFieldRows";
 import { CardThemeFields } from "./CardThemeFields";
 import { PlayerThemeFields } from "./PlayerThemeFields";
 import type { BorderStyle } from "~/lib/theme";
 
-// Border styles surfaced by the global Image section. Matches the basic
-// subset used by ImageBlockSettings — same order, same labels.
+// Full CSS `border-style` keyword list. We expose every value the spec
+// defines so designers can reach the full range of native browser borders;
+// `none` sits last so it isn't the first thing in the dropdown. `hidden`
+// is included for spec parity even though it visually matches `none`.
 const IMAGE_BORDER_STYLES: BorderStyle[] = [
   "solid",
   "dashed",
   "dotted",
   "double",
+  "groove",
+  "ridge",
+  "inset",
+  "outset",
+  "hidden",
   "none",
 ];
 
@@ -372,20 +377,6 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
             deleteSwatch={deleteSwatch}
             set={set}
           />
-          <BorderRadiusInput
-            label="Button border radius"
-            value={theme.buttonBorderRadius}
-            min={0}
-            max={9999}
-            onChange={(v) => set("buttonBorderRadius", v)}
-          />
-          <BorderRadiusInput
-            label="Play button border radius"
-            value={theme.playButtonBorderRadius}
-            min={0}
-            max={9999}
-            onChange={(v) => set("playButtonBorderRadius", v)}
-          />
         </CollapsibleSection>
       </div>
     </div>
@@ -669,7 +660,11 @@ function ButtonStylesGroup({
   const buttonBg: ThemeBackgroundColor =
     theme.buttonBg ?? { type: "solid", color: "#ffffff", opacity: 100 };
   const buttonText = theme.buttonText ?? "#000000";
-  const buttonBorderShow = theme.buttonBorderShow ?? false;
+  // Effective style mirrors the CSS layer's fallback: prefer the new
+  // `buttonBorderStyle` field, otherwise derive from legacy `buttonBorderShow`
+  // (true → "solid", false → "none") so old themes show up correctly in the UI.
+  const buttonBorderStyle: BorderStyle =
+    theme.buttonBorderStyle ?? (theme.buttonBorderShow ? "solid" : "none");
   const buttonBorderColor = theme.buttonBorderColor ?? theme.border;
   const buttonBorderWidth = theme.buttonBorderWidth ?? "1px";
 
@@ -699,25 +694,50 @@ function ButtonStylesGroup({
           set("buttonTextRich", rich);
         }}
       />
-      <ToggleRow
-        label="Show border"
-        value={buttonBorderShow}
-        onChange={(v) => set("buttonBorderShow", v)}
+      {/* Border style → width → color, matching the Image section's pattern.
+          Width + color collapse out of the panel when style is "none", same
+          canvas-truth rule we apply globally. We mirror the new style into the
+          legacy `buttonBorderShow` boolean on every change so older renderers
+          (and persisted themes shared across deploys) stay consistent. */}
+      <SelectRow
+        label="Border style"
+        value={buttonBorderStyle}
+        options={IMAGE_BORDER_STYLES.map((s) => ({ value: s, label: s }))}
+        onChange={(v) => {
+          const next = v as BorderStyle;
+          set("buttonBorderStyle", next);
+          set("buttonBorderShow", next !== "none");
+        }}
       />
-      {buttonBorderShow && (
+      {buttonBorderStyle !== "none" && (
         <>
-          <ColorRow
+          <div>
+            <label className="block text-xs text-theme-secondary mb-1">
+              Border width
+            </label>
+            <CssLengthInput
+              value={buttonBorderWidth}
+              onChange={(v) => set("buttonBorderWidth", v)}
+              min={0}
+              max={64}
+              ariaLabel="Global button border width"
+              placeholder="0"
+            />
+          </div>
+          <HexPickerRow
             label="Border color"
             value={buttonBorderColor}
             onChange={(v) => set("buttonBorderColor", v)}
           />
-          <TextRow
-            label="Border width"
-            value={buttonBorderWidth}
-            onChange={(v) => set("buttonBorderWidth", v)}
-          />
         </>
       )}
+      <BorderRadiusInput
+        label="Button border radius"
+        value={theme.buttonBorderRadius}
+        min={0}
+        max={9999}
+        onChange={(v) => set("buttonBorderRadius", v)}
+      />
 
       {/* Advanced (states) — hover / pressed / active overrides. */}
       <div className="border-t border-theme pt-3">

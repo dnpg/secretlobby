@@ -771,6 +771,12 @@ export interface ThemeSettings {
   buttonBorderShow?: boolean;
   buttonBorderColor?: string;
   buttonBorderWidth?: string;
+  /** Border style — mirrors `imageBorderStyle`. When set to `"none"` the
+   *  border collapses regardless of width/color. When omitted, the CSS layer
+   *  falls back to the legacy `buttonBorderShow` boolean: `true` → `"solid"`,
+   *  `false` → `"none"`. New themes write this field directly; the legacy
+   *  field is kept for back-compat with older persisted theme JSON. */
+  buttonBorderStyle?: BorderStyle;
   /** Hover state override — when omitted the CSS layer derives `--btn-hover-bg`
    *  by swapping bg ↔ text (an "invert" hover). */
   buttonHoverBg?: ThemeBackgroundColor;
@@ -850,6 +856,7 @@ export const defaultDarkTheme: ThemeSettings = {
   buttonBorderShow: false,
   buttonBorderColor: "#374151",
   buttonBorderWidth: "1px",
+  buttonBorderStyle: "none",
   // Hover/pressed/active intentionally omitted — generateThemeCSS derives
   // sensible defaults (invert on hover, slight darken on pressed/active).
 };
@@ -912,6 +919,7 @@ export const defaultLightTheme: ThemeSettings = {
   buttonBorderShow: false,
   buttonBorderColor: "#d1d5db",
   buttonBorderWidth: "1px",
+  buttonBorderStyle: "none",
 };
 
 export const defaultTheme: ThemeSettings = defaultDarkTheme;
@@ -1684,6 +1692,12 @@ export function generateThemeCSS(
   const btnBorderShow = theme.buttonBorderShow ?? false;
   const btnBorderColor = theme.buttonBorderColor ?? theme.border;
   const btnBorderWidth = theme.buttonBorderWidth ?? "1px";
+  // Effective border style: prefer the new `buttonBorderStyle` field; if it's
+  // unset (legacy theme JSON) fall back to the boolean `buttonBorderShow`,
+  // mapping true → "solid", false → "none". Keeps old themes rendering
+  // identically while letting new ones pick dashed / dotted / etc.
+  const btnBorderStyle: BorderStyle =
+    theme.buttonBorderStyle ?? (btnBorderShow ? "solid" : "none");
 
   // Hover default → swap bg and text. Bg side becomes a solid built from the
   // text hex; text side becomes the representative solid color of the base
@@ -1810,7 +1824,8 @@ export function generateThemeCSS(
     `--btn-text-image: ${btnTextCSS.image}`,
     `--btn-border-color: ${btnBorderColor}`,
     `--btn-border-width: ${btnBorderWidth}`,
-    `--btn-border-show: ${btnBorderShow ? 1 : 0}`,
+    `--btn-border-style: ${btnBorderStyle}`,
+    `--btn-border-show: ${btnBorderStyle !== "none" ? 1 : 0}`,
     // Button states (derived when not overridden — see fallback logic above).
     `--btn-hover-bg: ${colorPartToCSS(hoverBg, swatches, drafts)}`,
     `--btn-hover-text: ${btnHoverTextCSS.color}`,

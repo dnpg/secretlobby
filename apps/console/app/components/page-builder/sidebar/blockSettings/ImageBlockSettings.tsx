@@ -17,14 +17,20 @@ import type { BorderStyle } from "~/lib/theme";
 import { HexPickerRow } from "../ThemeFieldRows";
 
 // Border styles supported by the basic image-border picker. Mirrors the
-// CSS `border-style` values consumers (Card, Image) reuse. We expose the
-// common subset — `hidden`, `groove`, `ridge`, `inset`, `outset` are rarely
-// used in design and would noise up the dropdown.
+// Full CSS `border-style` keyword list — every spec value is exposed so the
+// dropdown matches what native browser borders can render. `none` sits last
+// so the "off" state isn't the first option; `hidden` is included for spec
+// parity even though it paints the same as `none`.
 const BORDER_STYLES: BorderStyle[] = [
   "solid",
   "dashed",
   "dotted",
   "double",
+  "groove",
+  "ridge",
+  "inset",
+  "outset",
+  "hidden",
   "none",
 ];
 
