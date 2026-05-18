@@ -34,6 +34,7 @@ import { CodeBlockView } from "./CodeBlockView";
 import { ImageBlockView } from "./ImageBlockView";
 import { SocialLinksBlockView } from "./SocialLinksBlockView";
 import { TableView } from "./TableView";
+import { CardView } from "./CardView";
 import type {
   BulletListBlockContent,
   CardBlockContent,
@@ -147,16 +148,26 @@ export function BlockView({
     case "table":
       inner = <TableView content={block.content as TableBlockContent} />;
       break;
-    case "player":
     case "card":
+      // Card recurses through BlockView for every nested block, so the
+      // dispatcher loops back on itself. React handles the recursion fine;
+      // the editor's slash menu prevents cards-inside-cards from ever
+      // being created.
+      inner = (
+        <CardView
+          content={block.content as CardBlockContent}
+          theme={effectiveTheme}
+          socialLinks={socialLinks}
+          renderFallback={renderFallback}
+        />
+      );
+      break;
+    case "player":
     case "gallery":
       // Acknowledge the content type for each fallback case so a future
       // extraction has the type narrowing already wired up — the cast is
       // discarded at runtime.
-      void (block.content as
-        | PlayerBlockContent
-        | CardBlockContent
-        | GalleryBlockContent);
+      void (block.content as PlayerBlockContent | GalleryBlockContent);
       inner = renderFallback ? renderFallback(block) : null;
       break;
     default:
