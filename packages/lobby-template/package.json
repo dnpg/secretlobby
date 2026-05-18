@@ -17,6 +17,7 @@
     "@secretlobby/logger": "workspace:*",
     "@secretlobby/theme": "workspace:*",
     "@secretlobby/ui": "workspace:*",
+    "@tiptap/core": "^2.11.0",
     "hls.js": "^1.6.15"
   },
   "devDependencies": {

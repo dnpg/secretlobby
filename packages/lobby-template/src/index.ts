@@ -67,3 +67,38 @@ export {
   LoginAutoplayToggle,
   type LoginAutoplayToggleProps,
 } from "./LoginAutoplayToggle";
+
+// Page-builder block schema — the shape both the editor saves and the lobby
+// renders. New consumers should import from here; the editor's old
+// `state/types` module re-exports these for back-compat.
+export {
+  PAGE_LAYOUT_VERSION,
+  type Block,
+  type BlockContent,
+  type BlockType,
+  type BulletListBlockContent,
+  type CardBlockContent,
+  type CodeBlockBlockContent,
+  type CodeBlockContent,
+  type Column,
+  type DividerBlockContent,
+  type GalleryBlockContent,
+  type GalleryImage,
+  type GalleryStyle,
+  type HeadingBlockContent,
+  type ImageBlockContent,
+  type InlineDoc,
+  type MobileLayout,
+  type OrderedListBlockContent,
+  type ParagraphBlockContent,
+  type PlayerBlockContent,
+  type PlaylistSummary,
+  type PlaylistTrackSummary,
+  type QuoteBlockContent,
+  type Section,
+  type SocialLinksBlockContent,
+  type StoredPageLayout,
+  type TableBlockContent,
+  type ThemeSettings,
+  type ViewportSize,
+} from "./blocks/types";

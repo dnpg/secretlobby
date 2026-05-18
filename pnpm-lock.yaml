@@ -530,6 +530,9 @@ importers:
       '@secretlobby/ui':
         specifier: workspace:*
         version: link:../ui
+      '@tiptap/core':
+        specifier: ^2.11.0
+        version: 2.27.2(@tiptap/pm@2.27.2)
       hls.js:
         specifier: ^1.6.15
         version: 1.6.15
