@@ -205,7 +205,13 @@ export function GalleryView({ content, theme }: GalleryViewProps) {
         <>
           <button
             type="button"
-            onClick={() => scrollByItem(-1)}
+            onClick={(e) => {
+              // Stop propagation so the editor canvas doesn't interpret an
+              // arrow click as "select the gallery block". Harmless on the
+              // published lobby where there's no enclosing click handler.
+              e.stopPropagation();
+              scrollByItem(-1);
+            }}
             aria-label="Previous image"
             className="absolute top-1/2 left-2 -translate-y-1/2 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white cursor-pointer transition-colors"
           >
@@ -225,7 +231,10 @@ export function GalleryView({ content, theme }: GalleryViewProps) {
           </button>
           <button
             type="button"
-            onClick={() => scrollByItem(1)}
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollByItem(1);
+            }}
             aria-label="Next image"
             className="absolute top-1/2 right-2 -translate-y-1/2 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white cursor-pointer transition-colors"
           >

@@ -2,10 +2,11 @@ import { useMemo } from "react";
 import { cn } from "@secretlobby/ui";
 import {
   DividerView,
+  GalleryView,
   ImageBlockView,
   SocialLinksBlockView,
 } from "@secretlobby/lobby-template";
-import { ImageIcon } from "../icons";
+import { GalleryIcon, ImageIcon } from "../icons";
 import type {
   Block,
   BlockContent,
@@ -27,7 +28,6 @@ import type {
 import { usePageBuilder } from "../state/provider";
 import { PlayerBlock } from "./blocks/PlayerBlock";
 import { CardBlock } from "./blocks/CardBlock";
-import { GalleryBlock } from "./blocks/GalleryBlock";
 import { HeadingBlock } from "./blocks/HeadingBlock";
 import { ParagraphBlock } from "./blocks/ParagraphBlock";
 import { BulletListBlock } from "./blocks/BulletListBlock";
@@ -143,13 +143,25 @@ export function BlockRenderer({
             isEditing={isEditing}
           />
         );
-      case "gallery":
-        return (
-          <GalleryBlock
-            content={block.content as GalleryBlockContent}
-            theme={effectiveTheme}
-          />
-        );
+      case "gallery": {
+        // Editor "Add images" empty-state placeholder. The shared
+        // GalleryView returns null when the gallery has no images — that's
+        // the right call for the lobby (collapse the column) but on the
+        // canvas the designer needs an affordance to know the block is
+        // there. Same pattern as the image case above.
+        const c = block.content as GalleryBlockContent;
+        if (!c.images || c.images.length === 0) {
+          return (
+            <div className="w-full aspect-video bg-theme-tertiary flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <GalleryIcon className="w-8 h-8 mx-auto mb-1" />
+                <span className="text-xs">Add images</span>
+              </div>
+            </div>
+          );
+        }
+        return <GalleryView content={c} theme={effectiveTheme} />;
+      }
       case "heading":
         return (
           <HeadingBlock
