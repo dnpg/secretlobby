@@ -18,12 +18,13 @@ import {
   LoginAutoplayToggle,
   LoginPanel,
   LogoutButton,
-  PlayerView,
+  PlayerBlockView,
   PreviewBar,
   SectionView,
   useHlsAudio,
   useTrackPrefetcher,
   type ImageUrls,
+  type PlayerBlockContent,
   type Section,
   type SocialLinksSettings,
   type ThemeSettings as TemplateThemeSettings,
@@ -1461,17 +1462,20 @@ export default function LobbyIndex() {
             </div>
           )}
           {(() => {
-            // The PlayerView JSX captures every audio/track prop from the
-            // current component's local state. We materialise it once here
-            // so both the legacy fallback and the page-builder render path
-            // can reuse the exact same element without duplicating the
-            // prop wiring.
-            const playerEl = (
-              <PlayerView
+            // Single `renderPlayer(content)` factory — both the legacy
+            // no-sections fallback and the page-builder's per-block render
+            // call this with the block's persisted content (or a default
+            // shape when there is no block). Captures every audio + track
+            // prop from this component's scope so the hidden `<audio>`
+            // element and the autoplay state are shared across every
+            // PlayerBlockView instance on the page.
+            const renderPlayer = (content: PlayerBlockContent) => (
+              <PlayerBlockView
+                content={content}
                 tracks={tracks}
                 imageUrls={imageUrls}
-                bandName={bandName}
-                bandDescription={bandDescription}
+                bandName={bandName ?? null}
+                bandDescription={bandDescription ?? null}
                 audio={{
                   audioRef,
                   loadTrack: audioHook.loadTrack,
@@ -1501,8 +1505,23 @@ export default function LobbyIndex() {
                 csrfToken={data.csrfToken}
               />
             );
-            const sections = (data.pageLayout?.sections ?? []) as unknown as Section[];
-            if (sections.length === 0) return playerEl;
+
+            // Default content shape for the legacy no-sections fallback —
+            // matches PlayerView's own defaults so un-migrated lobbies
+            // paint identically. `playlistId` is left empty because the
+            // lobby currently loads a single track list; multi-playlist
+            // support is a future migration.
+            const defaultPlayerContent: PlayerBlockContent = {
+              playlistId: "",
+              variant: "full",
+              showVisualizer: true,
+              showPlaylist: true,
+              autoplay: true,
+            };
+
+            const sections = (data.pageLayout?.sections ??
+              []) as unknown as Section[];
+            if (sections.length === 0) return renderPlayer(defaultPlayerContent);
             return sections.map((section) => (
               <SectionView
                 key={section.id}
@@ -1511,14 +1530,18 @@ export default function LobbyIndex() {
                 renderBlock={(block) => (
                   <BlockView
                     block={block}
-                    theme={data.themeSettings as unknown as TemplateThemeSettings}
+                    theme={
+                      data.themeSettings as unknown as TemplateThemeSettings
+                    }
                     socialLinks={
                       (socialLinksSettings ?? {
                         links: [],
                       }) as SocialLinksSettings
                     }
                     renderFallback={(b) =>
-                      b.type === "player" ? playerEl : null
+                      b.type === "player"
+                        ? renderPlayer(b.content as PlayerBlockContent)
+                        : null
                     }
                   />
                 )}

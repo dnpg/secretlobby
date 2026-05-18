@@ -121,6 +121,10 @@ export { InlineContent, type InlineContentProps } from "./blocks/inlineDoc";
 // renderer while the migration completes.
 export { BlockView, type BlockViewProps } from "./blocks/BlockView";
 export {
+  PlayerBlockView,
+  type PlayerBlockViewProps,
+} from "./blocks/PlayerBlockView";
+export {
   VIEWPORT_WIDTHS,
   parseGapValue,
   parseWidthToPercent,
