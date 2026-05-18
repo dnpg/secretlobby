@@ -1416,10 +1416,11 @@ export default function LobbyIndex() {
 
   const { lobby, account, requiresPassword, isPreview, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
 
-  // Compute content based on authentication state
+  // Compute content based on authentication state. The login-page title /
+  // description are read by LoginPanel directly from `settings`, so we don't
+  // recompute them here — the band-info pair below still lives on the
+  // page-level component because PlayerView reads it through props.
   const lp = loginPageSettings;
-  const loginTitle = lp.title || null;
-  const loginDescription = lp.description || null;
   const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
   const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
 

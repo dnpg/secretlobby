@@ -92,7 +92,11 @@ export {
 // internal `InlineContent` walker. No Tiptap editor mounted; the rendered
 // markup matches Tiptap's canonical output for the inline-only doc shape
 // the editor produces.
-export { HeadingView, type HeadingViewProps } from "./blocks/HeadingView";
+export {
+  HeadingView,
+  HEADING_LEVEL_CLASSES,
+  type HeadingViewProps,
+} from "./blocks/HeadingView";
 export {
   ParagraphView,
   type ParagraphViewProps,

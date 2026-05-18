@@ -1,3 +1,4 @@
+import { HEADING_LEVEL_CLASSES } from "@secretlobby/lobby-template";
 import type {
   BlockContent,
   HeadingBlockContent,
@@ -17,19 +18,13 @@ interface HeadingBlockProps {
   onEmptyDelete?: () => void;
 }
 
-// Tailwind font-size + weight mapping per heading level. Headings render as
-// regular <div role="heading" aria-level={N}> wrappers; the editor's root is
-// a paragraph (StarterKit's default) which we paint as the heading using
-// these classes. Rendering the editor inside an <h1>/<h2>/... would force
-// Tiptap to swap to the Heading node — we want to keep the doc inline-only.
-const LEVEL_CLASS: Record<HeadingBlockContent["level"], string> = {
-  1: "text-4xl font-bold leading-tight",
-  2: "text-3xl font-bold leading-tight",
-  3: "text-2xl font-semibold leading-snug",
-  4: "text-xl font-semibold leading-snug",
-  5: "text-lg font-semibold leading-snug",
-  6: "text-base font-semibold leading-snug",
-};
+// Heading-level typography mapping is shared with the lobby's static
+// HeadingView in `@secretlobby/lobby-template` — kept in one place so the
+// editor and the published lobby paint identically. Headings render as
+// regular `<div role="heading" aria-level={N}>` wrappers (the InlineEditor's
+// root is a StarterKit paragraph) because rendering the editor inside an
+// `<h1>` would force Tiptap to swap to the Heading node and we want the doc
+// to stay inline-only.
 
 export function HeadingBlock({
   content,
@@ -69,7 +64,7 @@ export function HeadingBlock({
         placeholder={`Heading ${level}`}
         // No explicit `text-theme-primary` — let the wrapper's `color`
         // style flow through inheritance so the card override above wins.
-        contentClassName={LEVEL_CLASS[level]}
+        contentClassName={HEADING_LEVEL_CLASSES[level]}
         onSlash={onSlash}
         onEnter={onEnter}
         pendingFocus={pendingFocus}

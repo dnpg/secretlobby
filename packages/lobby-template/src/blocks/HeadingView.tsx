@@ -23,9 +23,11 @@ export interface HeadingViewProps {
   content: HeadingBlockContent;
 }
 
-// Tailwind class mapping per heading level — identical to the editor's
-// HeadingBlock so the lobby paints with the same typography ladder.
-const LEVEL_CLASS: Record<HeadingBlockContent["level"], string> = {
+// Tailwind class mapping per heading level. Exported so the editor's
+// HeadingBlock (and any other consumer that needs to style something as a
+// heading without rendering one — slash-menu previews, etc.) can read from
+// a single source instead of duplicating the strings.
+export const HEADING_LEVEL_CLASSES: Record<HeadingBlockContent["level"], string> = {
   1: "text-4xl font-bold leading-tight",
   2: "text-3xl font-bold leading-tight",
   3: "text-2xl font-semibold leading-snug",
@@ -36,7 +38,7 @@ const LEVEL_CLASS: Record<HeadingBlockContent["level"], string> = {
 
 export function HeadingView({ content }: HeadingViewProps) {
   const level = (content.level ?? 1) as HeadingBlockContent["level"];
-  const className = `w-full pb-heading-gradient ${LEVEL_CLASS[level]}`;
+  const className = `w-full pb-heading-gradient ${HEADING_LEVEL_CLASSES[level]}`;
   const inner = <InlineContent doc={content.inline} />;
   // Dispatch on level so we emit the correct semantic tag. JSX tag names
   // must be lowercase strings or PascalCase identifiers, so we can't write
