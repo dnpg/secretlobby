@@ -149,6 +149,9 @@ type ImageBackground = {
   size: "cover" | "contain" | "auto";
   position: string;
   repeat: "no-repeat" | "repeat" | "repeat-x" | "repeat-y";
+  /** `fixed` pins the image to the viewport (parallax-style); `scroll`
+   *  scrolls with the page. Defaults to `scroll`. */
+  attachment?: "scroll" | "fixed";
   overlay?: { color: string; opacity: number };
 };
 // Mirror of @secretlobby/theme.ThemeBackground — layered shape with a
@@ -239,6 +242,17 @@ interface ThemeSettings {
   bgSecondary?: string;
   /** @deprecated legacy */
   bgTertiary?: string;
+  /** Light or dark — chosen by the designer in the theme overlay. Drives
+   *  per-mode defaults for `linkColor` and similar fields when they're
+   *  unset on the theme. */
+  colorMode?: "light" | "dark";
+  /** Global base font-size for body text. CSS length string (`"16px"`,
+   *  `"1rem"`, etc.) — every text block reads it via
+   *  `var(--text-base-size, 16px)`. */
+  textBaseSize?: string;
+  /** Inline link color. Reads from `var(--color-link, currentColor)` so
+   *  anchors inside text blocks pick up the designer's chosen color. */
+  linkColor?: string;
   textPrimary: string;
   /** Rich text color — takes precedence over `textPrimary` when set. Enables
    *  gradient text via background-clip:text in supporting browsers. */
@@ -633,6 +647,7 @@ function generateThemeCSSVars(
   const bgSize = imageBgVars?.size ?? "auto";
   const bgPosition = imageBgVars?.position ?? "center";
   const bgRepeat = imageBgVars?.repeat ?? "no-repeat";
+  const bgAttachment = imageBgVars?.attachment ?? "scroll";
 
   // Button base + derived state vars. Mirrors @secretlobby/theme.generateThemeCSS
   // so /lobby and the designer preview emit the same --btn-* vars.
@@ -694,6 +709,18 @@ function generateThemeCSSVars(
     "--bg-size": bgSize,
     "--bg-position": bgPosition,
     "--bg-repeat": bgRepeat,
+    "--bg-attachment": bgAttachment,
+    // Global base font-size — every text block in the lobby inherits this
+    // unless it sets a per-block override. The lobby's `<main>` reads it
+    // via `font-size: var(--text-base-size, 16px)`; without this emission
+    // the fallback `16px` always wins regardless of the designer's setting.
+    "--text-base-size": theme.textBaseSize ?? "16px",
+    // Inline link color — `.inline-link` + any anchor opting in via
+    // `color: var(--color-link, currentColor)` reads this. Without it,
+    // anchors inside text blocks ignore the designer's chosen link color.
+    "--color-link":
+      theme.linkColor ??
+      (theme.colorMode === "light" ? "#2563eb" : "#60a5fa"),
     "--color-text-primary": textPrimaryCSS.color,
     "--color-text-primary-image": textPrimaryCSS.image,
     "--color-text-secondary": theme.textSecondary,
@@ -734,6 +761,26 @@ function generateThemeCSSVars(
     "--btn-active-bg": colorPartToCSS(activeBg, swatches),
     "--btn-active-text": btnActiveTextCSS.color,
     "--btn-active-text-image": btnActiveTextCSS.image,
+    // Border-radius CSS vars — emitted as full CSS strings (e.g. `12px` or
+    // `8px 8px 0px 0px`) so consumers can drop them straight into
+    // `border-radius` declarations regardless of uniform vs per-corner
+    // mode. The package's `@secretlobby/theme#generateThemeCSS` emits these
+    // too; this lobby-local generator MUST stay in sync — the published
+    // lobby reads `--btn-border-radius` etc. through inline button styles
+    // (LogoutButton, LoginPanel submit, every block-level button), and a
+    // missing var means the var() call falls back to the property's
+    // initial value (no radius, square corners). When adding a new
+    // radius field to the theme, add it here AND in the package.
+    "--card-border-radius": borderRadiusToCSS(theme.cardBorderRadius, 12),
+    "--btn-border-radius": borderRadiusToCSS(theme.buttonBorderRadius, 24),
+    "--play-button-border-radius": borderRadiusToCSS(
+      theme.playButtonBorderRadius,
+      50
+    ),
+    "--visualizer-border-radius": borderRadiusToCSS(
+      theme.visualizerBorderRadius,
+      8
+    ),
   };
 }
 
