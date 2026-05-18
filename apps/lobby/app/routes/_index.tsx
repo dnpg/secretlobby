@@ -79,6 +79,22 @@ interface LoginPageSettings {
   buttonLabel: string;
 }
 
+// PlayerView image-urls payload for the page-builder render path. The
+// banner / background / profile images live on the lobby record but in
+// section-based layouts they belong in their own Image blocks — letting
+// PlayerView paint its own banner here would duplicate whatever the
+// designer dropped into the layout as an Image block. Same shape /
+// reasoning as `EMPTY_IMAGE_URLS` in the editor's PlayerBlock
+// (apps/console/.../PlayerBlock.tsx).
+const EMPTY_IMAGE_URLS = {
+  background: null,
+  backgroundDark: null,
+  banner: null,
+  bannerDark: null,
+  profile: null,
+  profileDark: null,
+} satisfies ImageUrls;
+
 // Default page-builder layout for lobbies that haven't been edited in the
 // page-builder yet (no `lobby.settings.pageLayout` saved). One section, one
 // full-width column, one full-variant player block. Drops cleanly into the
@@ -1461,15 +1477,21 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, isPreview, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
+  const { requiresPassword, isPreview, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings } = data;
 
-  // Compute content based on authentication state. The login-page title /
-  // description are read by LoginPanel directly from `settings`, so we don't
-  // recompute them here — the band-info pair below still lives on the
-  // page-level component because PlayerView reads it through props.
+  // Login-page title / description are read by LoginPanel directly from
+  // `settings`, so we don't recompute them here. The lobby's banner / band
+  // name / description / technical info were previously read by PlayerView
+  // in its "full lobby chrome" mode; under the section-based render those
+  // things are expressed as their own page-builder blocks (Image /
+  // Paragraph / etc.), so we don't thread them through the PlayerBlockView
+  // call any more — see `renderPlayer` below.
+  //
+  // `socialLinksSettings` IS still needed: a designer who drops a
+  // `socialLinks` block into their layout reads them from the lobby's
+  // resolved settings via BlockView's `socialLinks` prop. PlayerBlockView
+  // never receives them now.
   const lp = loginPageSettings;
-  const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
-  const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
 
   // Handle skip link click - scroll to and focus the target
   const handleSkipLink = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -1598,13 +1620,24 @@ export default function LobbyIndex() {
             // across every PlayerBlockView instance on the page — which means
             // designers can drop multiple player blocks into a section and
             // they'll all coordinate through the same playback state.
+            //
+            // We deliberately pass `imageUrls`, `bandName`, `bandDescription`,
+            // `socialLinksSettings`, and `technicalInfo` as empty/null — same
+            // values the editor canvas's PlayerBlock uses (see
+            // apps/console/.../PlayerBlock.tsx `EMPTY_IMAGE_URLS`). PlayerView
+            // would otherwise paint the lobby's banner, band info, social
+            // links, and technical-info cards INSIDE the player block, and
+            // those things are now expressed as their own page-builder
+            // blocks (Image / Paragraph / SocialLinks). Letting PlayerView
+            // paint them too would duplicate every one of them on the page.
+            // The player block is JUST the audio controls now.
             const renderPlayer = (content: PlayerBlockContent) => (
               <PlayerBlockView
                 content={content}
                 tracks={tracks}
-                imageUrls={imageUrls}
-                bandName={bandName ?? null}
-                bandDescription={bandDescription ?? null}
+                imageUrls={EMPTY_IMAGE_URLS}
+                bandName={null}
+                bandDescription={null}
                 audio={{
                   audioRef,
                   loadTrack: audioHook.loadTrack,
@@ -1628,8 +1661,8 @@ export default function LobbyIndex() {
                 onPlayingChange={setIsPlaying}
                 onTrackChange={setActiveTrackId}
                 cardStyles={cardStyles}
-                socialLinksSettings={socialLinksSettings}
-                technicalInfo={technicalInfo}
+                socialLinksSettings={null}
+                technicalInfo={null}
                 initialTrackId={data.autoplayTrackId}
                 csrfToken={data.csrfToken}
               />
