@@ -14,16 +14,20 @@ import {
 import { getPublicUrl } from "@secretlobby/storage";
 import { generatePreloadToken } from "~/lib/token.server";
 import {
+  BlockView,
   LoginAutoplayToggle,
   LoginPanel,
   LogoutButton,
   PlayerView,
   PreviewBar,
+  SectionView,
   useHlsAudio,
   useTrackPrefetcher,
-  type Track,
   type ImageUrls,
+  type Section,
   type SocialLinksSettings,
+  type ThemeSettings as TemplateThemeSettings,
+  type Track,
 } from "@secretlobby/lobby-template";
 
 /**
@@ -740,6 +744,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       gaTrackingId: null as string | null,
       gtmContainerId: null as string | null,
       csrfToken,
+      pageLayout: null as null,
+      themeSettings: defaultTheme,
     };
   }
 
@@ -780,6 +786,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       gaTrackingId: null as string | null,
       gtmContainerId: null as string | null,
       csrfToken,
+      pageLayout: null as null,
+      themeSettings: defaultTheme,
     };
   }
 
@@ -798,6 +806,11 @@ export async function loader({ request }: Route.LoaderArgs) {
   let technicalInfo: { title: string; content: string } | null = null;
   let gaTrackingId: string | null = null;
   let gtmContainerId: string | null = null;
+  // Page-builder saved layout — `null` when the lobby hasn't been edited in
+  // the page-builder yet. The render path constructs a default
+  // single-section-with-a-player-block layout in that case so every lobby
+  // still paints content.
+  let pageLayout: { sections: unknown[]; version: number } | null = null;
 
   // Read per-lobby settings from lobby.settings
   if (lobby.settings && typeof lobby.settings === "object") {
@@ -815,6 +828,22 @@ export async function loader({ request }: Route.LoaderArgs) {
       const ti = lobbySettings.technicalInfo as { title?: string; content?: string };
       if (ti.title || ti.content) {
         technicalInfo = { title: ti.title || "", content: ti.content || "" };
+      }
+    }
+    // Page-builder layout — the editor writes
+    // `{ sections: Section[], version: number }` here on every save. We
+    // accept anything with a sections array; the render side coerces it
+    // through `@secretlobby/lobby-template`'s Section type at the boundary.
+    if (
+      lobbySettings.pageLayout &&
+      typeof lobbySettings.pageLayout === "object"
+    ) {
+      const pl = lobbySettings.pageLayout as Record<string, unknown>;
+      if (Array.isArray(pl.sections)) {
+        pageLayout = {
+          sections: pl.sections,
+          version: typeof pl.version === "number" ? pl.version : 1,
+        };
       }
     }
   }
@@ -1026,6 +1055,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     gaTrackingId,
     gtmContainerId,
     csrfToken,
+    pageLayout,
+    // Surface the structured theme so the component's BlockView can hand it
+    // down to per-block views (image border fallbacks, etc.). `themeVars` is
+    // the CSS-variable form for the <main> style; this is the same data in
+    // its typed-object form.
+    themeSettings,
   };
 
   // Persist preview token in cookie when present in URL so it survives navigation (e.g. after password submit)
@@ -1402,7 +1437,18 @@ export default function LobbyIndex() {
           />
         </main>
       ) : (
-        // Authenticated player content
+        // Authenticated player content. We render the lobby's page-builder
+        // sections when the designer has saved a layout; otherwise we fall
+        // back to the legacy hardcoded PlayerView so un-migrated lobbies
+        // keep working with no behaviour change.
+        //
+        // For lobbies WITH a saved layout, BlockView dispatches each block
+        // to its per-type view in `@secretlobby/lobby-template`. The `player`
+        // block type isn't yet extracted into a PlayerBlockView — its
+        // `renderFallback` returns the same PlayerView (with audio + track
+        // state captured from this component's scope) so designers can use
+        // a player block today and we'll swap in the proper view later
+        // without changing what gets rendered on screen.
         <main id="main-content" style={data.themeVars as React.CSSProperties}>
           {/* Logout button — part of the lobby PAGE, top-right. Renders
               only when the lobby is password-gated; a visitor on a
@@ -1414,39 +1460,71 @@ export default function LobbyIndex() {
               <LogoutButton csrfToken={data.csrfToken} />
             </div>
           )}
-          <PlayerView
-            tracks={tracks}
-            imageUrls={imageUrls}
-            bandName={bandName}
-            bandDescription={bandDescription}
-            audio={{
-              audioRef,
-              loadTrack: audioHook.loadTrack,
-              isLoading: audioHook.isLoading,
-              isSeeking: audioHook.isSeeking,
-              loadingProgress: audioHook.loadingProgress,
-              isReady: audioHook.isReady,
-              seekTo: audioHook.seekTo,
-              cancelAutoPlay: audioHook.cancelAutoPlay,
-              estimatedDuration: audioHook.estimatedDuration,
-              isAllSegmentsCached: audioHook.isAllSegmentsCached,
-              blobTimeOffset: audioHook.blobTimeOffset,
-              blobHasLastSegment: audioHook.blobHasLastSegment,
-              isBlobMode: audioHook.isBlobMode,
-              waveformPeaks: audioHook.waveformPeaks,
-              isSafari: audioHook.isSafari,
-              isExtendingBlobRef: audioHook.isExtendingBlobRef,
-              lastSaneTimeRef: audioHook.lastSaneTimeRef,
-            }}
-            isPlaying={isPlaying}
-            onPlayingChange={setIsPlaying}
-            onTrackChange={setActiveTrackId}
-            cardStyles={cardStyles}
-            socialLinksSettings={socialLinksSettings}
-            technicalInfo={technicalInfo}
-            initialTrackId={data.autoplayTrackId}
-            csrfToken={data.csrfToken}
-          />
+          {(() => {
+            // The PlayerView JSX captures every audio/track prop from the
+            // current component's local state. We materialise it once here
+            // so both the legacy fallback and the page-builder render path
+            // can reuse the exact same element without duplicating the
+            // prop wiring.
+            const playerEl = (
+              <PlayerView
+                tracks={tracks}
+                imageUrls={imageUrls}
+                bandName={bandName}
+                bandDescription={bandDescription}
+                audio={{
+                  audioRef,
+                  loadTrack: audioHook.loadTrack,
+                  isLoading: audioHook.isLoading,
+                  isSeeking: audioHook.isSeeking,
+                  loadingProgress: audioHook.loadingProgress,
+                  isReady: audioHook.isReady,
+                  seekTo: audioHook.seekTo,
+                  cancelAutoPlay: audioHook.cancelAutoPlay,
+                  estimatedDuration: audioHook.estimatedDuration,
+                  isAllSegmentsCached: audioHook.isAllSegmentsCached,
+                  blobTimeOffset: audioHook.blobTimeOffset,
+                  blobHasLastSegment: audioHook.blobHasLastSegment,
+                  isBlobMode: audioHook.isBlobMode,
+                  waveformPeaks: audioHook.waveformPeaks,
+                  isSafari: audioHook.isSafari,
+                  isExtendingBlobRef: audioHook.isExtendingBlobRef,
+                  lastSaneTimeRef: audioHook.lastSaneTimeRef,
+                }}
+                isPlaying={isPlaying}
+                onPlayingChange={setIsPlaying}
+                onTrackChange={setActiveTrackId}
+                cardStyles={cardStyles}
+                socialLinksSettings={socialLinksSettings}
+                technicalInfo={technicalInfo}
+                initialTrackId={data.autoplayTrackId}
+                csrfToken={data.csrfToken}
+              />
+            );
+            const sections = (data.pageLayout?.sections ?? []) as unknown as Section[];
+            if (sections.length === 0) return playerEl;
+            return sections.map((section) => (
+              <SectionView
+                key={section.id}
+                section={section}
+                viewport="desktop"
+                renderBlock={(block) => (
+                  <BlockView
+                    block={block}
+                    theme={data.themeSettings as unknown as TemplateThemeSettings}
+                    socialLinks={
+                      (socialLinksSettings ?? {
+                        links: [],
+                      }) as SocialLinksSettings
+                    }
+                    renderFallback={(b) =>
+                      b.type === "player" ? playerEl : null
+                    }
+                  />
+                )}
+              />
+            ));
+          })()}
         </main>
       )}
       {/* Audio element - always rendered in the same position to persist across login */}
