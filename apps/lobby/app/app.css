@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Scan the shared template package so every Tailwind class used inside
+   SectionView / ColumnView / BlockView / PlayerView / per-block *View
+   components is emitted into the lobby's CSS bundle. Without this directive
+   Tailwind's scanner only looks at the lobby app's own files, the classes
+   appear in the JSX but no matching rule is generated, and shared layout /
+   sizing / chrome silently breaks (e.g. `w-full`, `min-h-[80px]`,
+   `flex-shrink-0`, `space-y-4`, `rounded-lg`, the player's px/py utilities).
+   Must match the editor preview's @source list (apps/console/app/app.css)
+   so both apps emit the same class set from the same source tree. */
+@source "../../../packages/lobby-template/src/**/*.{ts,tsx}";
+@source "../../../packages/ui/src/**/*.{ts,tsx}";
+
 /* ============================================
    ACCESSIBILITY: Skip Link
    ============================================ */
@@ -147,6 +159,88 @@ body {
 a,
 button {
   cursor: pointer;
+}
+
+/* Tiptap-rendered links inside text blocks (HeadingView / ParagraphView /
+   QuoteView / list views via the shared InlineContent walker) carry the
+   `inline-link` class. The class reads the global `--color-link` CSS var
+   emitted by `generateThemeCSSVars` (in `@secretlobby/theme`) and falls
+   back to `currentColor` when the var is missing. Same rule lives in
+   apps/console/app/app.css so editor preview and lobby paint links
+   identically. */
+.inline-link {
+  color: var(--color-link, currentColor);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ============================================
+   SectionView responsive layout — CSS container queries
+   --------------------------------------------
+   `<SectionView>` (in @secretlobby/lobby-template) emits one DOM tree per
+   section and these rules pick the layout based on the SECTION's own
+   container width. That lets the editor's device-frame preview (a fixed-
+   width parent) and the lobby's real viewport drive the same breakpoints
+   without JS — the section is `container-type: inline-size`, so its width
+   is what the `@container` queries below evaluate against.
+
+   Breakpoints match what `ImageBlockView`'s `<picture>` `<source media>`
+   already emits, so the column layout tier and the responsive image tier
+   always agree:
+     - mobile:  container width < 768px
+     - tablet:  768px ≤ container width < 1024px
+     - desktop: container width ≥ 1024px
+
+   `data-mobile-layout` on the section picks between stack / slider / keep
+   at mobile widths (`keep` is the default — columns stay side-by-side).
+
+   This block MUST stay in sync with the matching one in
+   apps/console/app/app.css so editor preview and lobby paint identically.
+   ============================================ */
+.lobby-section {
+  container-type: inline-size;
+  container-name: lobby-section;
+}
+
+.lobby-section-columns {
+  display: flex;
+  gap: var(--section-column-gap, 16px);
+}
+
+.lobby-section-column {
+  flex-shrink: 0;
+  width: var(--col-w-desktop, auto);
+}
+
+/* Tablet — between 768px and 1023.98px of container width. Only columns
+   that opted in via the data attribute swap to the tablet width; legacy
+   sections without `col.tabletWidth` keep the desktop width. */
+@container lobby-section (min-width: 768px) and (max-width: 1023.98px) {
+  .lobby-section-column[data-has-tablet-width="true"] {
+    width: var(--col-w-tablet);
+  }
+}
+
+/* Mobile — below 768px of container width. `data-mobile-layout` decides
+   whether columns stack vertically, scroll horizontally (slider), or stay
+   side-by-side (keep — no override, columns squeeze at the narrow width).
+*/
+@container lobby-section (max-width: 767.98px) {
+  .lobby-section[data-mobile-layout="stack"] .lobby-section-columns {
+    flex-direction: column;
+    gap: var(--section-row-gap, 16px);
+  }
+  .lobby-section[data-mobile-layout="stack"] .lobby-section-column {
+    width: 100%;
+  }
+  .lobby-section[data-mobile-layout="slider"] .lobby-section-columns {
+    overflow-x: auto;
+  }
+  .lobby-section[data-mobile-layout="slider"] .lobby-section-column {
+    width: auto;
+    min-width: 150px;
+    flex: 0 0 auto;
+  }
 }
 
 h1, h2, h3, h4, h5, h6, p {

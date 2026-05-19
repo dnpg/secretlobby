@@ -1802,6 +1802,8 @@ export function generateThemeCSS(
     `--color-secondary-text: ${theme.secondaryText}`,
     `--color-accent: ${theme.accent}`,
     `--color-accent-muted: ${theme.accent}33`,
+    `--color-visualizer-bg: ${theme.visualizerBg}`,
+    `--color-visualizer-bg-opacity: ${theme.visualizerBgOpacity / 100}`,
     `--color-visualizer-bar: ${theme.visualizerBar}`,
     `--color-visualizer-bar-alt: ${theme.visualizerBarAlt}`,
     `--color-visualizer-glow: ${theme.visualizerGlow}`,
@@ -1844,4 +1846,25 @@ export function generateThemeCSS(
     `--play-button-border-radius: ${borderRadiusToCSS(theme.playButtonBorderRadius, 50)}`,
     `--visualizer-border-radius: ${borderRadiusToCSS(theme.visualizerBorderRadius, 8)}`,
   ].join("; ");
+}
+
+// Same theme CSS as `generateThemeCSS`, parsed into a `Record<string, string>`
+// so consumers can drop it straight into a React `style` prop. Both the
+// editor's preview canvas and the published lobby render their themed
+// surfaces via this — keeping a single source of truth for the var set.
+export function generateThemeCSSVars(
+  theme: ThemeSettings,
+  swatches?: ThemeSwatch[],
+  drafts?: Map<string, Solid | Gradient | SwatchRef>
+): Record<string, string> {
+  const css = generateThemeCSS(theme, swatches, drafts);
+  const result: Record<string, string> = {};
+  for (const decl of css.split(";")) {
+    const trimmed = decl.trim();
+    if (!trimmed) continue;
+    const idx = trimmed.indexOf(":");
+    if (idx === -1) continue;
+    result[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1).trim();
+  }
+  return result;
 }

@@ -1,12 +1,11 @@
 @import "tailwindcss";
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
-/* Also scan @secretlobby/player-view — the page-builder's SocialLinks block
-   renders `<SocialLinks />` from that package, and its `min-w-11 min-h-11`
-   (44px tap target floor on every social <a>) plus icon sizing classes
-   are emitted from the player-view source. Without this @source the
-   classes are present in the JSX but Tailwind never produces the CSS for
-   them, so the icons collapse to their intrinsic SVG size in the console. */
-@source "../../../packages/player-view/src/**/*.{ts,tsx}";
+/* Also scan @secretlobby/lobby-template — every per-block *View, SectionView,
+   ColumnView, PlayerView etc. lives here, and Tailwind needs to see those
+   files to emit the classes used inside them. Same @source MUST exist in
+   the lobby app (apps/lobby/app/app.css) so both apps produce an identical
+   class set from this source tree. */
+@source "../../../packages/lobby-template/src/**/*.{ts,tsx}";
 
 /* Make Tailwind's `dark:` variant follow the app's data-theme attribute
    (set on <html> in root.tsx) instead of the OS prefers-color-scheme
@@ -529,4 +528,66 @@ textarea:focus-visible {
   /* Skip the global color transition so the hint doesn't flicker every
      time the theme color transition rule above retargets it. */
   transition: none !important;
+}
+
+/* ============================================
+   SectionView responsive layout — CSS container queries
+   --------------------------------------------
+   `<SectionView>` (in @secretlobby/lobby-template) emits one DOM tree per
+   section and these rules pick the layout based on the SECTION's own
+   container width. That lets the editor's device-frame preview (a fixed-
+   width parent) and the lobby's real viewport drive the same breakpoints
+   without JS — the section is `container-type: inline-size`, so its width
+   is what the `@container` queries below evaluate against.
+
+   Breakpoints match what `ImageBlockView`'s `<picture>` `<source media>`
+   already emits, so the column layout tier and the responsive image tier
+   always agree:
+     - mobile:  container width < 768px
+     - tablet:  768px ≤ container width < 1024px
+     - desktop: container width ≥ 1024px
+
+   `data-mobile-layout` on the section picks between stack / slider / keep
+   at mobile widths (`keep` is the default — columns stay side-by-side).
+
+   This block MUST stay in sync with the matching one in
+   apps/lobby/app/app.css so editor preview and lobby paint identically.
+   ============================================ */
+.lobby-section {
+  container-type: inline-size;
+  container-name: lobby-section;
+}
+
+.lobby-section-columns {
+  display: flex;
+  gap: var(--section-column-gap, 16px);
+}
+
+.lobby-section-column {
+  flex-shrink: 0;
+  width: var(--col-w-desktop, auto);
+}
+
+@container lobby-section (min-width: 768px) and (max-width: 1023.98px) {
+  .lobby-section-column[data-has-tablet-width="true"] {
+    width: var(--col-w-tablet);
+  }
+}
+
+@container lobby-section (max-width: 767.98px) {
+  .lobby-section[data-mobile-layout="stack"] .lobby-section-columns {
+    flex-direction: column;
+    gap: var(--section-row-gap, 16px);
+  }
+  .lobby-section[data-mobile-layout="stack"] .lobby-section-column {
+    width: 100%;
+  }
+  .lobby-section[data-mobile-layout="slider"] .lobby-section-columns {
+    overflow-x: auto;
+  }
+  .lobby-section[data-mobile-layout="slider"] .lobby-section-column {
+    width: auto;
+    min-width: 150px;
+    flex: 0 0 auto;
+  }
 }

@@ -290,6 +290,36 @@ export function playerRegionStyle(
 // without a width gets the browser's `medium` width default, a width
 // without a style gets `border-style: none` and no border. That matches
 // the semantics of the corresponding HTML border-style spec.
+// Build the inline `border` declaration set. When the user picks
+// `borderStyle: "none"` (or `borderWidth: "0"`), Tailwind v4's preflight
+// still leaves `border-style: solid; border-width: 0` on every element —
+// skipping the declarations here silently inherits that, and any non-zero
+// width (e.g. a leftover "1px" from a prior choice) paints a solid border
+// despite the user's intent. So when the user opted out of a border we
+// emit `border: "none"` explicitly to wipe any inherited / preflight
+// declaration; only when the user opted IN (style !== none AND width !==
+// "0") do we set the per-axis declarations.
+function buttonBorderStyle(args: {
+  borderWidth: string | undefined;
+  borderStyle: BorderStyle | undefined;
+  borderColor: string | undefined;
+}): React.CSSProperties {
+  const hasBorder =
+    args.borderStyle !== undefined &&
+    args.borderStyle !== "none" &&
+    args.borderWidth !== undefined &&
+    args.borderWidth !== "0" &&
+    args.borderWidth.trim() !== "";
+  if (!hasBorder) {
+    return { border: "none" };
+  }
+  return {
+    borderStyle: args.borderStyle,
+    borderWidth: args.borderWidth,
+    ...(args.borderColor ? { borderColor: args.borderColor } : {}),
+  };
+}
+
 function playButtonStyle(cardStyles?: CardStyles): React.CSSProperties {
   return {
     ...(cardStyles?.playButtonBorderRadius !== undefined
@@ -308,17 +338,11 @@ function playButtonStyle(cardStyles?: CardStyles): React.CSSProperties {
     ...(cardStyles?.playButtonIconColor
       ? { color: cardStyles.playButtonIconColor }
       : {}),
-    ...(cardStyles?.playButtonBorderWidth &&
-    cardStyles.playButtonBorderWidth !== "0"
-      ? { borderWidth: cardStyles.playButtonBorderWidth }
-      : {}),
-    ...(cardStyles?.playButtonBorderStyle &&
-    cardStyles.playButtonBorderStyle !== "none"
-      ? { borderStyle: cardStyles.playButtonBorderStyle }
-      : {}),
-    ...(cardStyles?.playButtonBorderColor
-      ? { borderColor: cardStyles.playButtonBorderColor }
-      : {}),
+    ...buttonBorderStyle({
+      borderWidth: cardStyles?.playButtonBorderWidth,
+      borderStyle: cardStyles?.playButtonBorderStyle,
+      borderColor: cardStyles?.playButtonBorderColor,
+    }),
   };
 }
 
@@ -344,17 +368,11 @@ function skipButtonStyle(cardStyles?: CardStyles): React.CSSProperties {
     ...(cardStyles?.skipButtonIconColor
       ? { color: cardStyles.skipButtonIconColor }
       : {}),
-    ...(cardStyles?.skipButtonBorderWidth &&
-    cardStyles.skipButtonBorderWidth !== "0"
-      ? { borderWidth: cardStyles.skipButtonBorderWidth }
-      : {}),
-    ...(cardStyles?.skipButtonBorderStyle &&
-    cardStyles.skipButtonBorderStyle !== "none"
-      ? { borderStyle: cardStyles.skipButtonBorderStyle }
-      : {}),
-    ...(cardStyles?.skipButtonBorderColor
-      ? { borderColor: cardStyles.skipButtonBorderColor }
-      : {}),
+    ...buttonBorderStyle({
+      borderWidth: cardStyles?.skipButtonBorderWidth,
+      borderStyle: cardStyles?.skipButtonBorderStyle,
+      borderColor: cardStyles?.skipButtonBorderColor,
+    }),
   };
 }
 

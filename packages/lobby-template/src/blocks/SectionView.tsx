@@ -1,23 +1,23 @@
 // =============================================================================
 // SectionView
 // -----------------------------------------------------------------------------
-// View-only section renderer — owns the column layout (flex/grid/stack),
-// viewport-aware widths (`tabletWidth` overrides on tablet), and the mobile
-// stack / slider / keep modes. Pure rendering: no selection borders, no click
-// handlers, no resize handles, no "X cols" indicator. The editor's
-// SectionComponent will compose this view and add its chrome on top.
+// View-only section renderer driven entirely by CSS container queries — the
+// component emits one DOM tree at SSR time and the consuming app's CSS picks
+// the layout tier (mobile-stack / mobile-slider / tablet / desktop) based on
+// the section's own container width. No JavaScript reflow, no SSR/hydration
+// flash, and the editor's device-frame preview "just works" because the frame
+// is the container.
 //
-// Hidden sections drop out of the render entirely (matching preview-mode
-// semantics). The editor's wrapper keeps them visible (dimmed) so they can
-// be toggled back on, but that's editor-side and not this view's job.
-//
-// Block rendering is delegated to the caller via `renderBlock` — see
-// ColumnView for the rationale (runtime data like audio state shouldn't
-// thread through layout components).
+// Per-column widths are emitted as CSS vars (`--col-w-desktop`,
+// `--col-w-tablet`) so both tiers are available at render time; container
+// queries swap them. `mobileLayout` is exposed via the `data-mobile-layout`
+// attribute and selected by CSS rules. Required CSS lives in each app's
+// `app.css` under the `.lobby-section*` selectors — see those files for the
+// canonical rules; they MUST stay in sync.
 // =============================================================================
 
 import { useMemo } from "react";
-import type { Block, Column, Section, ViewportSize } from "./types";
+import type { Block, Section } from "./types";
 import { ColumnView } from "./ColumnView";
 import {
   normalizePercents,
@@ -27,137 +27,84 @@ import {
 
 export interface SectionViewProps {
   section: Section;
-  viewport: ViewportSize;
   /** Per-block renderer forwarded to each ColumnView. See ColumnView for the
    *  shape; `index` is the persisted block index inside its column. */
   renderBlock: (block: Block, columnIndex: number, blockIndex: number) => React.ReactNode;
 }
 
-export function SectionView({ section, viewport, renderBlock }: SectionViewProps) {
+export function SectionView({ section, renderBlock }: SectionViewProps) {
   if (section.hidden === true) return null;
 
-  const isMobile = viewport === "mobile";
-  const isTablet = viewport === "tablet";
   const columnCount = section.columns.length;
+  const gapValue = parseGapValue(section.columnGap);
+  const rowGapValue = parseGapValue(section.rowGap);
 
-  // Effective width per column for the current viewport. Tablet falls back to
-  // the desktop width when `tabletWidth` is unset — mirrors the editor's
-  // SectionComponent so the lobby paints identically.
-  const getColumnWidth = (col: Column): string => {
-    if (isTablet && col.tabletWidth) return col.tabletWidth;
-    return col.width;
-  };
-
-  // Normalise stored widths to a list of percentages that sums to 100. Cached
-  // by the columns array + viewport so a re-render with the same inputs is a
-  // no-op.
-  const columnPercents = useMemo(() => {
+  // Desktop percentages — sourced from `col.width`. Used as the default
+  // value of `--col-w-desktop` for every container width above the tablet
+  // breakpoint.
+  const desktopPercents = useMemo(() => {
     const raw = section.columns.map((col) =>
-      parseWidthToPercent(getColumnWidth(col), columnCount)
+      parseWidthToPercent(col.width, columnCount)
     );
     return normalizePercents(raw);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section.columns, columnCount, viewport]);
+  }, [section.columns, columnCount]);
 
-  // Pick the layout mode based on viewport + the section's mobileLayout. The
-  // editor and lobby share this decision tree so widths read identically in
-  // both contexts.
-  //   stack — every column 100% width, stacked vertically (`mobileLayout:
-  //            "stack"`)
-  //   flex  — horizontal scroll snap on mobile slider mode
-  //   grid  — desktop / tablet / mobile-keep: columns sit side-by-side
-  const isSlider = section.mobileLayout === "slider" && isMobile;
-  let displayMode: "grid" | "flex" | "stack" = "grid";
-  if (isMobile) {
-    if (section.mobileLayout === "stack") {
-      displayMode = "stack";
-    } else if (isSlider) {
-      displayMode = "flex";
-    }
-  }
+  // Tablet percentages — use `col.tabletWidth` when set, else fall through to
+  // the desktop width. The CSS only swaps to this var on columns that opted
+  // in via `data-has-tablet-width="true"`, so legacy sections without a
+  // tablet override keep their desktop widths at tablet container widths.
+  const tabletPercents = useMemo(() => {
+    const raw = section.columns.map((col) =>
+      parseWidthToPercent(col.tabletWidth || col.width, columnCount)
+    );
+    return normalizePercents(raw);
+  }, [section.columns, columnCount]);
 
-  const gapValue = parseGapValue(section.columnGap);
-
-  // For the grid layout we want each column to occupy its percentage width
-  // MINUS its share of the gap between columns. `calc(W - gap * (N-1)/N)`
-  // distributes the gap evenly across columns so the sum hits exactly 100%.
-  // Stack mode forces 100% width; flex (slider) skips this and lets the
-  // intrinsic min-width keep cards readable on a small viewport.
-  const getColumnCssWidth = (width: string): string => {
-    if (columnCount === 1 || displayMode === "stack") return width;
+  // Gap-compensated CSS width — distribute the gap evenly across columns so
+  // their gap-compensated widths sum to exactly 100%. Single-column sections
+  // (and stack mode at mobile) short-circuit to 100%.
+  const compensate = (percent: number): string => {
+    if (columnCount === 1) return "100%";
     const gapMultiplier = (columnCount - 1) / columnCount;
-    return `calc(${width} - ${gapValue} * ${gapMultiplier.toFixed(4)})`;
+    return `calc(${percent.toFixed(2)}% - ${gapValue} * ${gapMultiplier.toFixed(4)})`;
   };
 
   return (
-    // Wrapper mirrors the editor's preview SectionComponent (in apps/console)
-    // so widths line up byte-for-byte between the canvas and the published
-    // lobby. `border-2 border-transparent` is intentional — the editor
-    // swaps it for a dashed violet border when layout-edit is on, and the
-    // 4px (2px × 2 sides) the transparent border consumes is part of how
-    // sections size themselves. Without it sections render 4px wider on
-    // the lobby than in the editor preview. `data-section-container` is
-    // emitted for parity (the editor uses it for hit-testing).
     <div
       data-section-container="true"
-      className="relative rounded-lg transition-all border-2 border-transparent"
-      style={{ "--section-gap": gapValue } as React.CSSProperties}
+      data-mobile-layout={section.mobileLayout || "keep"}
+      className="lobby-section relative rounded-lg transition-all border-2 border-transparent"
+      style={
+        {
+          "--section-column-gap": gapValue,
+          "--section-row-gap": rowGapValue,
+        } as React.CSSProperties
+      }
     >
-      <div
-        className={
-          displayMode === "stack"
-            ? "relative flex flex-col"
-            : displayMode === "flex"
-              ? "relative flex overflow-x-auto"
-              : "relative flex"
-        }
-        style={{
-          gap:
-            displayMode === "stack"
-              ? parseGapValue(section.rowGap)
-              : displayMode === "grid"
-                ? gapValue
-                : undefined,
-        }}
-      >
+      <div className="lobby-section-columns relative">
         {section.columns.map((column, columnIndex) => {
           if (column.hidden === true) return null;
-
-          // `displayWidth` is the percentage label we hand the ColumnView.
-          // Stack mode forces 100% (each column owns a full row); other
-          // modes use the normalised percentage so the columns line up.
-          const displayWidth =
-            displayMode === "stack"
-              ? "100%"
-              : `${columnPercents[columnIndex].toFixed(1)}%`;
-          // `cssWidth` is what we apply to the column's wrapper. Grid mode
-          // uses the gap-compensated calc(); stack mode is 100%; flex mode
-          // lets the column's intrinsic min-width drive sizing.
-          const cssWidth =
-            displayMode === "grid"
-              ? getColumnCssWidth(getColumnWidth(column))
-              : displayMode === "stack"
-                ? "100%"
-                : undefined;
-
+          const desktopCss = compensate(desktopPercents[columnIndex]);
+          const tabletCss = column.tabletWidth
+            ? compensate(tabletPercents[columnIndex])
+            : desktopCss;
           return (
             <div
               key={column.id}
-              // `flex-shrink-0` (NOT `shrink-0` — same Tailwind utility but
-              // the editor's SectionComponent emits the long form, so we
-              // match it for byte-for-byte DOM parity).
-              className={
-                displayMode === "flex"
-                  ? "relative flex-shrink-0 min-w-[150px]"
-                  : "relative flex-shrink-0"
+              className="lobby-section-column relative"
+              data-has-tablet-width={column.tabletWidth ? "true" : undefined}
+              style={
+                {
+                  "--col-w-desktop": desktopCss,
+                  "--col-w-tablet": tabletCss,
+                } as React.CSSProperties
               }
-              style={{
-                width: cssWidth,
-                flex: displayMode === "flex" ? "0 0 auto" : undefined,
-              }}
             >
               <ColumnView
-                column={{ ...column, width: displayWidth }}
+                column={{
+                  ...column,
+                  width: `${desktopPercents[columnIndex].toFixed(1)}%`,
+                }}
                 renderBlock={(block, blockIndex) =>
                   renderBlock(block, columnIndex, blockIndex)
                 }

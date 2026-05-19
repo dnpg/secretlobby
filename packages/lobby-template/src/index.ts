@@ -58,6 +58,7 @@ export { usePcmAnalyser, type PcmAnalyser } from "./usePcmAnalyser";
 export { useHlsAudio } from "./useHlsAudio";
 export { useTrackPrefetcher } from "./useTrackPrefetcher";
 export { LogoutButton, type LogoutButtonProps } from "./LogoutButton";
+export { buildCardStyles } from "./buildCardStyles";
 export {
   LoginPanel,
   type LoginPanelProps,

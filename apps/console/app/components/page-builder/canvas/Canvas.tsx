@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@secretlobby/ui";
-import { LogoutButton } from "@secretlobby/lobby-template";
-import { generateThemeCSS } from "~/lib/theme";
+import {
+  BlockView,
+  LogoutButton,
+  SectionView,
+} from "@secretlobby/lobby-template";
+import {
+  generateThemeCSSVars,
+  type ThemeSettings as TemplateThemeSettings,
+} from "~/lib/theme";
 import { useSwatches } from "../PageBuilderRoot";
 import {
   closestCorners,
@@ -29,9 +36,11 @@ import type {
   BlockContent,
   BlockType,
   Column,
+  PlayerBlockContent,
   Section,
   ViewportSize,
 } from "../state/types";
+import { PlayerBlock } from "./blocks/PlayerBlock";
 import { createBlock, VIEWPORT_WIDTHS } from "../state/helpers";
 import { findBlockLocation } from "../state/reducer";
 import { usePageBuilder } from "../state/provider";
@@ -75,7 +84,7 @@ export function Canvas({ showLayoutEdit, hasPassword, csrfToken }: CanvasProps) 
 
 function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
   const { state, dispatch } = usePageBuilder();
-  const { sections, selection, viewport, mode, theme } = state;
+  const { sections, selection, viewport, mode, theme, socialLinks } = state;
   const isEditing = mode === "edit";
   // Live swatch library — passed into the theme CSS generator so swatch-refs
   // in the theme resolve to their underlying value. The list updates when the
@@ -90,23 +99,13 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
   const { swatches, drafts } = useSwatches();
 
   // Compute the inline `style` object used to seed CSS variables for the
-  // canvas. Live-updates as the user tweaks the Theme tab. We parse the
-  // semicolon-delimited CSS declaration list into a React-friendly object.
-  const themeStyle = useMemo<React.CSSProperties>(() => {
-    const declarations = generateThemeCSS(theme, swatches, drafts)
-      .split(";")
-      .map((d) => d.trim())
-      .filter(Boolean);
-    const result: Record<string, string> = {};
-    for (const decl of declarations) {
-      const idx = decl.indexOf(":");
-      if (idx === -1) continue;
-      const key = decl.slice(0, idx).trim();
-      const value = decl.slice(idx + 1).trim();
-      result[key] = value;
-    }
-    return result as React.CSSProperties;
-  }, [theme, swatches, drafts]);
+  // canvas. Live-updates as the user tweaks the Theme tab. The lobby renders
+  // through the same helper so the editor preview and the published lobby
+  // emit identical var sets.
+  const themeStyle = useMemo<React.CSSProperties>(
+    () => generateThemeCSSVars(theme, swatches, drafts) as React.CSSProperties,
+    [theme, swatches, drafts]
+  );
 
   const [isMounted, setIsMounted] = useState(false);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
@@ -468,11 +467,56 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
   const isMobile = viewport === "mobile";
   const isPreview = mode === "preview";
 
-  // Render the full section list (sortable in edit mode, plain in preview).
-  // Pulled out of the JSX tree so both the edit-mode device frame and the
-  // preview-mode background wrapper can drop it in unchanged — without
-  // duplicating the SortableSection / DndContext plumbing.
+  // Render the full section list. Two render paths:
+  //
+  //   - Preview mode: route through `<SectionView>` + `<BlockView>` from the
+  //     shared `@secretlobby/lobby-template` package — the exact same
+  //     pipeline the published lobby renders through. This is the single
+  //     source of truth for "what does a designed lobby look like": both
+  //     the preview canvas here and the lobby's `_index.tsx` walk the same
+  //     code path, so any DOM/styling divergence is impossible by
+  //     construction.
+  //
+  //   - Edit mode: route through the editor's own `<SectionComponent>` /
+  //     `<SortableSection>` tree, which adds selection chrome, drag/drop,
+  //     slash menu, resize handles, and live inline editors. That tree
+  //     wraps each block in the editor's `BlockRenderer`, which mounts
+  //     the per-block editor (e.g. `HeadingBlock` with a Tiptap
+  //     `InlineEditor` instead of the static `HeadingView`).
+  //
+  // Player blocks in preview need real audio + the playlists context, so
+  // we route them back through the editor's `<PlayerBlock>` via
+  // `<BlockView>`'s `renderFallback` hook — same bridge the lobby uses for
+  // its `renderPlayer`.
   const sectionsContent = (() => {
+    if (isPreview) {
+      return (
+        <div className="space-y-4">
+          {sections.map((section: Section) => (
+            <SectionView
+              key={section.id}
+              section={section}
+              renderBlock={(block) => (
+                <BlockView
+                  block={block}
+                  theme={theme as unknown as TemplateThemeSettings}
+                  socialLinks={socialLinks}
+                  renderFallback={(b) =>
+                    b.type === "player" ? (
+                      <PlayerBlock
+                        content={b.content as PlayerBlockContent}
+                        theme={theme}
+                      />
+                    ) : null
+                  }
+                />
+              )}
+            />
+          ))}
+        </div>
+      );
+    }
+
     const sectionList = sections.map((section: Section) => {
       const sectionProps = {
         section,
