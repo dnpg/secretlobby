@@ -104,6 +104,13 @@ export interface PlayerBlockContent {
   // first track in the playlist. Cleared when the block's playlist changes
   // because the previously-picked track wouldn't exist in the new playlist.
   autoplayTrackId?: string;
+  // When true, each row in the playlist renders a small thumbnail of the
+  // track's cover image immediately before the title. Default `false` —
+  // legacy persisted blocks (no field) render exactly as before. The thumb
+  // is only emitted when BOTH this flag is on AND the track itself has an
+  // `image`; tracks without a cover render with the legacy markup so we
+  // don't reserve dead space for missing thumbs.
+  showTrackImage?: boolean;
 }
 
 // Lightweight summary of a playlist surfaced to the page builder UI. Built
@@ -117,6 +124,11 @@ export interface PlaylistTrackSummary {
   duration: number | null;
   hlsReady: boolean;
   waveformPeaks: number[] | null;
+  // Public URL of the track's cover image (derived from `Track.coverMedia` on
+  // the server). `null` when the track has no cover assigned. Surfaced here so
+  // the page-builder canvas can render the per-track thumbnail when the
+  // PlayerBlock's `showTrackImage` toggle is on.
+  image: string | null;
 }
 
 export interface PlaylistSummary {

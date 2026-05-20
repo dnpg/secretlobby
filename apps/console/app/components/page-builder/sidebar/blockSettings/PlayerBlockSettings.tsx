@@ -183,6 +183,15 @@ export function PlayerBlockSettings({
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
+            checked={content.showTrackImage ?? false}
+            onChange={(e) => onUpdate({ showTrackImage: e.target.checked })}
+            className="accent-[var(--color-brand-red)]"
+          />
+          <span className="text-sm text-theme-secondary">Show track image</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
             checked={content.autoplay}
             onChange={(e) =>
               onUpdate({

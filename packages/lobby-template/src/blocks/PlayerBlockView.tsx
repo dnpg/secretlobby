@@ -121,6 +121,7 @@ export function PlayerBlockView({
       showVisualizer={content.showVisualizer ?? true}
       showPlaylist={content.showPlaylist ?? true}
       autoplay={content.autoplay ?? false}
+      showTrackImage={content.showTrackImage ?? false}
     />
   );
 }

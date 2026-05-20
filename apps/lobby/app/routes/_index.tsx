@@ -499,6 +499,15 @@ export async function loader({ request }: Route.LoaderArgs) {
               waveformPeaks: true,
             },
           },
+          // Per-track cover image. Surfaced as a public URL on the wire
+          // `Track` shape so the PlayerBlock's `showTrackImage` toggle can
+          // render each row's thumbnail. Selected unconditionally because the
+          // page can host multiple PlayerBlocks with different toggle values;
+          // hiding the field at the server layer would force a re-query when
+          // one of them opts in.
+          coverMedia: {
+            select: { key: true },
+          },
         },
       })
     : [];
@@ -517,6 +526,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     filename: t.media?.key ?? t.filename,
     hlsReady: t.media?.hlsReady ?? t.hlsReady,
     waveformPeaks: t.media?.waveformPeaks ?? t.waveformPeaks,
+    // Public URL of the cover, or null when the track has no cover assigned.
+    // The PlayerView playlist render uses this when the PlayerBlock's
+    // `showTrackImage` toggle is on.
+    image: t.coverMedia ? getPublicUrl(t.coverMedia.key) : null,
   }));
 
   // Get autoplay track from lobby settings (or default to first track)

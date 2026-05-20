@@ -95,6 +95,7 @@ export function getDefaultBlockContent(type: BlockType): BlockContent {
         showVisualizer: true,
         showPlaylist: true,
         autoplay: false,
+        showTrackImage: false,
       } as PlayerBlockContent;
     case "card":
       // Post-overhaul: a Card is a nested container of blocks. No more

@@ -126,6 +126,11 @@ export interface Track {
    *  player block should render. Optional because legacy lobbies with no
    *  Playlist row may still pass plain Track shapes. */
   playlistId?: string | null;
+  /** Public URL for the track's cover image (mapped from the DB's
+   *  `Track.coverMedia` relation by the host loader). Optional — `null` /
+   *  undefined means "no cover assigned"; the playlist row renders without a
+   *  thumbnail even when the block's `showTrackImage` toggle is on. */
+  image?: string | null;
 }
 
 export interface ImageUrls {
@@ -656,6 +661,11 @@ interface PlayerViewProps {
    *  is editing. Browser autoplay policies may still block the call when
    *  there's no prior user gesture — the rejection is caught silently. */
   autoplay?: boolean;
+  /** When true, each playlist row renders a small thumbnail of the track's
+   *  `image` URL immediately before its title. Off by default so existing
+   *  lobbies render identically. Tracks without an `image` still render
+   *  without a thumb — we never reserve dead space for a missing cover. */
+  showTrackImage?: boolean;
 }
 
 export function PlayerView({
@@ -679,6 +689,7 @@ export function PlayerView({
   showVisualizer = true,
   showPlaylist = true,
   autoplay = false,
+  showTrackImage = false,
 }: PlayerViewProps) {
   // apiBaseUrl is plumbed through props for API symmetry but is consumed by
   // the caller via `useHlsAudio` directly — PlayerView never sets `<audio
@@ -1458,6 +1469,15 @@ export function PlayerView({
                     aria-current={isCurrent ? "true" : undefined}
                   >
                     <span className="tabular-nums opacity-70">{idx + 1}</span>
+                    {showTrackImage && track.image && (
+                      <img
+                        src={track.image}
+                        alt=""
+                        aria-hidden="true"
+                        className="w-4 h-4 rounded object-cover shrink-0"
+                        loading="lazy"
+                      />
+                    )}
                     <span className="truncate max-w-[140px]">{track.title}</span>
                   </button>
                 );
@@ -1788,6 +1808,15 @@ export function PlayerView({
                     >
                       {idx + 1}
                     </span>
+                    {showTrackImage && track.image && (
+                      <img
+                        src={track.image}
+                        alt=""
+                        aria-hidden="true"
+                        className="w-5 h-5 rounded object-cover shrink-0"
+                        loading="lazy"
+                      />
+                    )}
                     <span
                       className="flex-1 min-w-0 truncate text-sm"
                       style={{
@@ -2430,6 +2459,15 @@ export function PlayerView({
                           </span>
                         )}
                       </div>
+                      {showTrackImage && track.image && (
+                        <img
+                          src={track.image}
+                          alt=""
+                          aria-hidden="true"
+                          className="w-8 h-8 md:w-10 md:h-10 rounded object-cover shrink-0"
+                          loading="lazy"
+                        />
+                      )}
                       <div className="flex-1 min-w-0">
                         <TrackTitle
                           text={track.title}

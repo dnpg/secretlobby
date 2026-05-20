@@ -276,6 +276,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       duration: t.media?.duration ?? null,
       hlsReady: t.media?.hlsReady ?? false,
       waveformPeaks: (t.media?.waveformPeaks as number[] | null) ?? null,
+      // Public URL of the per-track cover image. The PlayerBlock's
+      // `showTrackImage` toggle renders this as a thumbnail before each
+      // playlist row's title; tracks with no `coverMedia` row come through
+      // as `null` and the row renders without a thumbnail.
+      image: t.coverMedia ? getPublicUrl(t.coverMedia.key) : null,
     })),
   }));
 

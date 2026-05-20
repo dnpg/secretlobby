@@ -192,6 +192,7 @@ export function PlayerBlock({ content, theme }: PlayerBlockProps) {
         showVisualizer={content.showVisualizer}
         showPlaylist={content.showPlaylist}
         autoplay={content.autoplay}
+        showTrackImage={content.showTrackImage ?? false}
         apiBaseUrl={lobbyOrigin}
       />
     </div>
