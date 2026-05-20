@@ -23,8 +23,11 @@
 // =============================================================================
 
 import { Form } from "react-router";
-import { ResponsiveImage } from "@secretlobby/ui";
-import type { ImageBackground } from "@secretlobby/theme";
+import { ResponsiveImage, useImageTransform } from "@secretlobby/ui";
+import {
+  BACKGROUND_IMAGE_SET_WIDTHS,
+  type ImageBackground,
+} from "@secretlobby/theme";
 
 export interface LoginPageSettings {
   title: string;
@@ -52,6 +55,13 @@ export interface LoginPanelProps {
   /** Public URL for the logo image — resolved by the loader so we don't have
    *  to know about S3/R2 in here. Ignored when settings.logoType !== "image". */
   logoImageUrl?: string | null;
+  /** Intrinsic pixel width of the logo media. Forwarded to the `<img>` so
+   *  the browser can reserve the right aspect ratio before the bitmap loads
+   *  (kills layout shift on first paint). Optional — when missing, no
+   *  width attribute is emitted. */
+  logoImageWidth?: number | null;
+  /** Intrinsic pixel height of the logo media. Pairs with `logoImageWidth`. */
+  logoImageHeight?: number | null;
   /** When true, render a non-interactive preview (used by the editor canvas):
    *  password input disabled, submit button is a disabled `<button>`, no real
    *  POST. When false (default), render the live <Form>. */
@@ -66,6 +76,16 @@ export interface LoginPanelProps {
   /** Optional content rendered BELOW the panel card but INSIDE the bg-color
    *  wrapper. The lobby app uses this for the audio-autoplay toggle. */
   belowPanel?: React.ReactNode;
+  /** Override for the outer wrapper's layout classes. Defaults to
+   *  `"min-h-dvh flex items-center justify-center overflow-hidden"` so
+   *  the panel fills the viewport on its own. Callers that wrap LoginPanel
+   *  inside a parent already controlling full-height layout (e.g. the
+   *  live lobby's `<main>` that is `flex-col` + reserves a footer slot)
+   *  pass `"flex-1 flex items-center justify-center overflow-hidden"` so
+   *  the panel grows to fill ONLY the available content area — preventing
+   *  the panel + footer combo from forcing the page to scroll when the
+   *  content already fits the viewport. */
+  wrapperClassName?: string;
 }
 
 // All theme-var-driven styling for the submit button lives in this CSS
@@ -101,12 +121,19 @@ const LOGIN_SUBMIT_CSS = `
 export function LoginPanel({
   settings,
   logoImageUrl,
+  logoImageWidth,
+  logoImageHeight,
   preview = false,
   errorMessage,
   csrfToken,
   action,
   belowPanel,
+  wrapperClassName = "min-h-dvh flex items-center justify-center overflow-hidden",
 }: LoginPanelProps) {
+  // Bg image gets a resolution-aware `image-set(url 1x, url 2x)` so retina
+  // displays pull the higher-DPR variant — the transform pattern (Cloudflare
+  // Images / r2 etc.) is supplied by the host app via ImageTransformProvider.
+  const { transformUrl } = useImageTransform();
   const lp = settings;
   const title = lp.title || null;
   const description = lp.description || null;
@@ -116,7 +143,7 @@ export function LoginPanel({
   // Matches the lobby template's themed-surface pattern so designers can drop
   // an image into the login page and have it composite the same way (with
   // the color layer showing through any transparency).
-  const wrapperStyle = computeWrapperStyle(lp);
+  const wrapperStyle = computeWrapperStyle(lp, transformUrl);
 
   // Common inner content — logo block + heading + description + error +
   // password input + submit button. Used by both the preview (no Form wrapper)
@@ -135,6 +162,9 @@ export function LoginPanel({
               )}px, calc((100vw - 64px) * ${(lp.logoMaxWidth || 50) / 100})`}
               className="object-contain"
               style={{ maxWidth: `${lp.logoMaxWidth || 50}%` }}
+              {...(logoImageWidth && logoImageHeight
+                ? { width: logoImageWidth, height: logoImageHeight }
+                : {})}
             />
           </div>
         )}
@@ -237,7 +267,7 @@ export function LoginPanel({
     <>
       <style>{LOGIN_SUBMIT_CSS}</style>
       <div
-        className="min-h-dvh flex items-center justify-center overflow-hidden"
+        className={wrapperClassName}
         style={wrapperStyle}
         aria-label="Login"
       >
@@ -253,15 +283,25 @@ export function LoginPanel({
 // Build the outer wrapper's CSS. `bgColor` is the always-present base; when
 // `bgImage` is set we add `background-image` + supporting properties so it
 // layers on top exactly the way the lobby template's themed surface does.
-// Kept as a free function (not a hook) so it stays cheap and trivially
-// shareable between SSR and CSR — no memoisation needed for a flat object.
-function computeWrapperStyle(lp: LoginPageSettings): React.CSSProperties {
+//
+// `transformUrl` is the resolution-aware URL transformer surfaced by
+// `useImageTransform` — when present we emit an `image-set(...)` so retina
+// devices pull a higher-DPR variant. Without it (e.g. tests / SSR before
+// the provider is set up) we fall back to a plain `url(...)`.
+function computeWrapperStyle(
+  lp: LoginPageSettings,
+  transformUrl: (src: string, options: { width: number }) => string
+): React.CSSProperties {
   const base: React.CSSProperties = { backgroundColor: lp.bgColor };
   const img = lp.bgImage;
   if (!img) return base;
+  const entries = BACKGROUND_IMAGE_SET_WIDTHS.map(({ dpr, width }) => {
+    const variant = transformUrl(img.mediaUrl, { width });
+    return `url(${JSON.stringify(variant)}) ${dpr}x`;
+  }).join(", ");
   return {
     ...base,
-    backgroundImage: `url("${img.mediaUrl}")`,
+    backgroundImage: `image-set(${entries})`,
     backgroundSize: img.size,
     backgroundPosition: img.position,
     backgroundRepeat: img.repeat,

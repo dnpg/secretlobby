@@ -62,7 +62,12 @@ export function LoginPageSettingsPanel({
         logoSvg: "",
       },
     });
-    dispatch({ type: "setLoginLogoImageUrl", url: media.url });
+    dispatch({
+      type: "setLoginLogoImageUrl",
+      url: media.url,
+      width: media.width,
+      height: media.height,
+    });
   };
 
   const removeLogo = () => {

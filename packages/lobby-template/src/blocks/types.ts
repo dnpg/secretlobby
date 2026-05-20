@@ -99,6 +99,11 @@ export interface PlayerBlockContent {
   showVisualizer: boolean;
   showPlaylist: boolean;
   autoplay: boolean;
+  // Optional track id within `playlistId` to start playback on. Only honored
+  // when `autoplay === true`; with no value the block falls back to the
+  // first track in the playlist. Cleared when the block's playlist changes
+  // because the previously-picked track wouldn't exist in the new playlist.
+  autoplayTrackId?: string;
 }
 
 // Lightweight summary of a playlist surfaced to the page builder UI. Built
@@ -317,4 +322,10 @@ export interface StoredPageLayout {
   version: number;
 }
 
-export const PAGE_LAYOUT_VERSION = 1;
+// Bumped to 2 when the page-builder became the source of truth for the lobby
+// content (banner / about / technical info / social links used to render from
+// fixed lobby fields + legacy settings keys; now they live inside the layout's
+// section/column/block tree). Layouts persisted before this bump have either
+// no `version` field or `version: 1` — the editor loader migrates them on
+// read; see `migrateLobbyToV2` in apps/console.
+export const PAGE_LAYOUT_VERSION = 2;

@@ -164,7 +164,7 @@ function textToInlineDoc(text: string): InlineDoc {
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { getSession, requireUserAuth, getCsrfToken, generatePreviewToken } = await import("@secretlobby/auth");
-  const { getLobbyById } = await import("~/models/queries/lobby.server");
+  const { getLobbyByIdWithMedia } = await import("~/models/queries/lobby.server");
   const { getAccountWithBasicInfo } = await import("~/models/queries/account.server");
   const { getLobbySettings } = await import("~/models/mutations/lobby.server");
   const {
@@ -181,6 +181,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   );
   const { listSwatchesByAccount } = await import(
     "~/models/queries/swatch.server"
+  );
+  const { needsV1Migration, migrateLobbyToV2 } = await import(
+    "~/lib/migrateLobbyToV2.server"
   );
 
   const { session } = await getSession(request);
@@ -211,7 +214,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     socialLinks,
     loginPage,
   ] = await Promise.all([
-    getLobbyById(lobbyId),
+    getLobbyByIdWithMedia(lobbyId),
     getAccountWithBasicInfo(accountId),
     getCsrfToken(request),
     getLobbyThemeSettings(lobbyId),
@@ -231,6 +234,21 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const loginLogoImageUrl = loginPage.logoImage
     ? getPublicUrl(loginPage.logoImage)
     : null;
+
+  // Intrinsic logo dimensions, fetched alongside the URL so the canvas
+  // preview can stamp `width` + `height` onto the rendered <img> for
+  // aspect-ratio anchoring (same reason the live lobby loader does it).
+  let loginLogoImageWidth: number | null = null;
+  let loginLogoImageHeight: number | null = null;
+  if (loginPage.logoImage) {
+    const { prisma } = await import("@secretlobby/db");
+    const logoMedia = await prisma.media.findFirst({
+      where: { key: loginPage.logoImage, accountId },
+      select: { width: true, height: true },
+    });
+    loginLogoImageWidth = logoMedia?.width ?? null;
+    loginLogoImageHeight = logoMedia?.height ?? null;
+  }
 
   if (!lobby || lobby.accountId !== accountId) {
     throw redirect("/lobbies");
@@ -272,7 +290,38 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   // Defensive dead-code: still read the legacy field so future migrations
   // can grep for the access site, but never feed it to the runtime.
   void lobbySettings.loginPageLayout;
-  const storedLayout = parseStoredPageLayout(rawLayout, defaultPlaylist.id);
+
+  // V1 → V2 migration: any lobby whose stored layout predates
+  // `PAGE_LAYOUT_VERSION = 2` (no pageLayout at all, or `version < 2`) gets
+  // an in-memory layout synthesised from its DB columns (banner / profile
+  // media, title, description) + legacy settings keys (technicalInfo,
+  // socialLinks). The result is loaded into the reducer as-is; the next
+  // user autosave persists it, stamped with the new version. Migration is
+  // lazy on read — we never write back on load. Login pages don't have a
+  // block layout so we skip the migration entirely for them.
+  let storedLayout: StoredPageLayout | null;
+  if (pageKind === "login") {
+    storedLayout = null;
+  } else if (needsV1Migration(rawLayout)) {
+    storedLayout = migrateLobbyToV2(
+      {
+        title: lobby.title ?? null,
+        description: lobby.description ?? null,
+        bannerMedia: lobby.bannerMedia ?? null,
+        profileMedia: lobby.profileMedia ?? null,
+      },
+      {
+        technicalInfo: lobbySettings.technicalInfo as
+          | { title?: string; content?: string }
+          | null
+          | undefined,
+        socialLinks: socialLinks,
+      },
+      defaultPlaylist.id
+    );
+  } else {
+    storedLayout = parseStoredPageLayout(rawLayout, defaultPlaylist.id);
+  }
 
   // Coerce stored swatch rows into the shape the ColorPicker expects.
   // The JSON value column matches the picker's `ColorValue` discriminated
@@ -339,6 +388,8 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     // in the editor has a baseline to diff against — independent of pageKind.
     loginPage,
     loginLogoImageUrl,
+    loginLogoImageWidth,
+    loginLogoImageHeight,
   };
 }
 

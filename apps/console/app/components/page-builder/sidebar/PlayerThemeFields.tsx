@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from "react";
-import { Checkbox } from "@secretlobby/ui";
+import { useState, type CSSProperties, type ReactNode } from "react";
+import { Checkbox, cn } from "@secretlobby/ui";
 import { AudioVisualizer } from "@secretlobby/lobby-template";
 import {
   type BackdropFilter,
@@ -18,6 +18,7 @@ import { BackdropFilterEditor } from "~/components/backdrop-filter-editor";
 import { BorderRadiusInput } from "~/components/border-radius-input";
 import { BoxPaddingInput } from "~/components/box-padding-input";
 import { CssLengthInput } from "~/components/css-length-input";
+import { gradientFallbackHex } from "~/components/color-picker/utils";
 import { ColorRow, HexPickerRow, SelectRow } from "./ThemeFieldRows";
 
 // =============================================================================
@@ -286,6 +287,128 @@ function EqualizerPreview({
 }
 
 // =============================================================================
+// TrackBgRow — gradient-capable bg picker for the three playlist track-row
+// states. Mirrors `TextColorRow`'s legacy + rich pairing: the underlying
+// theme keeps the existing hex string (`trackBg`, `trackHoverBg`,
+// `trackActiveBg`) AND optionally a rich field (`*BgRich: ThemeBackgroundColor`)
+// for the gradient/solid/swatch-ref upgrade.
+//
+// Read: picker shows the Rich value when set, otherwise a synth solid from
+// the legacy hex. Write: every change recomputes the legacy hex from the
+// picker output (via `gradientFallbackHex`) so single-color consumers still
+// get a usable hex even when the value is a gradient. The Rich field is
+// dropped when the picker collapses back to a plain solid that matches the
+// legacy hex, keeping persisted JSON minimal.
+// =============================================================================
+interface TrackBgRowProps {
+  label: string;
+  legacyValue: string;
+  richValue: ThemeBackgroundColor | undefined;
+  onChange: (next: {
+    legacy: string;
+    rich: ThemeBackgroundColor | undefined;
+  }) => void;
+  swatches: SavedSwatch[];
+  saveSwatch: (name: string, value: ColorValue) => void;
+  updateSwatch: (id: string, name: string, value: ColorValue) => void;
+  deleteSwatch: (id: string) => void;
+}
+
+function TrackBgRow({
+  label,
+  legacyValue,
+  richValue,
+  onChange,
+  swatches,
+  saveSwatch,
+  updateSwatch,
+  deleteSwatch,
+}: TrackBgRowProps) {
+  const pickerValue: ColorValue =
+    richValue ?? { type: "solid", color: legacyValue, opacity: 100 };
+  return (
+    <div>
+      <label className="block text-xs text-theme-secondary mb-1">{label}</label>
+      <ColorPicker
+        label={label}
+        value={pickerValue}
+        onChange={(next) => {
+          const legacy = gradientFallbackHex(next, swatches);
+          let rich: ThemeBackgroundColor | undefined =
+            next as ThemeBackgroundColor;
+          if (
+            next.type === "solid" &&
+            (next.opacity ?? 100) >= 100 &&
+            next.color.toLowerCase() === legacy.toLowerCase()
+          ) {
+            rich = undefined;
+          }
+          onChange({ legacy, rich });
+        }}
+        swatches={swatches}
+        onSaveSwatch={saveSwatch}
+        onUpdateSwatch={updateSwatch}
+        onDeleteSwatch={deleteSwatch}
+      />
+    </div>
+  );
+}
+
+// =============================================================================
+// SubAccordion — small collapsible group used inside PlayerThemeFields to
+// split the (long) player theme list into the three logical sections the
+// designer thinks in: Visualizer / Controls / Playlist. Plain visual
+// grouping — no toggle, no override semantics. Defaults to closed so the
+// first-open Player section is short; click the header to expand.
+// =============================================================================
+interface SubAccordionProps {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}
+
+function SubAccordion({
+  title,
+  defaultOpen = false,
+  children,
+}: SubAccordionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded border border-theme/70">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs font-semibold text-theme-muted hover:text-theme-primary cursor-pointer"
+        aria-expanded={open}
+      >
+        <span>{title}</span>
+        <svg
+          className={cn(
+            "w-3.5 h-3.5 transition-transform",
+            open && "rotate-180"
+          )}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+          />
+        </svg>
+      </button>
+      {open && (
+        <div className="border-t border-theme/70 p-3 space-y-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
 // PlayerThemeFields
 // =============================================================================
 export interface PlayerThemeFieldsProps {
@@ -320,6 +443,49 @@ export function PlayerThemeFields({
 
   return (
     <>
+      {/* Player container — outer chrome that wraps the entire player
+          block (visualizer + transport + playlist). Rendered outside the
+          three sub-accordions below because it isn't scoped to any one
+          of them; grouping it under Visualizer / Controls / Playlist
+          would misleadingly suggest it only affects that region. */}
+      <PlayerContainerStyleSubgroup
+        title="Player container"
+        enabled={theme.playerContainerEnabled ?? false}
+        onEnabledChange={(v) => set("playerContainerEnabled", v)}
+        bg={
+          theme.playerBg ?? {
+            type: "solid",
+            color: "#111827",
+            opacity: 100,
+          }
+        }
+        onBgChange={(next) => set("playerBg", next)}
+        backdropFilter={theme.playerBackdropFilter ?? []}
+        onBackdropFilterChange={(next) =>
+          set("playerBackdropFilter", next)
+        }
+        borderRadius={
+          theme.playerBorderRadius ?? theme.cardBorderRadius ?? 12
+        }
+        onBorderRadiusChange={(v) => set("playerBorderRadius", v)}
+        borderStyle={theme.playerBorderStyle ?? "solid"}
+        onBorderStyleChange={(v) => set("playerBorderStyle", v)}
+        borderWidth={theme.playerBorderWidth ?? "0"}
+        onBorderWidthChange={(v) => set("playerBorderWidth", v)}
+        borderColor={
+          theme.playerBorderColor ??
+          theme.cardBorderColor ??
+          theme.border ??
+          "#000000"
+        }
+        onBorderColorChange={(v) => set("playerBorderColor", v)}
+        swatches={swatches}
+        saveSwatch={saveSwatch}
+        updateSwatch={updateSwatch}
+        deleteSwatch={deleteSwatch}
+      />
+
+      <SubAccordion title="Visualizer">
       {/* Visualizer rendering settings — pulled out of the Visualizer
           container subgroup so the canvas-render decisions (Type / the
           three colors / Blend mode) sit at the very top of the Player
@@ -386,43 +552,6 @@ export function PlayerThemeFields({
       )}
 
       <PlayerContainerStyleSubgroup
-        title="Player container"
-        enabled={theme.playerContainerEnabled ?? false}
-        onEnabledChange={(v) => set("playerContainerEnabled", v)}
-        bg={
-          theme.playerBg ?? {
-            type: "solid",
-            color: "#111827",
-            opacity: 100,
-          }
-        }
-        onBgChange={(next) => set("playerBg", next)}
-        backdropFilter={theme.playerBackdropFilter ?? []}
-        onBackdropFilterChange={(next) =>
-          set("playerBackdropFilter", next)
-        }
-        borderRadius={
-          theme.playerBorderRadius ?? theme.cardBorderRadius ?? 12
-        }
-        onBorderRadiusChange={(v) => set("playerBorderRadius", v)}
-        borderStyle={theme.playerBorderStyle ?? "solid"}
-        onBorderStyleChange={(v) => set("playerBorderStyle", v)}
-        borderWidth={theme.playerBorderWidth ?? "0"}
-        onBorderWidthChange={(v) => set("playerBorderWidth", v)}
-        borderColor={
-          theme.playerBorderColor ??
-          theme.cardBorderColor ??
-          theme.border ??
-          "#000000"
-        }
-        onBorderColorChange={(v) => set("playerBorderColor", v)}
-        swatches={swatches}
-        saveSwatch={saveSwatch}
-        updateSwatch={updateSwatch}
-        deleteSwatch={deleteSwatch}
-      />
-
-      <PlayerContainerStyleSubgroup
         title="Visualizer container"
         enabled={theme.visualizerContainerEnabled ?? false}
         onEnabledChange={(v) => set("visualizerContainerEnabled", v)}
@@ -470,7 +599,9 @@ export function PlayerThemeFields({
         updateSwatch={updateSwatch}
         deleteSwatch={deleteSwatch}
       />
+      </SubAccordion>
 
+      <SubAccordion title="Controls">
       <PlayerContainerStyleSubgroup
         title="Now playing & controls"
         enabled={theme.transportContainerEnabled ?? false}
@@ -736,7 +867,9 @@ export function PlayerThemeFields({
           </>
         }
       />
+      </SubAccordion>
 
+      <SubAccordion title="Playlist">
       <PlayerContainerStyleSubgroup
         title="Playlist container"
         enabled={theme.playlistContainerEnabled ?? false}
@@ -772,17 +905,57 @@ export function PlayerThemeFields({
         deleteSwatch={deleteSwatch}
       />
 
+      {/* --- Playlist title ------------------------------------------------ */}
+      <h4 className="text-[11px] font-semibold text-theme-muted pt-3 mt-2">
+        Playlist title
+      </h4>
+      <HexPickerRow
+        label="Text color"
+        value={
+          theme.playlistTitleColor ??
+          theme.cardHeadingColor ??
+          theme.textPrimary ??
+          "#ffffff"
+        }
+        onChange={(v) => set("playlistTitleColor", v)}
+      />
+
+      {/* --- Tracks — layout ----------------------------------------------- */}
+      <h4 className="text-[11px] font-semibold text-theme-muted pt-3 mt-2">
+        Tracks — layout
+      </h4>
+      <div>
+        <label className="block text-xs text-theme-secondary mb-1">
+          Row gap
+        </label>
+        <CssLengthInput
+          value={theme.playlistGap ?? "0"}
+          onChange={(v) => set("playlistGap", v)}
+          min={0}
+          max={64}
+          ariaLabel="Playlist track gap"
+          placeholder="0"
+        />
+      </div>
+
       {/* --- Tracks (not toggleable; just flat color settings) ---------- */}
       <h4 className="text-[11px] font-semibold text-theme-muted pt-3 mt-2">
         Tracks — normal
       </h4>
-      <HexPickerRow
+      <TrackBgRow
         label="Background"
-        value={theme.trackBg ?? "#00000000"}
-        onChange={(v) => set("trackBg", v)}
+        legacyValue={theme.trackBg ?? "#00000000"}
+        richValue={theme.trackBgRich}
+        onChange={({ legacy, rich }) =>
+          onChange({ trackBg: legacy, trackBgRich: rich })
+        }
+        swatches={swatches}
+        saveSwatch={saveSwatch}
+        updateSwatch={updateSwatch}
+        deleteSwatch={deleteSwatch}
       />
       <HexPickerRow
-        label="Text"
+        label="Track title text"
         value={
           theme.trackText ??
           theme.cardContentColor ??
@@ -792,7 +965,29 @@ export function PlayerThemeFields({
         onChange={(v) => set("trackText", v)}
       />
       <HexPickerRow
-        label="Muted text"
+        label="Number / play icon"
+        value={
+          theme.trackNumberText ??
+          theme.trackMutedText ??
+          theme.cardMutedColor ??
+          theme.textMuted ??
+          "#9ca3af"
+        }
+        onChange={(v) => set("trackNumberText", v)}
+      />
+      <HexPickerRow
+        label="Track time text"
+        value={
+          theme.trackTimeText ??
+          theme.trackMutedText ??
+          theme.cardMutedColor ??
+          theme.textMuted ??
+          "#9ca3af"
+        }
+        onChange={(v) => set("trackTimeText", v)}
+      />
+      <HexPickerRow
+        label="Artist text"
         value={
           theme.trackMutedText ??
           theme.cardMutedColor ??
@@ -805,13 +1000,20 @@ export function PlayerThemeFields({
       <h4 className="text-[11px] font-semibold text-theme-muted pt-3 mt-2">
         Tracks — hover
       </h4>
-      <HexPickerRow
+      <TrackBgRow
         label="Background"
-        value={theme.trackHoverBg ?? "#ffffff14"}
-        onChange={(v) => set("trackHoverBg", v)}
+        legacyValue={theme.trackHoverBg ?? "#ffffff14"}
+        richValue={theme.trackHoverBgRich}
+        onChange={({ legacy, rich }) =>
+          onChange({ trackHoverBg: legacy, trackHoverBgRich: rich })
+        }
+        swatches={swatches}
+        saveSwatch={saveSwatch}
+        updateSwatch={updateSwatch}
+        deleteSwatch={deleteSwatch}
       />
       <HexPickerRow
-        label="Text"
+        label="Track title text"
         value={
           theme.trackHoverText ??
           theme.trackText ??
@@ -821,20 +1023,73 @@ export function PlayerThemeFields({
         }
         onChange={(v) => set("trackHoverText", v)}
       />
+      <HexPickerRow
+        label="Number / play icon"
+        value={
+          theme.trackHoverNumberText ??
+          theme.trackNumberText ??
+          theme.trackMutedText ??
+          theme.cardMutedColor ??
+          theme.textMuted ??
+          "#9ca3af"
+        }
+        onChange={(v) => set("trackHoverNumberText", v)}
+      />
+      <HexPickerRow
+        label="Track time text"
+        value={
+          theme.trackHoverTimeText ??
+          theme.trackTimeText ??
+          theme.trackMutedText ??
+          theme.cardMutedColor ??
+          theme.textMuted ??
+          "#9ca3af"
+        }
+        onChange={(v) => set("trackHoverTimeText", v)}
+      />
 
       <h4 className="text-[11px] font-semibold text-theme-muted pt-3 mt-2">
         Tracks — active
       </h4>
-      <HexPickerRow
+      <TrackBgRow
         label="Background"
-        value={theme.trackActiveBg ?? "#ffffff1a"}
-        onChange={(v) => set("trackActiveBg", v)}
+        legacyValue={theme.trackActiveBg ?? "#ffffff1a"}
+        richValue={theme.trackActiveBgRich}
+        onChange={({ legacy, rich }) =>
+          onChange({ trackActiveBg: legacy, trackActiveBgRich: rich })
+        }
+        swatches={swatches}
+        saveSwatch={saveSwatch}
+        updateSwatch={updateSwatch}
+        deleteSwatch={deleteSwatch}
       />
       <HexPickerRow
-        label="Text"
+        label="Track title text"
         value={theme.trackActiveText ?? theme.primary ?? "#ffffff"}
         onChange={(v) => set("trackActiveText", v)}
       />
+      <HexPickerRow
+        label="Number / play icon"
+        value={
+          theme.trackActiveNumberText ??
+          theme.trackActiveText ??
+          theme.primary ??
+          "#ffffff"
+        }
+        onChange={(v) => set("trackActiveNumberText", v)}
+      />
+      <HexPickerRow
+        label="Track time text"
+        value={
+          theme.trackActiveTimeText ??
+          theme.trackMutedText ??
+          theme.cardMutedColor ??
+          theme.textMuted ??
+          "#9ca3af"
+        }
+        onChange={(v) => set("trackActiveTimeText", v)}
+      />
+      </SubAccordion>
     </>
   );
 }

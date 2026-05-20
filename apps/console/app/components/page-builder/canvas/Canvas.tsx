@@ -4,6 +4,7 @@ import {
   BlockView,
   LogoutButton,
   SectionView,
+  SecretLobbyFooter,
 } from "@secretlobby/lobby-template";
 import {
   generateThemeCSSVars,
@@ -678,6 +679,7 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
                 {sectionsContent}
               </div>
             </div>
+            <SecretLobbyFooter />
           </div>
         </div>
       );
@@ -705,6 +707,7 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
             )}
             {sectionsContent}
           </div>
+          <SecretLobbyFooter />
         </div>
       </div>
     );
@@ -761,6 +764,7 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
           )}
           {sectionsContent}
         </div>
+        <SecretLobbyFooter />
       </div>
     </div>
   );

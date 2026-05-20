@@ -177,7 +177,7 @@ export function PlayerBlock({ content, theme }: PlayerBlockProps) {
         cardStyles={cardStyles}
         socialLinksSettings={null}
         technicalInfo={null}
-        initialTrackId={null}
+        initialTrackId={content.autoplayTrackId ?? null}
         // CSRF token is only used for the Logout form which we hide via
         // designer mode. Empty string is fine here.
         csrfToken=""

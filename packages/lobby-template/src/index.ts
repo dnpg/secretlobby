@@ -68,6 +68,10 @@ export {
   LoginAutoplayToggle,
   type LoginAutoplayToggleProps,
 } from "./LoginAutoplayToggle";
+export {
+  SecretLobbyFooter,
+  type SecretLobbyFooterProps,
+} from "./SecretLobbyFooter";
 
 // Layout views — pure, view-only renderers for the page-builder's section /
 // column primitives. The lobby uses these directly to render
@@ -129,6 +133,10 @@ export {
   PlayerBlockView,
   type PlayerBlockViewProps,
 } from "./blocks/PlayerBlockView";
+export {
+  StandalonePlayerBlock,
+  type StandalonePlayerBlockProps,
+} from "./blocks/StandalonePlayerBlock";
 export { CardView, type CardViewProps } from "./blocks/CardView";
 export { GalleryView, type GalleryViewProps } from "./blocks/GalleryView";
 export {

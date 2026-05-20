@@ -17,8 +17,10 @@ import {
   defaultDarkTheme,
   generateThemeCSSVars,
   normalizeThemeBackground,
+  type BackgroundImageTransform,
   type ThemeSettings,
 } from "@secretlobby/theme";
+import { transformUrl as baseTransformUrl } from "@secretlobby/ui";
 import { generatePreloadToken } from "~/lib/token.server";
 import {
   BlockView,
@@ -26,11 +28,10 @@ import {
   LoginAutoplayToggle,
   LoginPanel,
   LogoutButton,
-  PlayerBlockView,
+  StandalonePlayerBlock,
   PreviewBar,
   SectionView,
-  useHlsAudio,
-  useTrackPrefetcher,
+  SecretLobbyFooter,
   type ImageUrls,
   type LoginPageSettings,
   type PlayerBlockContent,
@@ -123,14 +124,17 @@ const DEFAULT_LOBBY_PAGE_LAYOUT: { sections: Section[]; version: number } = {
 // package's ThemeSwatch[], hence the cast.
 function getBodyBgCSS(
   theme: ThemeSettings,
-  swatches?: AccountSwatch[]
+  swatches?: AccountSwatch[],
+  transformUrl?: BackgroundImageTransform
 ): string {
   if (theme.cardBgType === "gradient") {
     return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${theme.cardBgGradientFrom}, ${theme.cardBgGradientTo})`;
   }
   return backgroundToCSS(
     normalizeThemeBackground(theme),
-    swatches as unknown as Parameters<typeof backgroundToCSS>[1]
+    swatches as unknown as Parameters<typeof backgroundToCSS>[1],
+    undefined,
+    transformUrl
   );
 }
 
@@ -185,12 +189,15 @@ export async function loader({ request }: Route.LoaderArgs) {
       } satisfies ImageUrls,
       tracks: isAuthenticated ? content.playlist : [],
       autoplayTrackId: null,
+      pageWantsAutoplay: true,
       preloadTrackId: null,
       preloadToken: null,
       preloadTrackMeta: null,
       notFound: false,
       loginPageSettings: defaultLoginPageSettings,
       loginLogoImageUrl: null,
+      loginLogoImageWidth: null,
+      loginLogoImageHeight: null,
       themeVars: generateThemeCSSVars(defaultDarkTheme),
       cardStyles: buildCardStyles(defaultDarkTheme),
       bodyBg: getBodyBgCSS(defaultDarkTheme),
@@ -227,12 +234,15 @@ export async function loader({ request }: Route.LoaderArgs) {
       } satisfies ImageUrls,
       tracks: [],
       autoplayTrackId: null,
+      pageWantsAutoplay: true,
       preloadTrackId: null,
       preloadToken: null,
       preloadTrackMeta: null,
       notFound: true,
       loginPageSettings: defaultLoginPageSettings,
       loginLogoImageUrl: null,
+      loginLogoImageWidth: null,
+      loginLogoImageHeight: null,
       themeVars: generateThemeCSSVars(defaultDarkTheme),
       cardStyles: buildCardStyles(defaultDarkTheme),
       bodyBg: getBodyBgCSS(defaultDarkTheme),
@@ -336,8 +346,19 @@ export async function loader({ request }: Route.LoaderArgs) {
       }
     }
   }
+  let loginLogoImageWidth: number | null = null;
+  let loginLogoImageHeight: number | null = null;
   if (loginPageSettings.logoType === "image" && loginPageSettings.logoImage) {
     loginLogoImageUrl = getPublicUrl(loginPageSettings.logoImage);
+    // Look up intrinsic dimensions so the rendered <img> carries width/height
+    // attrs — the browser reserves the right aspect-ratio box before the
+    // bitmap loads, killing layout shift on first paint.
+    const logoMedia = await prisma.media.findFirst({
+      where: { key: loginPageSettings.logoImage, accountId: account.id },
+      select: { width: true, height: true },
+    });
+    loginLogoImageWidth = logoMedia?.width ?? null;
+    loginLogoImageHeight = logoMedia?.height ?? null;
   }
 
   // Resolve any swatch-ref entries in the persisted theme JSON. Swatches are
@@ -345,15 +366,26 @@ export async function loader({ request }: Route.LoaderArgs) {
   // generators.
   const accountSwatches = await getSwatchesByAccountId(account.id);
 
+  // Bind the URL transform pattern from env so background CSS emits a
+  // resolution-aware `image-set(url(@1x) 1x, url(@2x) 2x)` for the lobby's
+  // body bg image. Without an env pattern this stays a passthrough and the
+  // emitted CSS keeps using a plain `url(...)`.
+  const imageTransformPattern =
+    process.env.IMAGE_TRANSFORM_PATTERN || "{url}";
+  const bgTransformUrl: BackgroundImageTransform = (src, { width }) =>
+    baseTransformUrl(src, { width }, imageTransformPattern);
+
   const themeVars = generateThemeCSSVars(
     themeSettings,
-    accountSwatches as unknown as Parameters<typeof generateThemeCSSVars>[1]
+    accountSwatches as unknown as Parameters<typeof generateThemeCSSVars>[1],
+    undefined,
+    bgTransformUrl
   );
   const cardStyles = buildCardStyles(
     themeSettings,
     accountSwatches as unknown as Parameters<typeof buildCardStyles>[1]
   );
-  const bodyBg = getBodyBgCSS(themeSettings, accountSwatches);
+  const bodyBg = getBodyBgCSS(themeSettings, accountSwatches, bgTransformUrl);
 
   // Fetch lobby with media relations for image URL resolution
   const lobbyWithMedia = await prisma.lobby.findUnique({
@@ -387,10 +419,67 @@ export async function loader({ request }: Route.LoaderArgs) {
   let preloadTrackId: string | null = null;
   let preloadToken: string | null = null;
 
-  const rawTracks = needsPassword
-    ? []
-    : await prisma.track.findMany({
-        where: { lobbyId: lobby.id },
+  // Scope the track query to the playlistIds the saved layout actually
+  // references. A lobby can have multiple playlists (Phase 6 made tracks
+  // `playlistId`-owned), and each player block stores its own
+  // `content.playlistId`; querying by `lobbyId` alone returns the union
+  // across every playlist, which visibly duplicates rows when the page has
+  // more than one player block — or even just makes a single block render
+  // tracks that belong to a different playlist.
+  //
+  // We walk the saved pageLayout (when present), collect every player
+  // block's `playlistId`, and filter the track query to that exact set. The
+  // tracks are then tagged with their owning `playlistId` so the component-
+  // side `renderPlayer(content)` can slice the right subset per block.
+  //
+  // Legacy fallback: when no pageLayout is saved (or its player blocks have
+  // no playlistId — pre-Phase-6 layout shape), we fall back to the lobby's
+  // `isDefault` playlist if one exists, then to the page-wide `lobbyId`
+  // query as a last resort so very old lobbies still render their tracks.
+  const requiredPlaylistIds = new Set<string>();
+  if (pageLayout && Array.isArray(pageLayout.sections)) {
+    for (const section of pageLayout.sections) {
+      if (!section || typeof section !== "object") continue;
+      const cols = (section as { columns?: unknown }).columns;
+      if (!Array.isArray(cols)) continue;
+      for (const col of cols) {
+        if (!col || typeof col !== "object") continue;
+        const blocks = (col as { blocks?: unknown }).blocks;
+        if (!Array.isArray(blocks)) continue;
+        for (const block of blocks) {
+          if (
+            block &&
+            typeof block === "object" &&
+            (block as { type?: unknown }).type === "player"
+          ) {
+            const content = (block as { content?: unknown }).content;
+            const pid = (content as { playlistId?: unknown } | null)?.playlistId;
+            if (typeof pid === "string" && pid !== "") {
+              requiredPlaylistIds.add(pid);
+            }
+          }
+        }
+      }
+    }
+  }
+  const fallbackDefaultPlaylist =
+    !needsPassword && requiredPlaylistIds.size === 0
+      ? await prisma.playlist.findFirst({
+          where: { lobbyId: lobby.id, isDefault: true },
+          select: { id: true },
+        })
+      : null;
+  const trackWhere = needsPassword
+    ? null
+    : requiredPlaylistIds.size > 0
+      ? { playlistId: { in: Array.from(requiredPlaylistIds) } }
+      : fallbackDefaultPlaylist
+        ? { playlistId: fallbackDefaultPlaylist.id }
+        : { lobbyId: lobby.id };
+
+  const rawTracks = trackWhere
+    ? await prisma.track.findMany({
+        where: trackWhere,
         orderBy: { position: "asc" },
         select: {
           id: true,
@@ -398,6 +487,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           artist: true,
           duration: true,
           position: true,
+          playlistId: true,
           filename: true,
           hlsReady: true,
           waveformPeaks: true,
@@ -410,7 +500,8 @@ export async function loader({ request }: Route.LoaderArgs) {
             },
           },
         },
-      });
+      })
+    : [];
 
   // Normalize: prefer media-level values over legacy track-level values
   const tracks = rawTracks.map((t) => ({
@@ -419,6 +510,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     artist: t.artist,
     duration: t.media?.duration ?? t.duration,
     position: t.position,
+    // Tag with owning playlist id so the component-side renderPlayer can
+    // slice the page-level track list down to the subset belonging to the
+    // block's `content.playlistId`.
+    playlistId: t.playlistId,
     filename: t.media?.key ?? t.filename,
     hlsReady: t.media?.hlsReady ?? t.hlsReady,
     waveformPeaks: t.media?.waveformPeaks ?? t.waveformPeaks,
@@ -427,6 +522,41 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Get autoplay track from lobby settings (or default to first track)
   const lobbySettings = (lobby.settings as Record<string, unknown>) || {};
   const autoplayTrackId = (lobbySettings.autoplayTrackId as string) || null;
+
+  // Per-block autoplay intent — when EVERY player block on the page has
+  // `content.autoplay === false`, the lobby must NOT auto-play on load.
+  // We default to `true` for legacy / un-migrated layouts (the
+  // `DEFAULT_LOBBY_PAGE_LAYOUT` also sets `autoplay: true`) so existing
+  // lobbies keep auto-playing. Any single block opting in keeps the page
+  // auto-playing — the user's request is "if autoplay is off, no sound",
+  // so we only suppress when nothing wants it.
+  const pageWantsAutoplay = (() => {
+    if (!pageLayout || !Array.isArray(pageLayout.sections)) return true;
+    let sawPlayer = false;
+    for (const section of pageLayout.sections) {
+      if (!section || typeof section !== "object") continue;
+      const cols = (section as { columns?: unknown }).columns;
+      if (!Array.isArray(cols)) continue;
+      for (const col of cols) {
+        if (!col || typeof col !== "object") continue;
+        const blocks = (col as { blocks?: unknown }).blocks;
+        if (!Array.isArray(blocks)) continue;
+        for (const block of blocks) {
+          if (
+            block &&
+            typeof block === "object" &&
+            (block as { type?: unknown }).type === "player"
+          ) {
+            sawPlayer = true;
+            const c = (block as { content?: unknown }).content;
+            const ap = (c as { autoplay?: unknown } | null)?.autoplay;
+            if (ap === true) return true;
+          }
+        }
+      }
+    }
+    return !sawPlayer; // no player blocks → no opinion, leave autoplay on
+  })();
 
   // If password required, find the autoplay track (or first track) for preloading
   let preloadTrackMeta: { hlsReady: boolean; duration: number | null; waveformPeaks: number[] | null } | null = null;
@@ -502,12 +632,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     imageUrls,
     tracks,
     autoplayTrackId,
+    pageWantsAutoplay,
     preloadTrackId,
     preloadToken,
     preloadTrackMeta: preloadTrackMeta ?? null,
     notFound: false,
     loginPageSettings,
     loginLogoImageUrl,
+    loginLogoImageWidth,
+    loginLogoImageHeight,
     themeVars,
     cardStyles,
     bodyBg,
@@ -655,13 +788,18 @@ export default function LobbyIndex() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
-  // Audio state lives here so it persists across login → player transition
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const audioHook = useHlsAudio(audioRef);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  // The page no longer owns a shared <audio> element — each
+  // <StandalonePlayerBlock/> below creates its own so two player blocks
+  // can play independently and their visualizers animate only when THEIR
+  // audio is playing. The only page-level audio state we keep is the
+  // LoginAutoplayToggle's value, which the standalone blocks read as a
+  // master "is autoplay allowed at all?" gate.
   const [autoplayEnabled, setAutoplayEnabled] = useState(true);
-  const loadedTrackRef = useRef<string | null>(null);
+  // Page-level "which player block is currently playing" registry. Each
+  // StandalonePlayerBlock claims this slot on play and pauses itself when
+  // a different block takes over — enforces the rule that only one player
+  // plays at a time across the entire page.
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
 
   // Apply body background from theme settings
@@ -740,15 +878,14 @@ export default function LobbyIndex() {
       }))
     : (data.tracks as Track[]);
 
-  // Prefetch the next track's HLS resources while the current track plays
-  useTrackPrefetcher({ tracks, currentTrackId: activeTrackId, isPlaying });
-
-  // Handle authentication state changes (login/logout) and tracking
+  // Track login/logout transitions for analytics. Audio cleanup on logout
+  // is owned by each StandalonePlayerBlock — it unmounts on the password
+  // page so its `<audio>` element, useHlsAudio instance, and playback
+  // state are torn down automatically.
   useEffect(() => {
     const wasAuthenticated = wasAuthenticatedRef.current;
     const isAuthenticated = !data.requiresPassword;
 
-    // Track successful login (unauthenticated → authenticated transition)
     if (isAuthenticated && !wasAuthenticated) {
       trackEvent('login', {
         event_category: 'authentication',
@@ -756,67 +893,15 @@ export default function LobbyIndex() {
       });
     }
 
-    // Stop audio on logout (authenticated → unauthenticated transition)
     if (data.requiresPassword && wasAuthenticated) {
-      // Track logout (server-side logout detection)
       trackEvent('logout', {
         event_category: 'authentication',
         method: 'session_expired',
       });
-
-      audioRef.current?.pause();
-      audioHook.cleanup();
-      setIsPlaying(false);
-      loadedTrackRef.current = null;
     }
 
-    // Update ref after tracking and cleanup
     wasAuthenticatedRef.current = isAuthenticated;
   }, [data.requiresPassword]);
-
-  // Preload the first track on the password page (before authentication)
-  useEffect(() => {
-    if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
-      loadedTrackRef.current = data.preloadTrackId;
-      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, data.preloadTrackMeta ?? { hlsReady: true });
-    }
-  }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
-
-  // After login: continue downloading remaining segments or load from scratch
-  // Use the autoplay track if set, otherwise fall back to first track
-  const autoplayTrack = data.autoplayTrackId
-    ? tracks.find((t) => t.id === data.autoplayTrackId)
-    : null;
-  const initialTrack = autoplayTrack || tracks[0];
-  const initialTrackId = initialTrack?.id;
-  useEffect(() => {
-    if (!initialTrackId || data.requiresPassword) return;
-
-    if (loadedTrackRef.current === initialTrackId) {
-      // Track was preloaded — resume with session auth, re-apply metadata
-      // that may have been lost during login navigation
-      audioHook.continueDownload({
-        waveformPeaks: (initialTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
-        duration: initialTrack?.duration ?? null,
-      });
-    } else {
-      // No preload — load from scratch
-      loadedTrackRef.current = initialTrackId;
-      const hlsOpts = initialTrack ? {
-        hlsReady: (initialTrack as { hlsReady?: boolean }).hlsReady ?? false,
-        duration: initialTrack.duration,
-        waveformPeaks: (initialTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
-      } : undefined;
-      audioHook.loadTrack(initialTrackId, undefined, hlsOpts);
-    }
-  }, [initialTrackId, data.requiresPassword]);
-
-  // Auto-play when the first track becomes ready and user is authenticated (if autoplay is enabled)
-  useEffect(() => {
-    if (audioHook.isReady && !data.requiresPassword && !isPlaying && autoplayEnabled) {
-      audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  }, [audioHook.isReady, data.requiresPassword, autoplayEnabled]);
 
   // Not found state
   if (data.notFound) {
@@ -832,7 +917,7 @@ export default function LobbyIndex() {
     );
   }
 
-  const { requiresPassword, isPreview, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings } = data;
+  const { requiresPassword, isPreview, loginPageSettings, loginLogoImageUrl, loginLogoImageWidth, loginLogoImageHeight, cardStyles, socialLinksSettings } = data;
 
   // Login-page title / description are read by LoginPanel directly from
   // `settings`, so we don't recompute them here. The lobby's banner / band
@@ -888,6 +973,7 @@ export default function LobbyIndex() {
         <main
           id="main-content"
           aria-label="Login"
+          className="flex flex-col"
           style={{
             ...(data.themeVars as React.CSSProperties),
             // LoginPanel paints its own full-bleed `bgColor` wrapper
@@ -896,15 +982,28 @@ export default function LobbyIndex() {
             // submit button + below-panel toggle pick up the global
             // theme. font-size is set so any text inside the panel
             // (descriptions, errors) reads the global base.
+            //
+            // `paddingBottom` reserves the slot for the floating
+            // SecretLobbyFooter (`position: fixed` on this branch only).
+            // Combined with `min-height: 100dvh` + Tailwind preflight's
+            // global `box-sizing: border-box`, the main's TOTAL height is
+            // exactly the viewport — no scroll when the panel content
+            // also fits — and the LoginPanel inside (passed `flex-1`)
+            // grows to fill ONLY the remaining `(100dvh - footer)` area
+            // so the panel + footer never overlap.
             fontSize: "var(--text-base-size, 16px)",
-            minHeight: "100vh",
+            minHeight: "100dvh",
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 56px)",
           }}
         >
           <LoginPanel
             settings={lp}
             logoImageUrl={loginLogoImageUrl}
+            logoImageWidth={loginLogoImageWidth}
+            logoImageHeight={loginLogoImageHeight}
             errorMessage={actionData?.error ?? null}
             csrfToken={data.csrfToken}
+            wrapperClassName="flex-1 flex items-center justify-center overflow-hidden"
             belowPanel={
               <LoginAutoplayToggle
                 enabled={autoplayEnabled}
@@ -913,6 +1012,7 @@ export default function LobbyIndex() {
               />
             }
           />
+          <SecretLobbyFooter floating />
         </main>
       ) : (
         // Authenticated lobby content — renders the page-builder layout
@@ -986,42 +1086,41 @@ export default function LobbyIndex() {
             // blocks (Image / Paragraph / SocialLinks). Letting PlayerView
             // paint them too would duplicate every one of them on the page.
             // The player block is JUST the audio controls now.
-            const renderPlayer = (content: PlayerBlockContent) => (
-              <PlayerBlockView
-                content={content}
-                tracks={tracks}
-                imageUrls={EMPTY_IMAGE_URLS}
-                bandName={null}
-                bandDescription={null}
-                audio={{
-                  audioRef,
-                  loadTrack: audioHook.loadTrack,
-                  isLoading: audioHook.isLoading,
-                  isSeeking: audioHook.isSeeking,
-                  loadingProgress: audioHook.loadingProgress,
-                  isReady: audioHook.isReady,
-                  seekTo: audioHook.seekTo,
-                  cancelAutoPlay: audioHook.cancelAutoPlay,
-                  estimatedDuration: audioHook.estimatedDuration,
-                  isAllSegmentsCached: audioHook.isAllSegmentsCached,
-                  blobTimeOffset: audioHook.blobTimeOffset,
-                  blobHasLastSegment: audioHook.blobHasLastSegment,
-                  isBlobMode: audioHook.isBlobMode,
-                  waveformPeaks: audioHook.waveformPeaks,
-                  isSafari: audioHook.isSafari,
-                  isExtendingBlobRef: audioHook.isExtendingBlobRef,
-                  lastSaneTimeRef: audioHook.lastSaneTimeRef,
-                }}
-                isPlaying={isPlaying}
-                onPlayingChange={setIsPlaying}
-                onTrackChange={setActiveTrackId}
-                cardStyles={cardStyles}
-                socialLinksSettings={null}
-                technicalInfo={null}
-                initialTrackId={data.autoplayTrackId}
-                csrfToken={data.csrfToken}
-              />
-            );
+            const renderPlayer = (content: PlayerBlockContent, blockId: string) => {
+              // Per-block playlist slice — every player block in the saved
+              // layout points at a specific `content.playlistId`, so we hand
+              // it ONLY the tracks owned by that playlist. Falls back to the
+              // full page-level list when the block has no playlistId set
+              // (legacy / unmigrated player block).
+              const blockTracks =
+                content.playlistId
+                  ? tracks.filter((t) => t.playlistId === content.playlistId)
+                  : tracks;
+              // Each <StandalonePlayerBlock /> creates its OWN `<audio>` +
+              // `useHlsAudio` + isPlaying state, so two player blocks on
+              // the same page play independently and their visualizers
+              // animate only when THEIR audio plays. `blockId` +
+              // `activeBlockId` enforce single-player-at-a-time across
+              // the page: starting block A pauses block B.
+              return (
+                <StandalonePlayerBlock
+                  content={content}
+                  tracks={blockTracks}
+                  imageUrls={EMPTY_IMAGE_URLS}
+                  bandName={null}
+                  bandDescription={null}
+                  cardStyles={cardStyles}
+                  socialLinksSettings={null}
+                  technicalInfo={null}
+                  initialTrackId={content.autoplayTrackId ?? data.autoplayTrackId}
+                  csrfToken={data.csrfToken}
+                  pageAutoplayEnabled={autoplayEnabled}
+                  blockId={blockId}
+                  activeBlockId={activeBlockId}
+                  onActivate={setActiveBlockId}
+                />
+              );
+            };
 
             // Un-migrated lobbies (no saved pageLayout, or a saved layout
             // with zero sections) get the module-level default in-memory:
@@ -1059,7 +1158,7 @@ export default function LobbyIndex() {
                     }
                     renderFallback={(b) =>
                       b.type === "player"
-                        ? renderPlayer(b.content as PlayerBlockContent)
+                        ? renderPlayer(b.content as PlayerBlockContent, b.id)
                         : null
                     }
                   />
@@ -1071,10 +1170,9 @@ export default function LobbyIndex() {
           })()}
             </div>
           </div>
+          <SecretLobbyFooter />
         </main>
       )}
-      {/* Audio element - always rendered in the same position to persist across login */}
-      <audio ref={audioRef} style={{ display: "none" }} aria-hidden="true" />
     </>
   );
 }

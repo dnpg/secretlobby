@@ -72,6 +72,8 @@ interface PageBuilderLoaderData {
   // round-trip to hydrate.
   loginPage: LoginPageSettings;
   loginLogoImageUrl: string | null;
+  loginLogoImageWidth: number | null;
+  loginLogoImageHeight: number | null;
 }
 
 // =============================================================================
@@ -172,6 +174,8 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
     socialLinks,
     loginPage,
     loginLogoImageUrl,
+    loginLogoImageWidth,
+    loginLogoImageHeight,
   } = loaderData;
   // Loader returns the JSON column as `unknown`; the runtime shape matches
   // SavedSwatch from the picker — cast once at this boundary so the rest of
@@ -211,6 +215,8 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
       socialLinks,
       loginPage,
       loginLogoImageUrl,
+      loginLogoImageWidth,
+      loginLogoImageHeight,
       loginPageDirty: false,
       loginPageSaveStatus: "idle",
       loginPageLastSavedAt: null,

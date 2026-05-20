@@ -121,6 +121,11 @@ export interface Track {
   duration?: number | null;
   hlsReady?: boolean;
   waveformPeaks?: number[] | null;
+  /** Owning playlist id — set by the lobby loader so callers (`renderPlayer`)
+   *  can filter the page-level tracks list down to the subset a specific
+   *  player block should render. Optional because legacy lobbies with no
+   *  Playlist row may still pass plain Track shapes. */
+  playlistId?: string | null;
 }
 
 export interface ImageUrls {
@@ -161,9 +166,13 @@ export interface AudioControls {
 // callers can spread onto the region's outer div.
 export interface PlayerRegionStyle {
   enabled: boolean;
-  /** CSS background-image / -color string (gradient or solid). */
-  bg: string;
-  bgIsGradient: boolean;
+  /** CSS background-image / -color string (gradient or solid). Optional —
+   *  when the user hasn't explicitly configured a bg, this stays undefined
+   *  and `playerRegionStyle` skips the `background` / `backgroundColor`
+   *  declaration entirely so the region renders with whatever the parent
+   *  cascade provides (typically transparent). */
+  bg?: string;
+  bgIsGradient?: boolean;
   /** Composed `backdrop-filter` value, e.g. `"blur(8px) saturate(140%)"`.
    *  Pass `"none"` (the default) to skip the declaration entirely. */
   backdropFilter: string;
@@ -235,6 +244,43 @@ export interface CardStyles {
   skipButtonBorderWidth?: string;
   skipButtonBorderColor?: string;
   skipButtonBorderStyle?: BorderStyle;
+
+  // ---- Playlist track rows ----------------------------------------------
+  // Three visual states (normal / hover / active-i.e.-current-track), each
+  // with its own bg + title text + number text + time text. `trackMutedText`
+  // paints the artist line in every state. All optional: when unset, the
+  // playlist render falls back to the legacy `contentColor` / `mutedColor` /
+  // accent-mix behaviour so existing themes look identical.
+  //
+  // `track*BgIsGradient` is the gradient flag that mirrors `bgIsGradient`
+  // on PlayerRegionStyle: when true, PlayerView writes the CSS string to
+  // `background:` (so a `linear-gradient(...)` parses), otherwise to
+  // `backgroundColor:` (so single-color fills don't bypass React's style
+  // diffing).
+  trackBg?: string;
+  trackBgIsGradient?: boolean;
+  trackText?: string;
+  trackMutedText?: string;
+  trackNumberText?: string;
+  trackTimeText?: string;
+  trackHoverBg?: string;
+  trackHoverBgIsGradient?: boolean;
+  trackHoverText?: string;
+  trackHoverNumberText?: string;
+  trackHoverTimeText?: string;
+  trackActiveBg?: string;
+  trackActiveBgIsGradient?: boolean;
+  trackActiveText?: string;
+  trackActiveNumberText?: string;
+  trackActiveTimeText?: string;
+
+  // ---- Playlist chrome ---------------------------------------------------
+  /** CSS length for the vertical gap between playlist track rows
+   *  (e.g. `"8px"`). Default is `"0"`. */
+  playlistGap?: string;
+  /** Color of the "Playlist" title above the track list. Falls back to
+   *  `headingColor` at the render site when undefined. */
+  playlistTitleColor?: string;
 }
 
 // Translate a PlayerRegionStyle into inline CSS. Returns an empty object
@@ -258,10 +304,18 @@ export function playerRegionStyle(
     region.borderWidth.trim() !== "";
   const bdf = region.backdropFilter;
   const applyBdf = bdf && bdf !== "none" && bdf.trim().length > 0;
+  // bg is opt-in — only emit a background declaration when the theme has
+  // an explicit value. A missing bg leaves the region's background to the
+  // parent cascade (usually transparent), so enabling the container just
+  // to get a border/radius doesn't drag in a default fill.
+  const bgStyle =
+    region.bg !== undefined && region.bg !== ""
+      ? region.bgIsGradient
+        ? { background: region.bg }
+        : { backgroundColor: region.bg }
+      : {};
   return {
-    ...(region.bgIsGradient
-      ? { background: region.bg }
-      : { backgroundColor: region.bg }),
+    ...bgStyle,
     ...(applyBdf
       ? { backdropFilter: bdf, WebkitBackdropFilter: bdf }
       : {}),
@@ -1929,11 +1983,12 @@ export function PlayerView({
                 // Visualizer container chrome — when the new
                 // `visualizerContainer.enabled` is true, the theme's
                 // bg/backdrop/border/radius wrap the visualizer banner.
-                // Falls back to the legacy `visualizerUseCardBg` toggle
-                // when the new chrome isn't enabled, so existing lobbies
-                // that opted into "use card background" keep rendering
-                // their old CardContainer wrap until the designer flips
-                // the new toggle.
+                // When the toggle is off, the visualizer renders with no
+                // wrapping chrome at all: no card-derived background, no
+                // padding, just the bare canvas. The legacy
+                // `visualizerUseCardBg` field is ignored on purpose so
+                // unchecking "Visualizer container" reliably produces a
+                // transparent banner.
                 const containerChrome = playerRegionStyle(
                   cardStyles?.visualizerContainer
                 );
@@ -1943,10 +1998,6 @@ export function PlayerView({
                   <div className="overflow-hidden" style={containerChrome}>
                     {VisualizerEl}
                   </div>
-                ) : cardStyles?.visualizerUseCardBg ? (
-                  <CardContainer cardStyles={cardStyles} className="overflow-hidden p-4">
-                    {VisualizerEl}
-                  </CardContainer>
                 ) : (
                   <div className="overflow-hidden">
                     {VisualizerEl}
@@ -2169,20 +2220,47 @@ export function PlayerView({
             </div>
             </div>{/* end transport container */}
 
-            {showPlaylist && (
-            <CardContainer
-              cardStyles={cardStyles}
-              className="backdrop-blur p-4 max-w-full overflow-hidden"
-              regionOverride={cardStyles?.playlistContainer}
-            >
-              <h3
-                id="playlist-heading"
-                className="text-lg font-semibold mb-4 ml-3"
-                style={{ color: cardStyles?.headingColor }}
-              >
-                Playlist
-              </h3>
-              <div className="flex flex-col" role="list" aria-labelledby="playlist-heading">
+            {showPlaylist && (() => {
+              // Playlist container chrome — strictly opt-in via
+              // `playlistContainerEnabled`. The legacy fallback used to
+              // paint `cardStyles.bg` whenever the override was disabled,
+              // which made the playlist render with the card background
+              // even when the designer hadn't asked for it. Now: when the
+              // region is disabled (or unset), the playlist renders as a
+              // plain transparent block with zero chrome — just the title
+              // and the rows.
+              const playlistRegion = cardStyles?.playlistContainer;
+              const containerEnabled = !!playlistRegion?.enabled;
+              const containerStyle: React.CSSProperties = containerEnabled
+                ? playerRegionStyle(playlistRegion)
+                : {};
+              // Padding only when the container is enabled — backdrop-filter
+              // is no longer baked in via a Tailwind class; it now comes from
+              // `playerRegionStyle` (theme `playlistBackdropFilter`) only,
+              // so an enabled container with no configured filter doesn't
+              // silently apply a blur.
+              const containerClass = containerEnabled
+                ? "p-4 max-w-full overflow-hidden"
+                : "max-w-full overflow-hidden";
+              return (
+                <div className={containerClass} style={containerStyle}>
+                  <h3
+                    id="playlist-heading"
+                    className="text-lg font-semibold mb-4 ml-3"
+                    style={{
+                      color:
+                        cardStyles?.playlistTitleColor ??
+                        cardStyles?.headingColor,
+                    }}
+                  >
+                    Playlist
+                  </h3>
+                  <div
+                    className="flex flex-col"
+                    role="list"
+                    aria-labelledby="playlist-heading"
+                    style={{ gap: cardStyles?.playlistGap ?? "0" }}
+                  >
                 {tracks.map((track, index) => {
                   const isCurrent = currentTrack?.id === track.id;
                   const isHovered = hoveredTrackId === track.id;
@@ -2198,6 +2276,66 @@ export function PlayerView({
                     : "";
                   const accessibleLabel = `${track.title}${track.artist ? ` by ${track.artist}` : ""}${trackStatus ? `. ${trackStatus}` : ""}`;
 
+                  // Per-state colour resolution. Theme exposes:
+                  //   • bg per state (trackBg / trackHoverBg / trackActiveBg)
+                  //     with an `*IsGradient` flag from buildCardStyles so we
+                  //     pick `background` vs `backgroundColor` below
+                  //   • title text (trackText / Hover / Active)
+                  //   • number / icon (trackNumberText / Hover / Active) —
+                  //     paints the index digit AND every glyph in the left
+                  //     control slot (loader, paused, hover play icon)
+                  //   • time text (trackTimeText / Hover / Active)
+                  //   • artist text — single value, `trackMutedText`
+                  // Each falls back through hover→normal→legacy card/accent
+                  // so themes that never set a field render exactly as before.
+                  const trackBgIsGradient = isCurrent
+                    ? cardStyles?.trackActiveBgIsGradient ?? false
+                    : isHovered
+                      ? (cardStyles?.trackHoverBg
+                          ? cardStyles?.trackHoverBgIsGradient
+                          : cardStyles?.trackBgIsGradient) ?? false
+                      : cardStyles?.trackBgIsGradient ?? false;
+                  const trackBg = isCurrent
+                    ? cardStyles?.trackActiveBg ??
+                      "color-mix(in srgb, var(--color-accent) 10%, transparent)"
+                    : isHovered
+                      ? cardStyles?.trackHoverBg ??
+                        cardStyles?.trackBg ??
+                        "transparent"
+                      : cardStyles?.trackBg ?? "transparent";
+                  const trackTextColor = isCurrent
+                    ? cardStyles?.trackActiveText ?? "var(--color-accent)"
+                    : isHovered
+                      ? cardStyles?.trackHoverText ??
+                        cardStyles?.trackText ??
+                        cardStyles?.contentColor
+                      : cardStyles?.trackText ?? cardStyles?.contentColor;
+                  const trackNumberColor = isCurrent
+                    ? cardStyles?.trackActiveNumberText ??
+                      cardStyles?.trackActiveText ??
+                      "var(--color-accent)"
+                    : isHovered
+                      ? cardStyles?.trackHoverNumberText ??
+                        cardStyles?.trackNumberText ??
+                        cardStyles?.trackMutedText ??
+                        cardStyles?.mutedColor
+                      : cardStyles?.trackNumberText ??
+                        cardStyles?.trackMutedText ??
+                        cardStyles?.mutedColor;
+                  const trackTimeColor = isCurrent
+                    ? cardStyles?.trackActiveTimeText ??
+                      cardStyles?.trackMutedText ??
+                      cardStyles?.mutedColor
+                    : isHovered
+                      ? cardStyles?.trackHoverTimeText ??
+                        cardStyles?.trackTimeText ??
+                        cardStyles?.trackMutedText ??
+                        cardStyles?.mutedColor
+                      : cardStyles?.trackTimeText ??
+                        cardStyles?.trackMutedText ??
+                        cardStyles?.mutedColor;
+                  const trackArtistColor =
+                    cardStyles?.trackMutedText ?? cardStyles?.mutedColor;
                   return (
                     <button
                       key={track.id}
@@ -2259,34 +2397,34 @@ export function PlayerView({
                       onMouseEnter={() => setHoveredTrackId(track.id)}
                       onMouseLeave={() => setHoveredTrackId(null)}
                       className="w-full max-w-full text-left py-2 pr-3 rounded-lg transition flex items-center gap-3 group cursor-pointer text-[13px] md:text-base"
-                      style={{
-                        backgroundColor: isCurrent
-                          ? "color-mix(in srgb, var(--color-accent) 10%, transparent)"
-                          : "transparent",
-                      }}
+                      style={
+                        trackBgIsGradient
+                          ? { background: trackBg }
+                          : { backgroundColor: trackBg }
+                      }
                     >
                       <div className="w-6 flex items-center justify-center shrink-0" aria-hidden="true">
                         {isCurrentLoading ? (
-                          <svg className="w-4 h-4 animate-spin" style={{ color: "var(--color-accent)" }} fill="none" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 animate-spin" style={{ color: trackNumberColor }} fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                           </svg>
                         ) : isCurrentPlaying && !isHovered ? (
-                          <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" style={{ color: trackNumberColor }} fill="currentColor" viewBox="0 0 24 24">
                             <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
                           </svg>
                         ) : isCurrentPlaying && isHovered ? (
-                          <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" style={{ color: trackNumberColor }} fill="currentColor" viewBox="0 0 24 24">
                             <path d="M6 4h4v16H6zM14 4h4v16h-4z" />
                           </svg>
                         ) : isHovered ? (
-                          <svg className="w-4 h-4" style={{ color: cardStyles?.contentColor }} fill="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" style={{ color: trackNumberColor }} fill="currentColor" viewBox="0 0 24 24">
                             <path d="M8 5v14l11-7z" />
                           </svg>
                         ) : (
                           <span
                             className="text-[13px] md:text-sm tabular-nums"
-                            style={{ color: isCurrent ? "var(--color-accent)" : cardStyles?.mutedColor }}
+                            style={{ color: trackNumberColor }}
                           >
                             {index + 1}
                           </span>
@@ -2297,32 +2435,29 @@ export function PlayerView({
                           text={track.title}
                           playing={isCurrentPlaying}
                           className="font-medium"
-                          style={{
-                            color: isCurrent
-                              ? "var(--color-accent)"
-                              : cardStyles?.contentColor,
-                          }}
+                          style={{ color: trackTextColor }}
                         />
                         {track.artist && track.artist !== "" && (
                           <p
                             className="text-[13px] md:text-sm truncate max-w-full"
-                            style={{ color: cardStyles?.mutedColor }}
+                            style={{ color: trackArtistColor }}
                           >
                             {track.artist}
                           </p>
                         )}
                       </div>
                       {track.duration && track.duration > 0 && (
-                        <span className="text-[13px] md:text-sm shrink-0" style={{ color: cardStyles?.mutedColor }}>
+                        <span className="text-[13px] md:text-sm shrink-0" style={{ color: trackTimeColor }}>
                           {formatTime(track.duration)}
                         </span>
                       )}
                     </button>
                   );
                 })}
-              </div>
-            </CardContainer>
-            )}
+                  </div>
+                </div>
+              );
+            })()}
 
             {technicalInfo && (technicalInfo.title || technicalInfo.content) && (
               <CardContainer cardStyles={cardStyles} className="backdrop-blur p-4">

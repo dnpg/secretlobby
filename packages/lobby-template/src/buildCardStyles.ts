@@ -28,14 +28,42 @@ import type { CardStyles, PlayerRegionStyle } from "./PlayerView";
 
 type Drafts = Map<string, Solid | Gradient | SwatchRef>;
 
+// Resolve a playlist track-row background pair (`<state>BgRich` + legacy
+// hex string) into a `{ bg, isGradient }` slice the caller can splat into
+// per-state CardStyles fields.
+//
+// - Rich set → run through `colorPartToCSS` (handles solid + gradient +
+//   swatch-ref), and detect "is a gradient string" by sniffing the result.
+// - Rich missing → pass the legacy hex through and mark `isGradient` false.
+// - Both missing → leave `bg` undefined so PlayerView falls back to its
+//   hard-coded transparent / accent-mix defaults at the render site.
+function resolveTrackBg(
+  rich: ThemeBackgroundColor | undefined,
+  legacy: string | undefined,
+  swatches: ThemeSwatch[] | undefined,
+  drafts: Drafts | undefined
+): { bg: string | undefined; isGradient: boolean } {
+  if (rich) {
+    const css = colorPartToCSS(rich, swatches, drafts);
+    return {
+      bg: css,
+      isGradient: /(linear|radial|conic)-gradient\(/i.test(css),
+    };
+  }
+  return { bg: legacy, isGradient: false };
+}
+
 // Build a single region's chrome (bg + backdrop-filter + border + border-radius).
 // `enabled` is the master toggle — PlayerView's `playerRegionStyle()` reads
 // this and skips every other field when false, so callers can always emit a
 // full PlayerRegionStyle without conditional fallbacks.
+//
+// `bg` is opt-in: pass `undefined` to render the region with no background
+// fill (border/radius still apply). This keeps "I enabled the container
+// but didn't pick a color" from silently painting a default solid color.
 function buildRegionStyle(args: {
   enabled: boolean | undefined;
   bg: ThemeBackgroundColor | undefined;
-  bgFallback: ThemeBackgroundColor;
   bgIsGradientOverride?: boolean;
   backdropFilter: Parameters<typeof backdropFilterToCSS>[0];
   borderRadius: PlayerRegionStyle["borderRadius"] | undefined;
@@ -47,11 +75,13 @@ function buildRegionStyle(args: {
   swatches: ThemeSwatch[] | undefined;
   drafts: Drafts | undefined;
 }): PlayerRegionStyle {
-  const bgPart = args.bg ?? args.bgFallback;
-  const bg = colorPartToCSS(bgPart, args.swatches, args.drafts);
+  const bg =
+    args.bg !== undefined
+      ? colorPartToCSS(args.bg, args.swatches, args.drafts)
+      : undefined;
   const bgIsGradient =
-    args.bgIsGradientOverride ??
-    /(linear|radial|conic)-gradient\(/i.test(bg);
+    bg !== undefined &&
+    (args.bgIsGradientOverride ?? /(linear|radial|conic)-gradient\(/i.test(bg));
   return {
     enabled: args.enabled ?? false,
     bg,
@@ -72,6 +102,24 @@ export function buildCardStyles(
   const bg = getCardBgCSS(theme, swatches, drafts);
   const border = getCardBorderCSS(theme);
   const borderWidth = normalizeCSSValue(theme.cardBorderWidth, "1px");
+  const trackBgResolved = resolveTrackBg(
+    theme.trackBgRich,
+    theme.trackBg,
+    swatches,
+    drafts
+  );
+  const trackHoverBgResolved = resolveTrackBg(
+    theme.trackHoverBgRich,
+    theme.trackHoverBg,
+    swatches,
+    drafts
+  );
+  const trackActiveBgResolved = resolveTrackBg(
+    theme.trackActiveBgRich,
+    theme.trackActiveBg,
+    swatches,
+    drafts
+  );
   return {
     bg,
     bgIsGradient: theme.cardBgType === "gradient",
@@ -99,11 +147,6 @@ export function buildCardStyles(
     playerContainer: buildRegionStyle({
       enabled: theme.playerContainerEnabled,
       bg: theme.playerBg,
-      bgFallback: {
-        type: "solid",
-        color: theme.cardBgColor || "#111827",
-        opacity: 100,
-      },
       backdropFilter: theme.playerBackdropFilter,
       borderRadius: theme.playerBorderRadius,
       borderRadiusFallback: theme.cardBorderRadius ?? 12,
@@ -116,12 +159,19 @@ export function buildCardStyles(
     }),
     visualizerContainer: buildRegionStyle({
       enabled: theme.visualizerContainerEnabled,
-      bg: {
-        type: "solid",
-        color: theme.visualizerBg || "#111827",
-        opacity: theme.visualizerBgOpacity ?? 100,
-      },
-      bgFallback: { type: "solid", color: "#111827", opacity: 100 },
+      // visualizerBg is stored as `string + opacity` rather than the
+      // structured `ThemeBackgroundColor` the other regions use. Only
+      // promote it into a bg fill when the user actually dialed the
+      // opacity above 0 — otherwise pass undefined so the container
+      // renders without a default `#111827` fill.
+      bg:
+        (theme.visualizerBgOpacity ?? 0) > 0 && theme.visualizerBg
+          ? {
+              type: "solid",
+              color: theme.visualizerBg,
+              opacity: theme.visualizerBgOpacity ?? 100,
+            }
+          : undefined,
       backdropFilter: theme.visualizerBackdropFilter,
       borderRadius: theme.visualizerBorderRadius,
       borderRadiusFallback: 8,
@@ -135,7 +185,6 @@ export function buildCardStyles(
     transportContainer: buildRegionStyle({
       enabled: theme.transportContainerEnabled,
       bg: theme.transportBg,
-      bgFallback: { type: "solid", color: "#000000", opacity: 0 },
       backdropFilter: theme.transportBackdropFilter,
       borderRadius: theme.transportBorderRadius,
       borderRadiusFallback: 8,
@@ -149,7 +198,6 @@ export function buildCardStyles(
     playlistContainer: buildRegionStyle({
       enabled: theme.playlistContainerEnabled,
       bg: theme.playlistBg,
-      bgFallback: { type: "solid", color: "#1f2937", opacity: 0 },
       backdropFilter: theme.playlistBackdropFilter,
       borderRadius: theme.playlistBorderRadius,
       borderRadiusFallback: 8,
@@ -200,5 +248,38 @@ export function buildCardStyles(
     skipButtonBorderWidth: theme.skipButtonBorderWidth,
     skipButtonBorderColor: theme.skipButtonBorderColor,
     skipButtonBorderStyle: theme.skipButtonBorderStyle,
+
+    // Track-row colors. Text-only fields pass straight through; PlayerView
+    // resolves the per-state fallback chain (e.g. trackHoverText → trackText
+    // → contentColor) at the render site so legacy themes without any of
+    // these set keep rendering exactly as before.
+    //
+    // Backgrounds: each state's `track*BgRich` is resolved via colorPartToCSS
+    // when set (gradient or solid) and the matching `*BgIsGradient` flag
+    // tells PlayerView whether to write the CSS into `background:` (gradient)
+    // or `backgroundColor:` (solid). When the Rich field is absent the
+    // legacy hex string is passed through unchanged.
+    trackBg: trackBgResolved.bg,
+    trackBgIsGradient: trackBgResolved.isGradient,
+    trackHoverBg: trackHoverBgResolved.bg,
+    trackHoverBgIsGradient: trackHoverBgResolved.isGradient,
+    trackActiveBg: trackActiveBgResolved.bg,
+    trackActiveBgIsGradient: trackActiveBgResolved.isGradient,
+    trackText: theme.trackText,
+    trackMutedText: theme.trackMutedText,
+    trackNumberText: theme.trackNumberText,
+    trackTimeText: theme.trackTimeText,
+    trackHoverText: theme.trackHoverText,
+    trackHoverNumberText: theme.trackHoverNumberText,
+    trackHoverTimeText: theme.trackHoverTimeText,
+    trackActiveText: theme.trackActiveText,
+    trackActiveNumberText: theme.trackActiveNumberText,
+    trackActiveTimeText: theme.trackActiveTimeText,
+
+    // Playlist chrome — pass-through. PlayerView applies the gap as a CSS
+    // `gap` on the track-list flexbox, and the title color falls back to
+    // `headingColor` at the render site.
+    playlistGap: theme.playlistGap,
+    playlistTitleColor: theme.playlistTitleColor,
   };
 }

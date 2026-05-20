@@ -114,10 +114,13 @@ export function PlayerBlockView({
       isDesignerMode={isDesignerMode}
       // Content-driven knobs. The defaults match PlayerView's own defaults
       // so a persisted block with these fields unset still paints the full
-      // hero / visualiser / playlist combo.
+      // hero / visualiser / playlist combo. `autoplay` defaults to FALSE
+      // so a block author has to explicitly opt in — matches the page-
+      // builder UI which exposes autoplay as an off-by-default checkbox.
       variant={content.variant ?? "full"}
       showVisualizer={content.showVisualizer ?? true}
       showPlaylist={content.showPlaylist ?? true}
+      autoplay={content.autoplay ?? false}
     />
   );
 }

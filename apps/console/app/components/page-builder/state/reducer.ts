@@ -97,6 +97,13 @@ export interface PageBuilderState {
   // autosave independently of the layout + theme channels.
   loginPage: LoginPageSettings;
   loginLogoImageUrl: string | null;
+  /** Intrinsic dimensions of the picked logo media — staged into state so
+   *  the canvas preview can pass `width`/`height` attrs onto the rendered
+   *  `<img>` for aspect-ratio anchoring. Both null when no logo is set or
+   *  the picked media didn't have dimensions (e.g. legacy SVG without
+   *  recorded width/height). */
+  loginLogoImageWidth: number | null;
+  loginLogoImageHeight: number | null;
   loginPageDirty: boolean;
   loginPageSaveStatus: SaveStatus;
   loginPageLastSavedAt: number | null;
@@ -334,7 +341,12 @@ export type PageBuilderAction =
   // the freshly-uploaded URL so the canvas preview refreshes without a
   // loader round-trip.
   | { type: "updateLoginPage"; partial: Partial<LoginPageSettings> }
-  | { type: "setLoginLogoImageUrl"; url: string | null }
+  | {
+      type: "setLoginLogoImageUrl";
+      url: string | null;
+      width?: number | null;
+      height?: number | null;
+    }
   | {
       type: "setLoginPageSaveStatus";
       status: SaveStatus;
@@ -1455,7 +1467,16 @@ export function pageBuilderReducer(
       break;
     }
     case "setLoginLogoImageUrl": {
-      next = { ...state, loginLogoImageUrl: action.url };
+      next = {
+        ...state,
+        loginLogoImageUrl: action.url,
+        // Dimensions are optional on the action: when the caller hands them
+        // in (MediaPicker selection has them), stage them too; when not
+        // (e.g. the URL was set without a fresh media pick), clear them so
+        // we don't leave stale numbers attached to a different logo.
+        loginLogoImageWidth: action.width ?? null,
+        loginLogoImageHeight: action.height ?? null,
+      };
       break;
     }
     case "setLoginPageSaveStatus": {

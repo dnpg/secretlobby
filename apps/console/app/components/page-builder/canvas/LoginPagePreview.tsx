@@ -13,7 +13,11 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "@secretlobby/ui";
-import { LoginAutoplayToggle, LoginPanel } from "@secretlobby/lobby-template";
+import {
+  LoginAutoplayToggle,
+  LoginPanel,
+  SecretLobbyFooter,
+} from "@secretlobby/lobby-template";
 import { generateThemeCSS } from "~/lib/theme";
 import { useSwatches } from "../PageBuilderRoot";
 import { usePageBuilder } from "../state/provider";
@@ -21,7 +25,14 @@ import { VIEWPORT_WIDTHS } from "../state/helpers";
 
 export function LoginPagePreview() {
   const { state } = usePageBuilder();
-  const { theme, viewport, loginPage, loginLogoImageUrl } = state;
+  const {
+    theme,
+    viewport,
+    loginPage,
+    loginLogoImageUrl,
+    loginLogoImageWidth,
+    loginLogoImageHeight,
+  } = state;
   const { swatches, drafts } = useSwatches();
   // Designer-facing toggle for the "Music will play automatically" preview.
   // Defaults to `true` to match the published lobby's initial state (see
@@ -68,6 +79,8 @@ export function LoginPagePreview() {
           <LoginPanel
             settings={loginPage}
             logoImageUrl={loginLogoImageUrl}
+            logoImageWidth={loginLogoImageWidth}
+            logoImageHeight={loginLogoImageHeight}
             preview
             belowPanel={
               <LoginAutoplayToggle
@@ -77,6 +90,7 @@ export function LoginPagePreview() {
               />
             }
           />
+          <SecretLobbyFooter />
         </div>
       </div>
     );
@@ -102,8 +116,11 @@ export function LoginPagePreview() {
         <LoginPanel
           settings={loginPage}
           logoImageUrl={loginLogoImageUrl}
+          logoImageWidth={loginLogoImageWidth}
+          logoImageHeight={loginLogoImageHeight}
           preview
         />
+        <SecretLobbyFooter />
       </div>
     </div>
   );

@@ -159,8 +159,6 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
 
     const dataArray = new Uint8Array(bufferLength);
 
-    const bgColor = getThemeColor(canvas, "--color-visualizer-bg", "#111827");
-    const bgOpacity = parseFloat(getThemeColor(canvas, "--color-visualizer-bg-opacity", "0")) || 0;
     const barColor = getThemeColor(canvas, "--color-visualizer-bar", "#ffffff");
     const barAltColor = getThemeColor(canvas, "--color-visualizer-bar-alt", "#9ca3af");
     const glowColor = getThemeColor(canvas, "--color-visualizer-glow", "#ffffff");
@@ -175,12 +173,12 @@ export function AudioVisualizer({ audioElement, isPlaying, borderShow, borderCol
     const barWidth = canvas.width / (halfBars * 2);
     const centerY = canvas.height / 2;
 
+    // The visualizer canvas no longer paints its own background. The wrapping
+    // `visualizerContainer` chrome owns the bg fill when the designer opted
+    // in via the theme, so painting one here would double-up the color. A
+    // bare `clearRect` keeps the canvas fully transparent between frames.
     function clear() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (bgOpacity > 0) {
-        ctx.fillStyle = hexToRgba(bgColor, bgOpacity);
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
     }
 
     function drawBars(data: Uint8Array) {

@@ -72,6 +72,15 @@ export function PlayerBlockSettings({
     content.playlistId && playlists.some((p) => p.id === content.playlistId)
       ? content.playlistId
       : defaultPlaylistId;
+  const effectivePlaylist = playlists.find((p) => p.id === effectivePlaylistId);
+  // Guard against a stale `autoplayTrackId` whose track was removed from the
+  // playlist (or whose playlist changed) — the dropdown should show "First
+  // track" rather than a dead value.
+  const effectiveAutoplayTrackId =
+    content.autoplayTrackId &&
+    effectivePlaylist?.tracks.some((t) => t.id === content.autoplayTrackId)
+      ? content.autoplayTrackId
+      : "";
 
   // Look up the lobby id from the active playlist so the "Manage playlists"
   // link points back to /lobby/{id}/playlists/{playlistId}. We don't have the
@@ -102,7 +111,16 @@ export function PlayerBlockSettings({
           <select
             id={`player-${blockId}-playlist`}
             value={effectivePlaylistId}
-            onChange={(e) => onUpdate({ playlistId: e.target.value })}
+            onChange={(e) =>
+              onUpdate({
+                playlistId: e.target.value,
+                // Reset the per-block autoplay-track when the playlist
+                // changes — the old track id almost certainly belongs to a
+                // different playlist now and would silently fall back to
+                // the first track anyway.
+                autoplayTrackId: undefined,
+              })
+            }
             className="w-full px-2 py-2 text-sm rounded-lg border border-theme bg-theme-secondary text-theme-primary cursor-pointer"
           >
             {playlists.map((p) => (
@@ -166,11 +184,52 @@ export function PlayerBlockSettings({
           <input
             type="checkbox"
             checked={content.autoplay}
-            onChange={(e) => onUpdate({ autoplay: e.target.checked })}
+            onChange={(e) =>
+              onUpdate({
+                autoplay: e.target.checked,
+                // Drop the chosen autoplay track when autoplay is turned
+                // off so re-enabling later starts from "First track" again
+                // rather than silently restoring a stale selection.
+                ...(e.target.checked ? {} : { autoplayTrackId: undefined }),
+              })
+            }
             className="accent-[var(--color-brand-red)]"
           />
           <span className="text-sm text-theme-secondary">Autoplay</span>
         </label>
+        {content.autoplay && (
+          <div className="pl-6">
+            <label
+              htmlFor={`player-${blockId}-autoplay-track`}
+              className="block text-xs text-theme-secondary mb-1"
+            >
+              Autoplay track
+            </label>
+            {effectivePlaylist && effectivePlaylist.tracks.length > 0 ? (
+              <select
+                id={`player-${blockId}-autoplay-track`}
+                value={effectiveAutoplayTrackId}
+                onChange={(e) =>
+                  onUpdate({
+                    autoplayTrackId: e.target.value || undefined,
+                  })
+                }
+                className="w-full px-2 py-2 text-sm rounded-lg border border-theme bg-theme-secondary text-theme-primary cursor-pointer"
+              >
+                <option value="">First track</option>
+                {effectivePlaylist.tracks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-theme-secondary">
+                Add tracks to this playlist to choose an autoplay track.
+              </p>
+            )}
+          </div>
+        )}
       </div>
       {/* Theme — global player theme, with a per-player override toggle.
           The accordion chrome + override toggle live in

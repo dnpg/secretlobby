@@ -657,22 +657,46 @@ export interface ThemeSettings {
   playlistBorderColor?: string;
   playlistBorderStyle?: BorderStyle;
   playlistBorderRadius?: BorderRadius;
+  /** CSS length applied as the `gap` on the playlist's track list — e.g.
+   *  `"8px"`, `"0.5rem"`. Defaults to `"0"` (tracks butt up against each
+   *  other) when unset, matching the pre-this-field render. */
+  playlistGap?: string;
+  /** Color of the "Playlist" title above the track list. Defaults to the
+   *  card heading color when unset so existing themes keep their look. */
+  playlistTitleColor?: string;
 
   // Track rows — three states (normal / hover / active). Each state owns a
-  // background fill and a text color. `trackMutedText` paints the
-  // secondary text (artist, duration) regardless of state; today the
-  // renderer uses `cardMutedColor` for this, but giving it its own field
-  // lets a designer dim/brighten the secondary text without touching the
-  // global card theme. Hex strings (not the rich ThemeBackgroundColor)
-  // because track bgs are flat, single-color surfaces in the current
-  // PlayerView design — a gradient on a 40px row would be noisy.
+  // background fill and a text color. `trackMutedText` paints the artist
+  // line; the track number and duration text have their own state-aware
+  // fields below.
+  //
+  // Backgrounds: each state's `track*Bg` is the legacy hex string and the
+  // matching `track*BgRich` is the optional rich (solid/gradient/swatch-ref)
+  // upgrade — same `*Rich` pattern as `cardHeadingColorRich`. Consumers
+  // prefer the Rich field when set so a designer can drop a gradient onto
+  // a track row; legacy lobby JSON without the Rich field keeps reading the
+  // flat hex and rendering exactly as before.
   trackBg?: string;
+  trackBgRich?: ThemeBackgroundColor;
   trackText?: string;
   trackMutedText?: string;
+  /** Per-state color for the track number / play-state icons (loader,
+   *  paused icon, "1.", "2."). Falls back to `trackMutedText` (then
+   *  `cardMutedColor`) when unset. */
+  trackNumberText?: string;
+  /** Per-state color for the track duration text. Falls back to
+   *  `trackMutedText` (then `cardMutedColor`) when unset. */
+  trackTimeText?: string;
   trackHoverBg?: string;
+  trackHoverBgRich?: ThemeBackgroundColor;
   trackHoverText?: string;
+  trackHoverNumberText?: string;
+  trackHoverTimeText?: string;
   trackActiveBg?: string;
+  trackActiveBgRich?: ThemeBackgroundColor;
   trackActiveText?: string;
+  trackActiveNumberText?: string;
+  trackActiveTimeText?: string;
 
   // Card settings
   cardHeadingColor: string;
@@ -1216,6 +1240,46 @@ export function colorPartToCSS(
 }
 
 /**
+ * Optional URL transformer used by `backgroundToCSS` when emitting an
+ * `image-set(...)` for background images. Same shape as the
+ * `transformUrl` returned by `useImageTransform` in `@secretlobby/ui`, but
+ * declared locally here so this package stays UI-independent.
+ *
+ * When supplied, the function is called with the source URL plus a target
+ * `width` (in CSS pixels at the relevant DPR) so the caller can hand back
+ * a variant URL appropriate for that resolution.
+ */
+export type BackgroundImageTransform = (
+  src: string,
+  options: { width: number }
+) => string;
+
+/**
+ * Default DPR-keyed widths the `image-set()` builder emits for layered
+ * background images. 1x targets a full-HD desktop and 2x targets a 4K /
+ * retina-desktop, so even mobile DPR-2 displays still pull a sharp asset.
+ * Exported so callers (and tests) can sanity-check the shape if needed.
+ */
+export const BACKGROUND_IMAGE_SET_WIDTHS: { dpr: number; width: number }[] = [
+  { dpr: 1, width: 1920 },
+  { dpr: 2, width: 3840 },
+];
+
+function buildImageSet(
+  src: string,
+  transform: BackgroundImageTransform
+): string {
+  // Build the comma-separated `image-set()` entries. JSON.stringify safe-
+  // quotes each URL so a query string with parens/quotes can't break out
+  // of the `url(...)` token.
+  const entries = BACKGROUND_IMAGE_SET_WIDTHS.map(({ dpr, width }) => {
+    const variantUrl = transform(src, { width });
+    return `url(${JSON.stringify(variantUrl)}) ${dpr}x`;
+  }).join(", ");
+  return `image-set(${entries})`;
+}
+
+/**
  * Render a layered `ThemeBackground` (`{ color, image? }`) as a CSS string
  * suitable for the `background:` shorthand. Always emits the color layer;
  * when `bg.image` is set the image (and optional dimming overlay) are
@@ -1228,17 +1292,25 @@ export function colorPartToCSS(
  *
  * `drafts` carries session-local, in-progress swatch edits — see
  * `resolveThemeSwatchRef` for the recursion-cap rule.
+ *
+ * `transformUrl` is an optional adapter — when supplied the image layer is
+ * emitted as `image-set(url(...@1x) 1x, url(...@2x) 2x)` so the browser
+ * picks the right variant per device pixel ratio. Without it we fall back
+ * to a plain `url(...)` so the function stays UI-package independent.
  */
 export function backgroundToCSS(
   bg: ThemeBackground,
   swatches?: ThemeSwatch[],
-  drafts?: Map<string, Solid | Gradient | SwatchRef>
+  drafts?: Map<string, Solid | Gradient | SwatchRef>,
+  transformUrl?: BackgroundImageTransform
 ): string {
   const colorCSS = colorPartToCSS(bg.color, swatches, drafts);
   if (!bg.image) return colorCSS;
   // JSON.stringify safe-quotes the URL so embedded quotes/parens can't break
   // out of the `url(...)` token.
-  const imgUrl = `url(${JSON.stringify(bg.image.mediaUrl)})`;
+  const imgUrl = transformUrl
+    ? buildImageSet(bg.image.mediaUrl, transformUrl)
+    : `url(${JSON.stringify(bg.image.mediaUrl)})`;
   const overlay = bg.image.overlay && bg.image.overlay.opacity > 0
     ? (() => {
         const rgba = hexToRgba(
@@ -1646,14 +1718,15 @@ function darkenBackgroundColor(
 export function generateThemeCSS(
   theme: ThemeSettings,
   swatches?: ThemeSwatch[],
-  drafts?: Map<string, Solid | Gradient | SwatchRef>
+  drafts?: Map<string, Solid | Gradient | SwatchRef>,
+  transformUrl?: BackgroundImageTransform
 ): string {
   const colorScheme = theme.colorMode === "light" ? "light" : "dark";
   // Normalize defensively — `theme.background` should already be the layered
   // shape, but legacy persisted JSON may still be in a single-variant form
   // when read straight from settings without going through the normalizer.
   const bg: ThemeBackground = normalizeThemeBackground(theme);
-  const bgCSS = backgroundToCSS(bg, swatches, drafts);
+  const bgCSS = backgroundToCSS(bg, swatches, drafts, transformUrl);
 
   // Auxiliary image-bg vars. Always emitted (with sensible defaults for the
   // non-image case) so consumer CSS doesn't have to special-case on type.
@@ -1855,9 +1928,10 @@ export function generateThemeCSS(
 export function generateThemeCSSVars(
   theme: ThemeSettings,
   swatches?: ThemeSwatch[],
-  drafts?: Map<string, Solid | Gradient | SwatchRef>
+  drafts?: Map<string, Solid | Gradient | SwatchRef>,
+  transformUrl?: BackgroundImageTransform
 ): Record<string, string> {
-  const css = generateThemeCSS(theme, swatches, drafts);
+  const css = generateThemeCSS(theme, swatches, drafts, transformUrl);
   const result: Record<string, string> = {};
   for (const decl of css.split(";")) {
     const trimmed = decl.trim();
