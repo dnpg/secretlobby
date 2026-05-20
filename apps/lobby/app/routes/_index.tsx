@@ -28,10 +28,12 @@ import {
   LoginAutoplayToggle,
   LoginPanel,
   LogoutButton,
+  setAnalyticsContext,
   StandalonePlayerBlock,
   PreviewBar,
   SectionView,
   SecretLobbyFooter,
+  trackEvent,
   type ImageUrls,
   type LoginPageSettings,
   type PlayerBlockContent,
@@ -39,24 +41,6 @@ import {
   type SocialLinksSettings,
   type Track,
 } from "@secretlobby/lobby-template";
-
-/**
- * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
- */
-function trackEvent(eventName: string, params: Record<string, any>) {
-  // Track with Google Analytics (gtag)
-  if (typeof (window as any).gtag === 'function') {
-    (window as any).gtag('event', eventName, params);
-  }
-
-  // Track with Google Tag Manager (dataLayer)
-  if (Array.isArray((window as any).dataLayer)) {
-    (window as any).dataLayer.push({
-      event: eventName,
-      ...params,
-    });
-  }
-}
 
 // PlayerView image-urls payload for the page-builder render path. The
 // banner / background / profile images live on the lobby record but in
@@ -814,6 +798,31 @@ export default function LobbyIndex() {
   // plays at a time across the entire page.
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
+
+  // Register the first-party analytics context BEFORE any other useEffect
+  // fires trackEvent. The login/logout-transition effect below depends on
+  // the context being set (otherwise its events would be dropped by the
+  // beacon path). The accountId is left null on the client and stamped by
+  // the ingest endpoint from a Lobby lookup — keeps the client lighter and
+  // prevents per-tenant spoofing once Phase-2 customer dashboards land.
+  useEffect(() => {
+    const lobbyId = data.lobby?.id ?? null;
+    if (!lobbyId) return;
+    setAnalyticsContext({ lobbyId, accountId: null });
+  }, [data.lobby?.id]);
+
+  // Fire `lobby_password_view` whenever the visitor lands on (or returns to)
+  // the password gate. This is the entry-point event for the "how many
+  // people reached the gate vs. actually got in?" funnel. Deliberately
+  // re-fires on logout → password-page returns since that's a fresh attempt
+  // from the visitor's perspective.
+  useEffect(() => {
+    if (!data.requiresPassword) return;
+    trackEvent('lobby_password_view', {
+      event_category: 'lobby_entry',
+      lobby_id: data.lobby?.id,
+    });
+  }, [data.requiresPassword, data.lobby?.id]);
 
   // Apply body background from theme settings
   useEffect(() => {

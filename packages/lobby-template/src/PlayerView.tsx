@@ -10,6 +10,7 @@ import { AudioVisualizer } from "./AudioVisualizer";
 import { WaveformProgress } from "./WaveformProgress";
 import { usePcmAnalyser } from "./usePcmAnalyser";
 import { SocialLinks, type SocialLinksSettings } from "./SocialLinks";
+import { trackEvent } from "./analytics";
 
 const logger = createLogger({ service: "lobby:player" });
 
@@ -96,21 +97,6 @@ function TrackTitle({ text, playing, className, style }: TrackTitleProps) {
       )}
     </span>
   );
-}
-
-/**
- * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
- */
-function trackEvent(eventName: string, params: Record<string, any>) {
-  if (typeof (window as any).gtag === 'function') {
-    (window as any).gtag('event', eventName, params);
-  }
-  if (Array.isArray((window as any).dataLayer)) {
-    (window as any).dataLayer.push({
-      event: eventName,
-      ...params,
-    });
-  }
 }
 
 export interface Track {

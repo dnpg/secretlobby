@@ -826,3 +826,69 @@ model FeedbackAttachment {
 
   @@index([feedbackId])
 }
+
+// ============================================================================
+// ANALYTICS EVENT (First-party lobby event ingest)
+// ============================================================================
+// Stores raw events emitted by the lobby template's trackEvent helper.
+// Dual-fires alongside the customer's GA/GTM (independent destinations).
+// Phase-1 is internal-only; lobbyId + accountId are denormalized into every
+// row so per-account queries don't need joins when customer dashboards
+// land in Phase-2.
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  // Server-stamped time-of-ingest. Always present; primary sort key.
+  occurredAt DateTime @default(now())
+  // Browser-side timestamp the client claimed when emitting the event;
+  // optional and unreliable, kept for ordering bursts within a session.
+  clientTs   DateTime?
+
+  // Lobby / Account attribution — server-stamped on insert from a Lobby
+  // lookup. Client-supplied lobbyId is trusted only until Phase-2 (customer
+  // dashboards), at which point the server enforces it from the request's
+  // tenant context.
+  accountId  String?
+  lobbyId    String?
+
+  // First-party visitor / session identifiers, set in HttpOnly cookies
+  // (sl_visitor: 1y, sl_session: 30min sliding). Always present from the
+  // ingest endpoint — even the first hit mints both.
+  sessionId  String
+  visitorId  String
+
+  // Optional logged-in lobby user (post password-gate); null for anonymous.
+  userId     String?
+
+  // Event type — short string, e.g. "lobby_password_view", "login",
+  // "audio_play", "audio_complete", "track_click". Kept open so new event
+  // types don't need a migration.
+  eventType  String
+
+  // Optional track scope — set when the event is per-track (audio_play,
+  // audio_complete, etc.).
+  trackId    String?
+
+  // Request context, server-stamped.
+  path       String?
+  referrer   String?
+  userAgent  String?
+  // ISO-3166 country derived from cf-ipcountry (or equivalent) header at
+  // ingest time. Never derived from external GeoIP calls on the hot path.
+  country    String?
+
+  // Free-form per-event payload (originally the second arg to trackEvent).
+  properties Json     @default("{}")
+
+  // Indexes:
+  //  - (accountId, occurredAt): account-scoped time-range queries
+  //  - (lobbyId, eventType, occurredAt): per-lobby, per-event timelines
+  //    (most common dashboard query shape)
+  //  - sessionId / visitorId: session reconstruction & distinct counts
+  //  - occurredAt: cold archive cursor (Phase-3 export-then-delete)
+  @@index([accountId, occurredAt])
+  @@index([lobbyId, eventType, occurredAt])
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([occurredAt])
+}

@@ -35,25 +35,7 @@
 // =============================================================================
 
 import { Form } from "react-router";
-
-// Helper function to track events in both Google Analytics (gtag) and Google
-// Tag Manager (dataLayer). Mirrors the implementation in PlayerView — kept
-// local so this file has no dependency on PlayerView's internals.
-function trackEvent(eventName: string, params: Record<string, unknown>) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (typeof (window as any).gtag === "function") {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).gtag("event", eventName, params);
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (Array.isArray((window as any).dataLayer)) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).dataLayer.push({
-      event: eventName,
-      ...params,
-    });
-  }
-}
+import { trackEvent } from "./analytics";
 
 export interface LogoutButtonProps {
   /** Required when `preview` is false — the real button posts this back to

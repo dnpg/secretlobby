@@ -1,23 +1,6 @@
 import { useRef, useEffect } from "react";
 import { BRAND_ICONS, MONO_ICONS, type SocialPlatform } from "./SocialIcons";
-
-/**
- * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
- */
-function trackEvent(eventName: string, params: Record<string, any>) {
-  // Track with Google Analytics (gtag)
-  if (typeof (window as any).gtag === 'function') {
-    (window as any).gtag('event', eventName, params);
-  }
-
-  // Track with Google Tag Manager (dataLayer)
-  if (Array.isArray((window as any).dataLayer)) {
-    (window as any).dataLayer.push({
-      event: eventName,
-      ...params,
-    });
-  }
-}
+import { trackEvent } from "./analytics";
 
 export interface SocialLink {
   platform: string;

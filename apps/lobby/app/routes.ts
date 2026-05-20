@@ -25,4 +25,8 @@ export default [
 
   // Admin API for clearing in-memory rate limits
   route("api/clear-rate-limit/:ipAddress", "routes/api.clear-rate-limit.$ipAddress.ts"),
+
+  // First-party analytics ingest (POST). Same-origin beacon target for the
+  // lobby template's trackEvent helper.
+  route("api/event", "routes/api.event.ts"),
 ] satisfies RouteConfig;

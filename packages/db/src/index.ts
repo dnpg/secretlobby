@@ -25,6 +25,7 @@ export type {
   EmailTemplate,
   Feedback,
   FeedbackAttachment,
+  AnalyticsEvent,
 } from "./generated/client/client.js";
 
 // Re-export enums

@@ -72,6 +72,11 @@ export {
   SecretLobbyFooter,
   type SecretLobbyFooterProps,
 } from "./SecretLobbyFooter";
+export {
+  trackEvent,
+  setAnalyticsContext,
+  type TrackEventParams,
+} from "./analytics";
 
 // Layout views — pure, view-only renderers for the page-builder's section /
 // column primitives. The lobby uses these directly to render
