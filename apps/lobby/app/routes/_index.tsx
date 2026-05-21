@@ -158,7 +158,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     return {
       isLocalhost: true,
       content,
-      lobby: null,
+      // Synthetic lobby for localhost dev so the analytics beacon has a
+      // stable identifier to ship — matches the "localhost-lobby" sentinel
+      // already used by the action handler's rate-limit calls (line ~704).
+      lobby: {
+        id: "localhost-lobby",
+        title: null as string | null,
+        description: null as string | null,
+        hasPassword: false,
+      },
       account: null,
       requiresPassword: !isAuthenticated,
       isAuthenticated,

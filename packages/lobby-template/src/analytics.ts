@@ -41,6 +41,17 @@ declare global {
 
 const DEFAULT_ENDPOINT = "/api/event";
 
+let contextMissingWarned = false;
+function warnContextMissingOnce(): void {
+  if (contextMissingWarned) return;
+  contextMissingWarned = true;
+  if (typeof console !== "undefined" && typeof console.warn === "function") {
+    console.warn(
+      "[secretlobby/analytics] trackEvent fired before setAnalyticsContext — sending unattributed beacon. Wire setAnalyticsContext({ lobbyId, accountId }) on mount.",
+    );
+  }
+}
+
 /**
  * Register the analytics context (lobbyId + accountId) for this page.
  * The lobby app calls this once on mount with whatever the loader returned.
@@ -85,23 +96,42 @@ export function trackEvent(eventName: string, params: TrackEventParams = {}): vo
     }
   }
 
-  // 3) Our first-party beacon. Only fires if the lobby has registered a
-  //    context with setAnalyticsContext — without that we don't know which
-  //    lobby the event belongs to, so we drop on the floor rather than ship
-  //    an unattributable row.
-  if (!ctx) return;
+  // 3) Our first-party beacon. We send even when the page hasn't yet
+  //    called setAnalyticsContext — better to ship an unattributed event
+  //    (lobbyId/accountId null) than to silently drop telemetry because of
+  //    a wiring bug. The dashboard can filter null lobbyIds out.
+  if (!ctx) {
+    warnContextMissingOnce();
+  }
+
+  // Lift `track_id` / `trackId` out of params into the top-level beacon
+  // field — keeps the AnalyticsEvent.trackId column populated for the
+  // dashboard's per-track aggregations without forcing every call site to
+  // know the column name. The lifted value is removed from `properties` to
+  // avoid storing the same string twice in the row.
+  const liftedTrackId =
+    (params["track_id"] as string | undefined) ??
+    (params["trackId"] as string | undefined) ??
+    null;
+  let properties: TrackEventParams = params;
+  if (liftedTrackId && ("track_id" in params || "trackId" in params)) {
+    properties = { ...params };
+    delete (properties as Record<string, unknown>)["track_id"];
+    delete (properties as Record<string, unknown>)["trackId"];
+  }
 
   const payload = {
     eventType: eventName,
-    lobbyId: ctx.lobbyId,
-    accountId: ctx.accountId,
+    lobbyId: ctx?.lobbyId ?? null,
+    accountId: ctx?.accountId ?? null,
+    trackId: liftedTrackId,
     clientTs: new Date().toISOString(),
     path: window.location.pathname,
     referrer: typeof document !== "undefined" ? document.referrer || null : null,
-    properties: params,
+    properties,
   };
 
-  const endpoint = ctx.endpoint || DEFAULT_ENDPOINT;
+  const endpoint = ctx?.endpoint || DEFAULT_ENDPOINT;
   const body = JSON.stringify(payload);
 
   try {
