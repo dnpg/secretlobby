@@ -1,6 +1,7 @@
-// Aggregation queries for the super-admin analytics dashboard. Both the
-// overview and the per-lobby drill-down call `getAnalyticsForPeriod` with
-// the same shape — the only difference is whether `lobbyId` is set.
+// Aggregation queries for the analytics dashboards (super-admin overview,
+// super-admin per-lobby drill-down, console per-lobby dashboard). All three
+// call `getAnalyticsForPeriod` — the only difference is whether `lobbyId`
+// is set.
 //
 // Performance notes:
 //   - All COUNT(*) / COUNT(DISTINCT) casts go through `::int` so Postgres
@@ -11,7 +12,8 @@
 //   - Each individual aggregation is a single round-trip; we fan out with
 //     Promise.all so the loader's wall-clock cost is roughly one query.
 
-import { prisma, Prisma } from "@secretlobby/db";
+import { prisma } from "./client.js";
+import { Prisma } from "./generated/client/client.js";
 
 export interface AnalyticsPeriod {
   /** Inclusive start of the window. */
@@ -140,12 +142,16 @@ export async function getAnalyticsForPeriod(
 
   const [summaryRows, dailyRows, topCountriesAgg, topTracksAgg, topLobbiesAgg] =
     await Promise.all([
-      // Summary: one row with FILTER aggregates per event type + distinct
-      // visitor / session counts across the whole window.
+      // Summary: landings and entries are DISTINCT VISITORS (not raw event
+      // counts) so refreshing the password page or re-logging-in doesn't
+      // inflate the funnel — one person reaching the gate or entering the
+      // lobby counts as one. Plays / completes stay as raw event counts
+      // because we care about play volume; per-track unique listeners are
+      // surfaced separately in the Top Tracks table.
       prisma.$queryRaw<SummaryRow[]>`
         SELECT
-          COUNT(*) FILTER (WHERE "eventType" = 'lobby_password_view')::int AS landings,
-          COUNT(*) FILTER (WHERE "eventType" = 'login')::int AS entries,
+          COUNT(DISTINCT "visitorId") FILTER (WHERE "eventType" = 'lobby_password_view')::int AS landings,
+          COUNT(DISTINCT "visitorId") FILTER (WHERE "eventType" = 'login')::int AS entries,
           COUNT(*) FILTER (WHERE "eventType" = 'audio_play')::int AS plays,
           COUNT(*) FILTER (WHERE "eventType" = 'audio_complete')::int AS completes,
           COUNT(DISTINCT "visitorId")::int AS visitors,
@@ -155,13 +161,14 @@ export async function getAnalyticsForPeriod(
         ${lobbyFilter}
       `,
 
-      // Daily series: one row per day with FILTER aggregates for each
-      // event type so the chart can stack/overlay them client-side.
+      // Daily series: distinct visitors per day for landings/entries
+      // (same reasoning as the summary above — one person revisiting the
+      // gate twice in a day still counts once for that day).
       prisma.$queryRaw<DailyRow[]>`
         SELECT
           DATE_TRUNC('day', "occurredAt") AS day,
-          COUNT(*) FILTER (WHERE "eventType" = 'lobby_password_view')::int AS landings,
-          COUNT(*) FILTER (WHERE "eventType" = 'login')::int AS entries,
+          COUNT(DISTINCT "visitorId") FILTER (WHERE "eventType" = 'lobby_password_view')::int AS landings,
+          COUNT(DISTINCT "visitorId") FILTER (WHERE "eventType" = 'login')::int AS entries,
           COUNT(*) FILTER (WHERE "eventType" = 'audio_play')::int AS plays
         FROM "AnalyticsEvent"
         WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
@@ -207,8 +214,8 @@ export async function getAnalyticsForPeriod(
       prisma.$queryRaw<TopLobbyAggRow[]>`
         SELECT
           "lobbyId",
-          COUNT(*) FILTER (WHERE "eventType" = 'lobby_password_view')::int AS landings,
-          COUNT(*) FILTER (WHERE "eventType" = 'login')::int AS entries,
+          COUNT(DISTINCT "visitorId") FILTER (WHERE "eventType" = 'lobby_password_view')::int AS landings,
+          COUNT(DISTINCT "visitorId") FILTER (WHERE "eventType" = 'login')::int AS entries,
           COUNT(*) FILTER (WHERE "eventType" = 'audio_play')::int AS plays,
           COUNT(DISTINCT "visitorId")::int AS visitors
         FROM "AnalyticsEvent"

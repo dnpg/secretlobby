@@ -23,3 +23,4 @@ export { RichTextEditor, type RichTextEditorFeature } from "./components/RichTex
 export { MediaPicker, type MediaPickerProps, type MediaPickerTab, type MediaItem } from "./components/MediaPicker.js";
 export { PricingCard, type PricingCardProps, type PricingTier } from "./components/PricingCard.js";
 export { PaymentMethodCard, type PaymentMethodCardProps, type PaymentMethod } from "./components/PaymentMethodCard.js";
+export { AnalyticsView, type AnalyticsViewProps } from "./components/AnalyticsView.js";

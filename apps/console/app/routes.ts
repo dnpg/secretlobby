@@ -33,6 +33,7 @@ export default [
     // Per-lobby routes - use route with children for nested layout
     route("lobby/:lobbyId", "routes/_layout.lobby.tsx", [
       index("routes/_layout.lobby._index.tsx"),
+      route("analytics", "routes/_layout.lobby.analytics.tsx"),
       route("playlists", "routes/_layout.lobby.playlists.tsx"),
       route("playlists/:playlistId", "routes/_layout.lobby.playlists.$playlistId.tsx"),
       route("theme", "routes/_layout.lobby.theme.tsx"),

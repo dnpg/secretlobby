@@ -642,6 +642,9 @@ importers:
       '@radix-ui/react-slot':
         specifier: ^1.1.0
         version: 1.2.4(@types/react@19.2.8)(react@19.2.3)
+      '@secretlobby/db':
+        specifier: workspace:*
+        version: link:../db
       '@tiptap/extension-image':
         specifier: ^2.11.0
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))
@@ -693,6 +696,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.3(react@19.2.3)
+      recharts:
+        specifier: ^2.15.0
+        version: 2.15.4(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       tailwind-merge:
         specifier: ^2.6.0
         version: 2.6.0

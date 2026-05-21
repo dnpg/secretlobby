@@ -1,10 +1,7 @@
-import { useLoaderData } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.analytics";
-import { AnalyticsView } from "~/components/AnalyticsView";
-import {
-  getAnalyticsForPeriod,
-  lastNDaysWindow,
-} from "~/models/analytics/queries.server";
+import { AnalyticsView } from "@secretlobby/ui";
+import { getAnalyticsForPeriod, lastNDaysWindow } from "@secretlobby/db";
 
 export function meta() {
   return [{ title: "Super Admin — Analytics" }];
@@ -28,7 +25,26 @@ export default function AnalyticsOverview() {
           Last {windowDays} days across all lobbies. Click a lobby to drill in.
         </p>
       </div>
-      <AnalyticsView data={data} showTopLobbies />
+      <AnalyticsView
+        data={data}
+        showTopLobbies
+        renderLobbyLink={(lobbyId, label) => (
+          <Link
+            to={`/analytics/lobby/${lobbyId}`}
+            className="hover:underline cursor-pointer"
+          >
+            {label}
+          </Link>
+        )}
+        renderAccountLink={(accountId, label) => (
+          <Link
+            to={`/accounts/${accountId}`}
+            className="hover:underline cursor-pointer"
+          >
+            {label}
+          </Link>
+        )}
+      />
     </div>
   );
 }

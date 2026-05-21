@@ -1,11 +1,11 @@
 import { Link, useLoaderData } from "react-router";
 import type { Route } from "./+types/_layout.analytics.lobby.$lobbyId";
-import { prisma } from "@secretlobby/db";
-import { AnalyticsView } from "~/components/AnalyticsView";
 import {
   getAnalyticsForPeriod,
   lastNDaysWindow,
-} from "~/models/analytics/queries.server";
+  prisma,
+} from "@secretlobby/db";
+import { AnalyticsView } from "@secretlobby/ui";
 
 export function meta({ data }: Route.MetaArgs) {
   const title = data?.lobby?.name ?? "Lobby";

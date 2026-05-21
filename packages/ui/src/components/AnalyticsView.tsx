@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import type { ReactNode } from "react";
 import {
   Area,
   AreaChart,
@@ -8,15 +8,24 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type {
-  AnalyticsForPeriod,
-  DailyPoint,
-} from "~/models/analytics/queries.server";
+import type { AnalyticsForPeriod, DailyPoint } from "@secretlobby/db";
 
-interface AnalyticsViewProps {
+export interface AnalyticsViewProps {
   data: AnalyticsForPeriod;
-  /** When true, render the Top Lobbies table (overview only). */
+  /** When true, render the Top Lobbies table (overview / super-admin only). */
   showTopLobbies: boolean;
+  /**
+   * Renders a lobby cell as a link. Super-admin passes a function that
+   * routes to `/analytics/lobby/:id`; the console doesn't pass anything
+   * (the per-lobby view is already lobby-scoped, so no internal lobby
+   * links are needed). When omitted, lobby names render as plain text.
+   */
+  renderLobbyLink?: (lobbyId: string, label: ReactNode) => ReactNode;
+  /**
+   * Renders an account cell as a link. Super-admin passes a function that
+   * routes to `/accounts/:id`; the console passes nothing.
+   */
+  renderAccountLink?: (accountId: string, label: ReactNode) => ReactNode;
 }
 
 const numberFmt = new Intl.NumberFormat("en-US");
@@ -134,7 +143,15 @@ function DailySeriesChart({ daily }: { daily: DailyPoint[] }) {
   );
 }
 
-function TopLobbiesTable({ rows }: { rows: AnalyticsForPeriod["topLobbies"] }) {
+function TopLobbiesTable({
+  rows,
+  renderLobbyLink,
+  renderAccountLink,
+}: {
+  rows: AnalyticsForPeriod["topLobbies"];
+  renderLobbyLink?: AnalyticsViewProps["renderLobbyLink"];
+  renderAccountLink?: AnalyticsViewProps["renderAccountLink"];
+}) {
   return (
     <div className="card p-6">
       <h3 className="text-theme-primary text-sm font-semibold mb-4">
@@ -159,31 +176,20 @@ function TopLobbiesTable({ rows }: { rows: AnalyticsForPeriod["topLobbies"] }) {
             <tbody>
               {rows.map((r) => {
                 const conv = r.landings > 0 ? r.entries / r.landings : 0;
+                const lobbyCell = renderLobbyLink
+                  ? renderLobbyLink(r.lobbyId, r.lobbyName)
+                  : r.lobbyName;
+                const accountCell =
+                  renderAccountLink && r.accountId
+                    ? renderAccountLink(r.accountId, r.accountName)
+                    : r.accountName;
                 return (
                   <tr
                     key={r.lobbyId}
                     className="border-b border-theme last:border-0 hover:bg-theme-tertiary/40"
                   >
-                    <td className="py-2 pr-4">
-                      <Link
-                        to={`/analytics/lobby/${r.lobbyId}`}
-                        className="text-theme-primary hover:underline cursor-pointer"
-                      >
-                        {r.lobbyName}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4 text-theme-secondary">
-                      {r.accountId ? (
-                        <Link
-                          to={`/accounts/${r.accountId}`}
-                          className="hover:underline cursor-pointer"
-                        >
-                          {r.accountName}
-                        </Link>
-                      ) : (
-                        r.accountName
-                      )}
-                    </td>
+                    <td className="py-2 pr-4 text-theme-primary">{lobbyCell}</td>
+                    <td className="py-2 pr-4 text-theme-secondary">{accountCell}</td>
                     <td className="py-2 pr-4 text-right tabular-nums">
                       {formatNumber(r.landings)}
                     </td>
@@ -256,7 +262,15 @@ function TopCountriesTable({ rows }: { rows: AnalyticsForPeriod["topCountries"] 
   );
 }
 
-function TopTracksTable({ rows }: { rows: AnalyticsForPeriod["topTracks"] }) {
+function TopTracksTable({
+  rows,
+  showLobbyColumn,
+  renderLobbyLink,
+}: {
+  rows: AnalyticsForPeriod["topTracks"];
+  showLobbyColumn: boolean;
+  renderLobbyLink?: AnalyticsViewProps["renderLobbyLink"];
+}) {
   return (
     <div className="card p-6">
       <h3 className="text-theme-primary text-sm font-semibold mb-4">
@@ -269,38 +283,37 @@ function TopTracksTable({ rows }: { rows: AnalyticsForPeriod["topTracks"] }) {
           <thead className="text-theme-secondary text-xs uppercase tracking-wider">
             <tr className="border-b border-theme">
               <th className="text-left py-2 pr-4 font-medium">Track</th>
-              <th className="text-left py-2 pr-4 font-medium">Lobby</th>
+              {showLobbyColumn && (
+                <th className="text-left py-2 pr-4 font-medium">Lobby</th>
+              )}
               <th className="text-right py-2 pr-4 font-medium">Plays</th>
               <th className="text-right py-2 font-medium">Listeners</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr
-                key={r.trackId}
-                className="border-b border-theme last:border-0"
-              >
-                <td className="py-2 pr-4 text-theme-primary">{r.trackTitle}</td>
-                <td className="py-2 pr-4 text-theme-secondary">
-                  {r.lobbyId ? (
-                    <Link
-                      to={`/analytics/lobby/${r.lobbyId}`}
-                      className="hover:underline cursor-pointer"
-                    >
-                      {r.lobbyName || "(unknown lobby)"}
-                    </Link>
-                  ) : (
-                    "—"
+            {rows.map((r) => {
+              const lobbyCell =
+                r.lobbyId && renderLobbyLink
+                  ? renderLobbyLink(r.lobbyId, r.lobbyName || "(unknown lobby)")
+                  : r.lobbyName || "—";
+              return (
+                <tr
+                  key={r.trackId}
+                  className="border-b border-theme last:border-0"
+                >
+                  <td className="py-2 pr-4 text-theme-primary">{r.trackTitle}</td>
+                  {showLobbyColumn && (
+                    <td className="py-2 pr-4 text-theme-secondary">{lobbyCell}</td>
                   )}
-                </td>
-                <td className="py-2 pr-4 text-right tabular-nums">
-                  {formatNumber(r.plays)}
-                </td>
-                <td className="py-2 text-right tabular-nums">
-                  {formatNumber(r.listeners)}
-                </td>
-              </tr>
-            ))}
+                  <td className="py-2 pr-4 text-right tabular-nums">
+                    {formatNumber(r.plays)}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    {formatNumber(r.listeners)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -308,7 +321,12 @@ function TopTracksTable({ rows }: { rows: AnalyticsForPeriod["topTracks"] }) {
   );
 }
 
-export function AnalyticsView({ data, showTopLobbies }: AnalyticsViewProps) {
+export function AnalyticsView({
+  data,
+  showTopLobbies,
+  renderLobbyLink,
+  renderAccountLink,
+}: AnalyticsViewProps) {
   const { summary, daily, topLobbies, topCountries, topTracks } = data;
   return (
     <div className="space-y-6">
@@ -345,11 +363,21 @@ export function AnalyticsView({ data, showTopLobbies }: AnalyticsViewProps) {
 
       <DailySeriesChart daily={daily} />
 
-      {showTopLobbies && <TopLobbiesTable rows={topLobbies} />}
+      {showTopLobbies && (
+        <TopLobbiesTable
+          rows={topLobbies}
+          renderLobbyLink={renderLobbyLink}
+          renderAccountLink={renderAccountLink}
+        />
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <TopCountriesTable rows={topCountries} />
-        <TopTracksTable rows={topTracks} />
+        <TopTracksTable
+          rows={topTracks}
+          showLobbyColumn={showTopLobbies}
+          renderLobbyLink={renderLobbyLink}
+        />
       </div>
     </div>
   );

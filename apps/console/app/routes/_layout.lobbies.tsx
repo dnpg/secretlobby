@@ -1,8 +1,6 @@
-import { useLoaderData, useActionData, Link, Form, useNavigation, redirect } from "react-router";
-import { useEffect } from "react";
+import { useLoaderData, Link, redirect } from "react-router";
 import type { Route } from "./+types/_layout.lobbies";
 import { cn, useImageTransform } from "@secretlobby/ui";
-import { toast } from "sonner";
 
 export function meta() {
   return [{ title: "Lobbies - Admin" }];
@@ -22,7 +20,7 @@ interface LobbyCard {
 export async function loader({ request }: Route.LoaderArgs) {
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
   const { getPublicUrl } = await import("@secretlobby/storage");
-  const { getLobbiesByAccountId, getLobbyCount } = await import("~/models/queries/lobby.server");
+  const { getLobbiesByAccountId } = await import("~/models/queries/lobby.server");
   const { getAccountPlanLimits } = await import("~/models/queries/subscription.server");
 
   const { session } = await getSession(request);
@@ -61,93 +59,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
-  const { setDefaultLobby, deleteLobby } = await import("~/models/mutations/lobby.server");
-  const { getLobbyById, getLobbyCount } = await import("~/models/queries/lobby.server");
-  const { createLogger, formatError } = await import("@secretlobby/logger/server");
-
-  const logger = createLogger({ service: "console:lobbies" });
-
-  const { session } = await getSession(request);
-  requireUserAuth(session);
-
-  const accountId = session.currentAccountId;
-  if (!accountId) {
-    return { error: "Not authenticated" };
-  }
-
-  const formData = await request.formData();
-  const intent = formData.get("intent");
-
-  try {
-    switch (intent) {
-      case "set-default": {
-        const lobbyId = formData.get("lobbyId") as string;
-        if (!lobbyId) {
-          return { error: "Lobby ID required" };
-        }
-
-        // Verify lobby belongs to account
-        const lobby = await getLobbyById(lobbyId);
-        if (!lobby || lobby.accountId !== accountId) {
-          return { error: "Lobby not found" };
-        }
-
-        await setDefaultLobby(accountId, lobbyId);
-        return { success: "Default lobby updated" };
-      }
-
-      case "delete": {
-        const lobbyId = formData.get("lobbyId") as string;
-        if (!lobbyId) {
-          return { error: "Lobby ID required" };
-        }
-
-        // Verify lobby belongs to account
-        const lobby = await getLobbyById(lobbyId);
-        if (!lobby || lobby.accountId !== accountId) {
-          return { error: "Lobby not found" };
-        }
-
-        // Cannot delete the default lobby
-        if (lobby.isDefault) {
-          return { error: "Cannot delete the default lobby. Set another lobby as default first." };
-        }
-
-        // Must have at least one lobby
-        const count = await getLobbyCount(accountId);
-        if (count <= 1) {
-          return { error: "Cannot delete the last lobby" };
-        }
-
-        await deleteLobby(lobbyId);
-        return { success: "Lobby deleted" };
-      }
-
-      default:
-        return { error: "Invalid action" };
-    }
-  } catch (error) {
-    logger.error({ error: formatError(error) }, "Lobby action error");
-    return { error: "Operation failed" };
-  }
-}
-
 export default function LobbiesPage() {
   const { lobbies, limits } = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
-  const navigation = useNavigation();
-  const isSubmitting = navigation.state === "submitting";
-
-  useEffect(() => {
-    if (actionData?.success) {
-      toast.success(actionData.success);
-    }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
-  }, [actionData]);
 
   return (
     <div className="space-y-6">
@@ -186,11 +99,7 @@ export default function LobbiesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {lobbies.map((lobby) => (
-            <LobbyCard
-              key={lobby.id}
-              lobby={lobby}
-              isSubmitting={isSubmitting}
-            />
+            <LobbyCard key={lobby.id} lobby={lobby} />
           ))}
         </div>
       )}
@@ -198,17 +107,11 @@ export default function LobbiesPage() {
   );
 }
 
-function LobbyCard({
-  lobby,
-  isSubmitting,
-}: {
-  lobby: LobbyCard;
-  isSubmitting: boolean;
-}) {
+function LobbyCard({ lobby }: { lobby: LobbyCard }) {
   const { transformUrl, generateSrcSet } = useImageTransform();
 
   const bannerBaseWidth = 640;
-  const bannerHeighPx = 128; // h-32
+  const bannerHeighPx = 128;
   const bannerWidths = [320, 640, 960, 1280];
 
   const bannerSrc = lobby.bannerUrl
@@ -219,7 +122,10 @@ function LobbyCard({
     : null;
 
   return (
-    <div className="bg-theme-secondary rounded-xl border border-theme overflow-hidden group">
+    <Link
+      to={`/lobby/${lobby.id}`}
+      className="block bg-theme-secondary rounded-xl border border-theme overflow-hidden group cursor-pointer transition hover:border-[var(--color-accent)] hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+    >
       {/* Banner / Preview */}
       <div className="h-32 bg-theme-tertiary relative">
         {lobby.bannerUrl ? (
@@ -231,7 +137,7 @@ function LobbyCard({
             height={bannerHeighPx}
             loading="lazy"
             alt={lobby.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition group-hover:scale-[1.02]"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-theme-muted">
@@ -249,80 +155,25 @@ function LobbyCard({
         )}
 
         {/* Published status */}
-        <div className={cn(
-          "absolute top-2 right-2 px-2 py-1 text-xs font-medium rounded-full",
-          lobby.isPublished
-            ? "bg-green-500/20 text-green-400"
-            : "bg-yellow-500/20 text-yellow-400"
-        )}>
+        <div
+          className={cn(
+            "absolute top-2 right-2 px-2 py-1 text-xs font-medium rounded-full",
+            lobby.isPublished
+              ? "bg-green-500/20 text-green-400"
+              : "bg-yellow-500/20 text-yellow-400",
+          )}
+        >
           {lobby.isPublished ? "Published" : "Draft"}
         </div>
       </div>
 
       {/* Content */}
       <div className="p-4">
-        <h3 className="font-semibold text-theme-primary truncate">
+        <h3 className="font-semibold text-theme-primary truncate group-hover:text-[var(--color-accent)] transition">
           {lobby.title || lobby.name}
         </h3>
-        <p className="text-sm text-theme-muted mt-1">
-          /{lobby.slug}
-        </p>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2 mt-4">
-          <Link
-            to={`/lobby/${lobby.id}`}
-            className="flex-1 px-3 py-2 text-sm text-center btn-primary rounded-lg transition cursor-pointer"
-          >
-            Edit
-          </Link>
-
-          <Form method="post" className="contents">
-            <input type="hidden" name="intent" value="set-default" />
-            <input type="hidden" name="lobbyId" value={lobby.id} />
-            <button
-              type="submit"
-              disabled={lobby.isDefault || isSubmitting}
-              className={cn(
-                "px-3 py-2 text-sm btn-secondary rounded-lg transition",
-                lobby.isDefault
-                  ? "opacity-50 cursor-not-allowed"
-                  : "cursor-pointer"
-              )}
-              title={lobby.isDefault ? "Already default" : "Set as default"}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </button>
-          </Form>
-
-          <Form method="post" className="contents">
-            <input type="hidden" name="intent" value="delete" />
-            <input type="hidden" name="lobbyId" value={lobby.id} />
-            <button
-              type="submit"
-              disabled={lobby.isDefault || isSubmitting}
-              className={cn(
-                "px-3 py-2 text-sm rounded-lg transition border",
-                lobby.isDefault
-                  ? "opacity-50 cursor-not-allowed border-theme text-theme-muted"
-                  : "cursor-pointer border-red-500/30 text-red-400 hover:border-red-500/50 hover:text-red-300"
-              )}
-              title={lobby.isDefault ? "Cannot delete default lobby" : "Delete lobby"}
-              onClick={(e) => {
-                if (!lobby.isDefault && !confirm(`Delete lobby "${lobby.name}"? This cannot be undone.`)) {
-                  e.preventDefault();
-                }
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
-          </Form>
-        </div>
+        <p className="text-sm text-theme-muted mt-1">/{lobby.slug}</p>
       </div>
-    </div>
+    </Link>
   );
 }
