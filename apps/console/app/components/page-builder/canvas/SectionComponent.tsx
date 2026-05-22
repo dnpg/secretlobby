@@ -1,17 +1,38 @@
+// =============================================================================
+// SectionComponent (editor canvas, v3 grid)
+// -----------------------------------------------------------------------------
+// Editor-side counterpart of `@secretlobby/lobby-template`'s SectionView.
+// Renders the section's columns through CSS Grid (matching the v3 production
+// renderer) and overlays selection chrome, drag/drop wrappers, and column-
+// resize handles.
+//
+// Key differences from the production renderer:
+//   - We mirror the section's grid template into a single inline
+//     `gridTemplateColumns` style so the editor renders identically to the
+//     lobby at the current viewport.
+//   - Resize handles live BETWEEN grid tracks. Dragging a handle rewrites the
+//     two neighbouring `fr` tokens on the active viewport's template
+//     (`gridTemplateDesktop` or `gridTemplateTablet`). Non-fr tokens (`px`,
+//     `auto`, `minmax(...)`) pass through untouched — designers can lock a
+//     sidebar at a pixel width and still drag the fluid track next to it.
+//   - Mobile slider + stack short-circuit the grid render exactly like the
+//     production renderer (flex strip, or single-column stack).
+// =============================================================================
+
 import { useMemo, useRef } from "react";
 import { cn } from "@secretlobby/ui";
+import {
+  equalGridTemplate,
+  parseFrToken,
+  tokenizeGridTemplate,
+} from "@secretlobby/lobby-template";
 import type {
   BlockContent,
   BlockType,
-  Column,
   Section,
   ViewportSize,
 } from "../state/types";
-import {
-  normalizePercents,
-  parseGapValue,
-  parseWidthToPercent,
-} from "../state/helpers";
+import { parseGapValue } from "../state/helpers";
 import { ColumnComponent } from "./ColumnComponent";
 import { ResizeHandle } from "./ResizeHandle";
 
@@ -30,12 +51,14 @@ export interface SectionComponentProps {
   onDeleteBlock: (columnId: string, blockId: string) => void;
   onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) => void;
   onReorderBlocks: (columnId: string, blockIds: string[]) => void;
-  onResizeColumns?: (
-    leftColumnId: string,
-    rightColumnId: string,
-    leftWidth: string,
-    rightWidth: string,
-    viewport: ViewportSize
+  /** v3: grid track resize. The editor passes the FULL new grid-template
+   *  string for the active viewport, NOT per-column widths. The reducer
+   *  routes the update to `gridTemplateDesktop` or `gridTemplateTablet`
+   *  based on `viewport`. Mobile resize isn't wired (the canvas paints the
+   *  mobile slider / stack short-circuit instead). */
+  onResizeGridTemplate?: (
+    nextTemplate: string,
+    viewport: "desktop" | "tablet"
   ) => void;
   onMoveBlockUp: (columnId: string, blockId: string) => void;
   onMoveBlockDown: (columnId: string, blockId: string) => void;
@@ -60,7 +83,7 @@ export function SectionComponent({
   onDeleteBlock,
   onUpdateBlock,
   onReorderBlocks,
-  onResizeColumns,
+  onResizeGridTemplate,
   onMoveBlockUp,
   onMoveBlockDown,
   onMoveBlockToColumn,
@@ -80,68 +103,106 @@ export function SectionComponent({
   const columnCount = section.columns.length;
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Get the width for current viewport (tablet uses tabletWidth if set, otherwise falls back to width)
-  const getColumnWidth = (col: Column): string => {
-    if (isTablet && col.tabletWidth) return col.tabletWidth;
-    return col.width;
+  // Active grid template for the current viewport. The fallback chain mirrors
+  // the production CSS (tablet → desktop → equal split) so legacy sections
+  // without a per-viewport override render the same in the editor.
+  const activeTemplate = useMemo(() => {
+    const desktop =
+      section.gridTemplateDesktop && section.gridTemplateDesktop.trim().length > 0
+        ? section.gridTemplateDesktop
+        : equalGridTemplate(columnCount);
+    if (isTablet) {
+      return section.gridTemplateTablet ?? desktop;
+    }
+    return desktop;
+  }, [
+    section.gridTemplateDesktop,
+    section.gridTemplateTablet,
+    isTablet,
+    columnCount,
+  ]);
+
+  // Tokenise the active template once so the resize handles can walk
+  // neighbouring tracks. We keep both the raw tokens (for write-back) and
+  // their parsed fr values (or `null` for fixed/auto tracks).
+  const tokens = useMemo(() => tokenizeGridTemplate(activeTemplate), [
+    activeTemplate,
+  ]);
+  const frValues = useMemo(() => tokens.map((t) => parseFrToken(t)), [tokens]);
+
+  // Resize: drag between tracks i and i+1, shifting fr units from one to the
+  // other while keeping their SUM constant. Non-fr neighbouring tracks are
+  // left untouched — the handle simply doesn't render between them.
+  const handleResize = (
+    leftIndex: number,
+    rightIndex: number,
+    deltaPercent: number
+  ) => {
+    if (!onResizeGridTemplate) return;
+    if (isMobile) return; // mobile slider / stack handled by CSS short-circuit
+    if (viewport !== "desktop" && viewport !== "tablet") return;
+
+    const leftFr = frValues[leftIndex];
+    const rightFr = frValues[rightIndex];
+    // Only fr ↔ fr neighbours are resizable. Mixed neighbours (e.g.
+    // `1fr 300px`) get a non-interactive boundary — designers manage those
+    // via the section settings template input directly.
+    if (leftFr === null || rightFr === null) return;
+
+    const total = leftFr + rightFr;
+    // Convert percentage delta to fr delta, keeping the pair's sum constant.
+    const minFrac = 0.1; // never let a track go below 10% of the pair
+    const minFr = total * minFrac;
+    const targetLeft = leftFr + (deltaPercent / 100) * total;
+    const clampedLeft = Math.max(minFr, Math.min(total - minFr, targetLeft));
+    const clampedRight = total - clampedLeft;
+
+    // Snap to one decimal place so the persisted string stays human-readable.
+    const nextLeft = Math.round(clampedLeft * 10) / 10;
+    const nextRight = Math.round(clampedRight * 10) / 10;
+
+    const nextTokens = tokens.slice();
+    nextTokens[leftIndex] = `${nextLeft}fr`;
+    nextTokens[rightIndex] = `${nextRight}fr`;
+    onResizeGridTemplate(nextTokens.join(" "), viewport);
   };
 
-  // Parse column percentages for current viewport
-  const columnPercents = useMemo(() => {
-    const rawPercents = section.columns.map((col) => parseWidthToPercent(getColumnWidth(col), columnCount));
-    return normalizePercents(rawPercents);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section.columns, columnCount, viewport]);
-
-  // Simple resize handler
-  const handleResize = (index: number, deltaPercent: number) => {
-    if (!onResizeColumns) return;
-
-    const minWidth = 10;
-    let newLeft = Math.max(minWidth, columnPercents[index] + deltaPercent);
-    let newRight = Math.max(minWidth, columnPercents[index + 1] - deltaPercent);
-
-    // Normalize to ensure they sum correctly
-    const total = newLeft + newRight;
-    const targetTotal = columnPercents[index] + columnPercents[index + 1];
-    newLeft = (newLeft / total) * targetTotal;
-    newRight = (newRight / total) * targetTotal;
-
-    onResizeColumns(
-      section.columns[index].id,
-      section.columns[index + 1].id,
-      `${Math.round(newLeft * 10) / 10}%`,
-      `${Math.round(newRight * 10) / 10}%`,
-      viewport
-    );
-  };
-
+  // Mobile branches: stack short-circuits to a single-column flex; slider
+  // renders horizontal scroll. Anything else (keep / grid) flows through the
+  // grid path so the editor preview matches the production CSS.
   const isMobileView = isMobile;
   const isSlider = section.mobileLayout === "slider" && isMobileView;
+  const isMobileStack =
+    isMobileView && (section.mobileLayout === "stack" || section.mobileLayout === undefined);
+  const isMobileGrid = isMobileView && section.mobileLayout === "grid";
+
+  // The mobile-grid case swaps the active template for `gridTemplateMobile`
+  // when present. Falls back to the desktop template so legacy sections
+  // promoted into mobile-grid mode still render something.
+  const renderedTemplate = useMemo(() => {
+    if (isMobileGrid) {
+      return (
+        section.gridTemplateMobile ??
+        section.gridTemplateDesktop ??
+        equalGridTemplate(columnCount)
+      );
+    }
+    return activeTemplate;
+  }, [
+    isMobileGrid,
+    section.gridTemplateMobile,
+    section.gridTemplateDesktop,
+    activeTemplate,
+    columnCount,
+  ]);
+
   // Resize handles render any time we are in edit mode and have 2+ columns
-  // on a non-mobile/non-slider layout. This drops the previous gating on
-  // section selection / `layoutEditMode` toggle.
+  // on a non-mobile/non-slider layout. v3: we only show a handle BETWEEN
+  // adjacent fr-typed tracks (where dragging is well-defined).
   const showResizeHandles =
     showSectionUi && columnCount > 1 && !isMobileView && !isSlider;
   const gapValue = parseGapValue(section.columnGap);
-
-  // For mobile stacking
-  let displayMode: "grid" | "flex" | "stack" = "grid";
-  if (isMobileView) {
-    if (section.mobileLayout === "stack") {
-      displayMode = "stack";
-    } else if (isSlider) {
-      displayMode = "flex";
-    }
-  }
-
-  // Helper to get CSS width with gap compensation
-  // Formula: width% - (gap * (columns-1) / columns)
-  const getColumnCssWidth = (width: string): string => {
-    if (columnCount === 1 || displayMode === "stack") return width;
-    const gapMultiplier = (columnCount - 1) / columnCount;
-    return `calc(${width} - ${gapValue} * ${gapMultiplier.toFixed(4)})`;
-  };
+  const rowGapValue = parseGapValue(section.rowGap);
 
   return (
     <div
@@ -166,47 +227,18 @@ export function SectionComponent({
       )}
       style={{ "--section-gap": gapValue } as React.CSSProperties}
     >
-      {/* Column layout using flexbox for better control of gaps and resize handles */}
-      <div
-        className={cn(
-          "relative",
-          displayMode === "stack" && "flex flex-col",
-          displayMode === "flex" && "flex overflow-x-auto",
-          displayMode === "grid" && "flex"
-        )}
-        style={{
-          gap: displayMode === "stack"
-            ? parseGapValue(section.rowGap)
-            : displayMode === "grid"
-              ? gapValue
-              : undefined,
-        }}
-      >
-        {section.columns.map((column, i) => {
-          // Determine display width based on viewport and mode
-          const displayWidth = displayMode === "stack"
-            ? "100%"
-            : `${columnPercents[i].toFixed(1)}%`;
-          const cssWidth = displayMode === "grid"
-            ? getColumnCssWidth(getColumnWidth(column))
-            : displayMode === "stack"
-              ? "100%"
-              : undefined;
-
-          return (
+      {/* Column layout: grid by default; flex strip in slider mode; single-
+          column stack in mobile-stack mode. */}
+      {isSlider ? (
+        <div className="relative flex overflow-x-auto" style={{ gap: gapValue }}>
+          {section.columns.map((column, i) => (
             <div
               key={column.id}
-              className={cn(
-                "relative flex-shrink-0",
-                displayMode === "flex" && "min-w-[150px]"
-              )}
-              style={{
-                width: cssWidth,
-                flex: displayMode === "flex" ? "0 0 auto" : undefined,
-              }}
+              className="relative flex-shrink-0 min-w-[150px]"
+              style={{ flex: "0 0 auto" }}
             >
               <ColumnComponent
-                column={{ ...column, width: displayWidth }}
+                column={column}
                 index={i}
                 totalColumns={columnCount}
                 isParentSelected={isSelected}
@@ -222,38 +254,165 @@ export function SectionComponent({
                   onAddBlock(column.id, blockType, atIndex)
                 }
                 onDeleteBlock={(blockId) => onDeleteBlock(column.id, blockId)}
-                onUpdateBlock={(blockId, content) => onUpdateBlock(column.id, blockId, content)}
-                onReorderBlocks={(blockIds) => onReorderBlocks(column.id, blockIds)}
+                onUpdateBlock={(blockId, content) =>
+                  onUpdateBlock(column.id, blockId, content)
+                }
+                onReorderBlocks={(blockIds) =>
+                  onReorderBlocks(column.id, blockIds)
+                }
                 onMoveBlockUp={(blockId) => onMoveBlockUp(column.id, blockId)}
-                onMoveBlockDown={(blockId) => onMoveBlockDown(column.id, blockId)}
-                onMoveBlockToColumn={(blockId, direction) => onMoveBlockToColumn(column.id, blockId, direction)}
-                onReplaceBlock={(blockId, newType) => onReplaceBlock(column.id, blockId, newType)}
+                onMoveBlockDown={(blockId) =>
+                  onMoveBlockDown(column.id, blockId)
+                }
+                onMoveBlockToColumn={(blockId, direction) =>
+                  onMoveBlockToColumn(column.id, blockId, direction)
+                }
+                onReplaceBlock={(blockId, newType) =>
+                  onReplaceBlock(column.id, blockId, newType)
+                }
               />
             </div>
-          );
-        })}
-
-        {/* Render gaps with resize handles between columns. Always rendered in
-            edit mode now (no selection gating) — see Phase 3. */}
-        {showResizeHandles && displayMode === "grid" && section.columns.slice(0, -1).map((_, i) => {
-          // Calculate position: sum of widths of columns before this gap
-          const leftOffset = columnPercents.slice(0, i + 1).reduce((sum, p) => sum + p, 0);
-
-          return (
-            <div
-              key={`gap-${i}`}
-              className="absolute top-0 bottom-0 flex items-center justify-center"
-              style={{
-                left: `${leftOffset}%`,
-                width: gapValue,
-                transform: "translateX(-50%)",
-              }}
-            >
-              <ResizeHandle onResize={(delta) => handleResize(i, delta)} />
+          ))}
+        </div>
+      ) : isMobileStack ? (
+        <div className="relative flex flex-col" style={{ gap: rowGapValue }}>
+          {section.columns.map((column, i) => (
+            <div key={column.id} className="relative" style={{ width: "100%" }}>
+              <ColumnComponent
+                column={column}
+                index={i}
+                totalColumns={columnCount}
+                isParentSelected={isSelected}
+                isSelected={selectedColumnId === column.id}
+                isMobile={isMobileView}
+                isSlider={isSlider}
+                isEditing={isEditing}
+                showLayoutEdit={showLayoutEdit}
+                selectedBlockId={selectedBlockId}
+                onSelectColumn={() => onSelectColumn(column.id)}
+                onSelectBlock={onSelectBlock}
+                onAddBlock={(blockType, atIndex) =>
+                  onAddBlock(column.id, blockType, atIndex)
+                }
+                onDeleteBlock={(blockId) => onDeleteBlock(column.id, blockId)}
+                onUpdateBlock={(blockId, content) =>
+                  onUpdateBlock(column.id, blockId, content)
+                }
+                onReorderBlocks={(blockIds) =>
+                  onReorderBlocks(column.id, blockIds)
+                }
+                onMoveBlockUp={(blockId) => onMoveBlockUp(column.id, blockId)}
+                onMoveBlockDown={(blockId) =>
+                  onMoveBlockDown(column.id, blockId)
+                }
+                onMoveBlockToColumn={(blockId, direction) =>
+                  onMoveBlockToColumn(column.id, blockId, direction)
+                }
+                onReplaceBlock={(blockId, newType) =>
+                  onReplaceBlock(column.id, blockId, newType)
+                }
+              />
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div
+          className="relative"
+          style={{
+            display: "grid",
+            gridTemplateColumns: renderedTemplate,
+            // Row + column gap combined into the shorthand. Row gap matters
+            // when the grid wraps (e.g. designer uses `repeat(auto-fit, …)`).
+            gap: `${rowGapValue} ${gapValue}`,
+          }}
+        >
+          {section.columns.map((column, i) => (
+            <div key={column.id} className="relative min-w-0">
+              <ColumnComponent
+                column={column}
+                index={i}
+                totalColumns={columnCount}
+                isParentSelected={isSelected}
+                isSelected={selectedColumnId === column.id}
+                isMobile={isMobileView}
+                isSlider={isSlider}
+                isEditing={isEditing}
+                showLayoutEdit={showLayoutEdit}
+                selectedBlockId={selectedBlockId}
+                onSelectColumn={() => onSelectColumn(column.id)}
+                onSelectBlock={onSelectBlock}
+                onAddBlock={(blockType, atIndex) =>
+                  onAddBlock(column.id, blockType, atIndex)
+                }
+                onDeleteBlock={(blockId) => onDeleteBlock(column.id, blockId)}
+                onUpdateBlock={(blockId, content) =>
+                  onUpdateBlock(column.id, blockId, content)
+                }
+                onReorderBlocks={(blockIds) =>
+                  onReorderBlocks(column.id, blockIds)
+                }
+                onMoveBlockUp={(blockId) => onMoveBlockUp(column.id, blockId)}
+                onMoveBlockDown={(blockId) =>
+                  onMoveBlockDown(column.id, blockId)
+                }
+                onMoveBlockToColumn={(blockId, direction) =>
+                  onMoveBlockToColumn(column.id, blockId, direction)
+                }
+                onReplaceBlock={(blockId, newType) =>
+                  onReplaceBlock(column.id, blockId, newType)
+                }
+              />
+            </div>
+          ))}
+
+          {/* v3 resize handles. Rendered absolutely positioned between every
+              pair of fr-typed neighbouring tracks. Position is computed from
+              the running sum of normalised fr ratios — non-fr tracks
+              (`200px`, `auto`, …) participate in the offset math via their
+              measured DOM width, NOT here, so we keep the handle render math
+              simple and rely on `position: absolute` over the grid container.
+              The handle's delta is interpreted as percent-of-section, and
+              `handleResize` projects it back into fr units. */}
+          {showResizeHandles &&
+            tokens.slice(0, -1).map((_, i) => {
+              const leftFr = frValues[i];
+              const rightFr = frValues[i + 1];
+              // No handle between non-fr neighbours — dragging fixed widths
+              // isn't well-defined.
+              if (leftFr === null || rightFr === null) return null;
+              // Position approximation: cumulative fr fractions across the
+              // section. For mixed `1fr 200px 1fr` templates this is
+              // approximate (it ignores the px track's pixel width); the
+              // tradeoff is fine because the handle still anchors near the
+              // correct boundary, and dragging only affects the two fr
+              // tracks it sits between.
+              const totalFr: number = frValues.reduce<number>(
+                (sum, v) => sum + (v ?? 0),
+                0
+              );
+              const cumLeftFr: number = frValues
+                .slice(0, i + 1)
+                .reduce<number>((sum, v) => sum + (v ?? 0), 0);
+              const offsetPercent = totalFr > 0 ? (cumLeftFr / totalFr) * 100 : 50;
+              return (
+                <div
+                  key={`gap-${i}`}
+                  className="absolute top-0 bottom-0 flex items-center justify-center"
+                  style={{
+                    left: `${offsetPercent}%`,
+                    width: gapValue,
+                    transform: "translateX(-50%)",
+                    pointerEvents: "auto",
+                  }}
+                >
+                  <ResizeHandle
+                    onResize={(delta) => handleResize(i, i + 1, delta)}
+                  />
+                </div>
+              );
+            })}
+        </div>
+      )}
 
       {/* Section indicator (visible in edit mode + layout edit toggle on) */}
       {showSectionUi && (
@@ -261,7 +420,11 @@ export function SectionComponent({
           {columnCount} col{columnCount > 1 ? "s" : ""}
           {isMobileView && section.mobileLayout !== "stack" && (
             <span className="ml-1">
-              ({section.mobileLayout === "slider" ? "slider" : `${section.mobileColumns || 1} on mobile`})
+              ({section.mobileLayout === "slider"
+                ? "slider"
+                : section.mobileLayout === "grid"
+                  ? "grid"
+                  : `${section.mobileColumns || 1} on mobile`})
             </span>
           )}
         </div>

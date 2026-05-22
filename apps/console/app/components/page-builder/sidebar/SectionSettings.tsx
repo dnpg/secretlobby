@@ -1,11 +1,22 @@
-import { useMemo } from "react";
+// =============================================================================
+// SectionSettings (v3 grid)
+// -----------------------------------------------------------------------------
+// Right-rail settings panel for a selected section. v3 replaces the old
+// per-column width inputs with a single `grid-template-columns` text input
+// per viewport (desktop / tablet) plus an optional mobile template that's
+// only consulted when `mobileLayout === "grid"`.
+//
+// Column count still drives how many columns are in the section, but the
+// sizing is owned entirely by the section's grid template. Switching count
+// rebuilds the template with an even fr split (`"1fr 1fr"` for 2 cols,
+// `"1fr 1fr 1fr"` for 3, …) — designers can edit the string after the fact
+// to swap in pixel / minmax / repeat tokens.
+// =============================================================================
+
 import { cn } from "@secretlobby/ui";
+import { equalGridTemplate } from "@secretlobby/lobby-template";
 import type { Column, Section, ViewportSize } from "../state/types";
-import {
-  generateId,
-  getEqualColumnWidth,
-  parseWidthToPercent,
-} from "../state/helpers";
+import { generateId } from "../state/helpers";
 import { MobileIcon } from "../icons";
 
 // Inline Section Settings Panel (rendered inside the SettingsOverlay).
@@ -17,256 +28,293 @@ interface SectionSettingsProps {
   viewport: ViewportSize;
 }
 
+// Quick-pick presets surfaced as buttons next to the desktop template input.
+// Tuned to the common designer patterns (two equal columns, sidebar-on-right,
+// sidebar-on-left, three equal columns). Each preset overwrites the template
+// untouched — designers can fine-tune the string after picking.
+const DESKTOP_PRESETS: Array<{ label: string; template: string; columns: number }> = [
+  { label: "1fr", template: "1fr", columns: 1 },
+  { label: "1fr 1fr", template: "1fr 1fr", columns: 2 },
+  { label: "1fr 300px", template: "1fr 300px", columns: 2 },
+  { label: "300px 1fr", template: "300px 1fr", columns: 2 },
+  { label: "2fr 1fr", template: "2fr 1fr", columns: 2 },
+  { label: "1fr 1fr 1fr", template: "1fr 1fr 1fr", columns: 3 },
+];
+
 export function SectionSettings({
   section,
   onUpdate,
-  onUpdateColumn,
+  onUpdateColumn: _onUpdateColumn,
   viewport,
 }: SectionSettingsProps) {
+  void _onUpdateColumn; // legacy: per-column width writes are no longer used
   const columnCount = section.columns.length;
 
-  // Check if columns have been manually resized (not equal widths)
-  const hasManualWidths = useMemo(() => {
-    if (columnCount <= 1) return false;
-    const percents = section.columns.map((col) => parseWidthToPercent(col.width, columnCount));
-    const equalPercent = 100 / columnCount;
-    // Check if any column differs from equal by more than 1%
-    return percents.some((p) => Math.abs(p - equalPercent) > 1);
-  }, [section.columns, columnCount]);
+  // Reconcile the section's column count with whatever the new grid template
+  // implies. We trim or extend `section.columns` to match by ID stability —
+  // existing columns keep their blocks, new ones seed empty.
+  const ensureColumnCount = (
+    nextCount: number,
+    nextTemplate: string
+  ): Partial<Section> => {
+    if (nextCount === columnCount) {
+      return { gridTemplateDesktop: nextTemplate };
+    }
+    const nextColumns =
+      nextCount > columnCount
+        ? [
+            ...section.columns,
+            ...Array.from({ length: nextCount - columnCount }, () => ({
+              id: generateId("col"),
+              blocks: [],
+            })),
+          ]
+        : section.columns.slice(0, nextCount);
+    return { columns: nextColumns, gridTemplateDesktop: nextTemplate };
+  };
 
-  // Handle changing column count
+  // Column count change: rebuild the desktop template as an even fr split
+  // and reconcile the columns array.
   const handleColumnCountChange = (newCount: number) => {
     if (newCount === columnCount) return;
+    onUpdate(ensureColumnCount(newCount, equalGridTemplate(newCount)));
+  };
 
-    if (!hasManualWidths) {
-      // Columns are equal - just set new equal widths
-      const equalWidth = getEqualColumnWidth(newCount);
-      const newColumns = Array.from({ length: newCount }, (_, i) => ({
-        id: i < section.columns.length ? section.columns[i].id : generateId("col"),
-        width: equalWidth,
-        blocks: i < section.columns.length ? section.columns[i].blocks : [],
-      }));
-      onUpdate({ columns: newColumns });
-    } else if (newCount > columnCount) {
-      // Adding columns - shrink existing ones proportionally to make room
-      const columnsToAdd = newCount - columnCount;
-
-      // Calculate current percentages
-      const currentPercents = section.columns.map((col) =>
-        parseWidthToPercent(col.width, columnCount)
-      );
-      const currentTotal = currentPercents.reduce((sum, p) => sum + p, 0);
-
-      // New column gets equal share of what would be equal distribution
-      const newColumnPercent = 100 / newCount;
-      const spaceForNewColumns = newColumnPercent * columnsToAdd;
-      const remainingSpace = 100 - spaceForNewColumns;
-
-      // Scale down existing columns proportionally (store clean percentages)
-      const scaleFactor = remainingSpace / currentTotal;
-      const updatedColumns = section.columns.map((col, i) => {
-        const newPercent = Math.round(currentPercents[i] * scaleFactor * 10) / 10;
-        return {
-          ...col,
-          width: `${newPercent}%`,
-        };
-      });
-
-      // Add new columns with percentage width
-      const newColumns = Array.from({ length: columnsToAdd }, () => ({
-        id: generateId("col"),
-        width: `${newColumnPercent.toFixed(2)}%`,
-        blocks: [],
-      }));
-
-      onUpdate({ columns: [...updatedColumns, ...newColumns] });
-    } else {
-      // Removing columns - redistribute space to remaining columns
-      const columnsToKeep = section.columns.slice(0, newCount);
-      const currentPercents = columnsToKeep.map((col) =>
-        parseWidthToPercent(col.width, columnCount)
-      );
-      const currentTotal = currentPercents.reduce((sum, p) => sum + p, 0);
-
-      // Scale up remaining columns to fill 100%
-      const scaleFactor = 100 / currentTotal;
-      const updatedColumns = columnsToKeep.map((col, i) => {
-        const newPercent = Math.round(currentPercents[i] * scaleFactor * 10) / 10;
-        return {
-          ...col,
-          width: newCount === 1 ? "100%" : `${newPercent}%`,
-        };
-      });
-
-      onUpdate({ columns: updatedColumns });
-    }
+  const handleDesktopPresetClick = (preset: (typeof DESKTOP_PRESETS)[number]) => {
+    onUpdate(ensureColumnCount(preset.columns, preset.template));
   };
 
   return (
     <div className="p-3 space-y-4">
-          {/* Column Count */}
+      {/* Column Count */}
+      <div>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Columns</label>
+        <div className="grid grid-cols-4 gap-2">
+          {([1, 2, 3, 4] as const).map((num) => (
+            <button
+              key={num}
+              onClick={() => handleColumnCountChange(num)}
+              className={cn(
+                "p-2 text-sm rounded-lg border transition-colors cursor-pointer",
+                columnCount === num
+                  ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                  : "border-theme text-theme-secondary hover:bg-theme-tertiary hover:text-theme-primary"
+              )}
+            >
+              {num}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* v3 grid templates — desktop + optional tablet/mobile overrides. */}
+      {columnCount > 1 && (
+        <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-theme-primary mb-2">Columns</label>
-            <div className="grid grid-cols-4 gap-2">
-              {([1, 2, 3, 4] as const).map((num) => (
+            <label className="block text-sm font-medium text-theme-primary mb-2">
+              Desktop grid template
+            </label>
+            <input
+              type="text"
+              value={section.gridTemplateDesktop ?? ""}
+              onChange={(e) => onUpdate({ gridTemplateDesktop: e.target.value })}
+              placeholder="1fr 1fr, 1fr 300px, minmax(0,2fr) 1fr"
+              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent font-mono"
+            />
+            <p className="text-xs text-theme-secondary mt-1">
+              CSS <code>grid-template-columns</code> value. Resize handle drags fr tokens.
+            </p>
+            {/* Preset buttons — quick swap for the most common layouts. */}
+            <div className="mt-2 flex flex-wrap gap-1">
+              {DESKTOP_PRESETS.map((preset) => (
                 <button
-                  key={num}
-                  onClick={() => handleColumnCountChange(num)}
+                  key={preset.label}
+                  onClick={() => handleDesktopPresetClick(preset)}
                   className={cn(
-                    "p-2 text-sm rounded-lg border transition-colors cursor-pointer",
-                    columnCount === num
+                    "px-2 py-1 text-xs rounded border transition-colors cursor-pointer font-mono",
+                    section.gridTemplateDesktop === preset.template
                       ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                      : "border-theme text-theme-secondary hover:bg-theme-tertiary hover:text-theme-primary"
+                      : "border-theme text-theme-secondary hover:bg-theme-tertiary"
                   )}
+                  title={`${preset.columns} columns`}
                 >
-                  {num}
+                  {preset.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Column Widths */}
-          {columnCount > 1 && (
+          <div>
+            <label className="block text-sm font-medium text-theme-primary mb-2">
+              Tablet grid template
+              {viewport === "tablet" && (
+                <span className="text-xs text-theme-secondary ml-2">(current)</span>
+              )}
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={section.gridTemplateTablet ?? ""}
+                onChange={(e) =>
+                  onUpdate({
+                    gridTemplateTablet:
+                      e.target.value.trim().length === 0 ? undefined : e.target.value,
+                  })
+                }
+                placeholder="(inherits desktop)"
+                className="flex-1 px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent font-mono"
+              />
+              {section.gridTemplateTablet !== undefined && (
+                <button
+                  onClick={() => onUpdate({ gridTemplateTablet: undefined })}
+                  className="text-xs text-theme-muted hover:text-red-400 cursor-pointer px-2"
+                  title="Clear tablet override"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-theme-secondary mt-1">
+              Falls back to the desktop template when empty.
+            </p>
+          </div>
+
+          {section.mobileLayout === "grid" && (
             <div>
               <label className="block text-sm font-medium text-theme-primary mb-2">
-                Column Widths
-                {viewport === "tablet" && <span className="text-xs text-theme-secondary ml-2">(Tablet)</span>}
-                {viewport === "mobile" && <span className="text-xs text-theme-secondary ml-2">(Mobile)</span>}
+                Mobile grid template
+                {viewport === "mobile" && (
+                  <span className="text-xs text-theme-secondary ml-2">(current)</span>
+                )}
               </label>
-              {viewport === "mobile" && section.mobileLayout === "stack" ? (
-                <p className="text-sm text-theme-secondary">Columns are stacked at 100% width on mobile</p>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {section.columns.map((col, idx) => {
-                      // Show tabletWidth on tablet if set, otherwise fall back to width
-                      const displayValue = viewport === "tablet"
-                        ? (col.tabletWidth || col.width)
-                        : col.width;
-
-                      return (
-                        <div key={col.id} className="flex items-center gap-2">
-                          <span className="text-xs text-theme-secondary w-12">Col {idx + 1}</span>
-                          <input
-                            type="text"
-                            value={displayValue}
-                            onChange={(e) => {
-                              if (viewport === "tablet") {
-                                onUpdateColumn(col.id, { tabletWidth: e.target.value });
-                              } else {
-                                onUpdateColumn(col.id, { width: e.target.value });
-                              }
-                            }}
-                            placeholder="50%, 33.33%"
-                            className="flex-1 px-2 py-1 text-sm bg-theme-tertiary border border-theme rounded text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[var(--color-brand-red)]"
-                          />
-                          {viewport === "tablet" && col.tabletWidth && (
-                            <button
-                              onClick={() => onUpdateColumn(col.id, { tabletWidth: undefined })}
-                              className="text-xs text-theme-muted hover:text-red-400 cursor-pointer"
-                              title="Reset to desktop width"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-theme-secondary mt-1">
-                    {viewport === "tablet" ? "Tablet overrides desktop widths" : "Desktop widths (base)"}
-                  </p>
-                </>
-              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={section.gridTemplateMobile ?? ""}
+                  onChange={(e) =>
+                    onUpdate({
+                      gridTemplateMobile:
+                        e.target.value.trim().length === 0 ? undefined : e.target.value,
+                    })
+                  }
+                  placeholder="1fr, 1fr 1fr, 2fr 1fr"
+                  className="flex-1 px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent font-mono"
+                />
+                {section.gridTemplateMobile !== undefined && (
+                  <button
+                    onClick={() => onUpdate({ gridTemplateMobile: undefined })}
+                    className="text-xs text-theme-muted hover:text-red-400 cursor-pointer px-2"
+                    title="Clear mobile override"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-theme-secondary mt-1">
+                Only used when mobile layout is set to <code>grid</code>.
+              </p>
             </div>
           )}
+        </div>
+      )}
 
-          {/* Column Gap */}
-          <div>
-            <label className="block text-sm font-medium text-theme-primary mb-2">Column Gap</label>
+      {/* Column Gap */}
+      <div>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Column Gap</label>
+        <input
+          type="text"
+          value={section.columnGap}
+          onChange={(e) => onUpdate({ columnGap: e.target.value })}
+          placeholder="e.g., 16, 1rem, 10%"
+          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
+        />
+        <p className="text-xs text-theme-secondary mt-1">Numbers default to px</p>
+      </div>
+
+      {/* Row Gap */}
+      <div>
+        <label className="block text-sm font-medium text-theme-primary mb-2">Row Gap</label>
+        <input
+          type="text"
+          value={section.rowGap}
+          onChange={(e) => onUpdate({ rowGap: e.target.value })}
+          placeholder="e.g., 16, 1rem, 10%"
+          className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
+        />
+        <p className="text-xs text-theme-secondary mt-1">Numbers default to px</p>
+      </div>
+
+      {/* Mobile Layout */}
+      <div className="pt-2 border-t border-theme">
+        <label className="flex items-center gap-2 text-sm font-medium text-theme-primary mb-2">
+          <MobileIcon /> Mobile Layout
+        </label>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
-              type="text"
-              value={section.columnGap}
-              onChange={(e) => onUpdate({ columnGap: e.target.value })}
-              placeholder="e.g., 16, 1rem, 10%"
-              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
+              type="radio"
+              name={`mobile-${section.id}`}
+              checked={section.mobileLayout === "stack"}
+              onChange={() => onUpdate({ mobileLayout: "stack" })}
+              className="accent-[var(--color-brand-red)]"
             />
-            <p className="text-xs text-theme-secondary mt-1">Numbers default to px</p>
-          </div>
-
-          {/* Row Gap */}
-          <div>
-            <label className="block text-sm font-medium text-theme-primary mb-2">Row Gap</label>
+            <span className="text-sm text-theme-secondary">Stack (1 column)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
-              type="text"
-              value={section.rowGap}
-              onChange={(e) => onUpdate({ rowGap: e.target.value })}
-              placeholder="e.g., 16, 1rem, 10%"
-              className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent"
+              type="radio"
+              name={`mobile-${section.id}`}
+              checked={section.mobileLayout === "keep"}
+              onChange={() => onUpdate({ mobileLayout: "keep", mobileColumns: 2 })}
+              className="accent-[var(--color-brand-red)]"
             />
-            <p className="text-xs text-theme-secondary mt-1">Numbers default to px</p>
-          </div>
-
-          {/* Mobile Layout */}
-          <div className="pt-2 border-t border-theme">
-            <label className="flex items-center gap-2 text-sm font-medium text-theme-primary mb-2">
-              <MobileIcon /> Mobile Layout
-            </label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name={`mobile-${section.id}`}
-                  checked={section.mobileLayout === "stack"}
-                  onChange={() => onUpdate({ mobileLayout: "stack" })}
-                  className="accent-[var(--color-brand-red)]"
-                />
-                <span className="text-sm text-theme-secondary">Stack (1 column)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name={`mobile-${section.id}`}
-                  checked={section.mobileLayout === "keep"}
-                  onChange={() => onUpdate({ mobileLayout: "keep", mobileColumns: 2 })}
-                  className="accent-[var(--color-brand-red)]"
-                />
-                <span className="text-sm text-theme-secondary">Keep columns</span>
-              </label>
-              {section.mobileLayout === "keep" && (
-                <div className="ml-6 flex items-center gap-2">
-                  <span className="text-xs text-theme-secondary">Columns:</span>
-                  <div className="flex gap-1">
-                    {([1, 2] as const).map((num) => (
-                      <button
-                        key={num}
-                        onClick={() => onUpdate({ mobileColumns: num })}
-                        className={cn(
-                          "px-2 py-1 text-xs rounded border transition-colors cursor-pointer",
-                          section.mobileColumns === num
-                            ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                            : "border-theme text-theme-secondary hover:bg-theme-tertiary"
-                        )}
-                      >
-                        {num}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name={`mobile-${section.id}`}
-                  checked={section.mobileLayout === "slider"}
-                  onChange={() => onUpdate({ mobileLayout: "slider" })}
-                  className="accent-[var(--color-brand-red)]"
-                />
-                <span className="text-sm text-theme-secondary">Horizontal slider</span>
-              </label>
+            <span className="text-sm text-theme-secondary">Keep columns</span>
+          </label>
+          {section.mobileLayout === "keep" && (
+            <div className="ml-6 flex items-center gap-2">
+              <span className="text-xs text-theme-secondary">Columns:</span>
+              <div className="flex gap-1">
+                {([1, 2] as const).map((num) => (
+                  <button
+                    key={num}
+                    onClick={() => onUpdate({ mobileColumns: num })}
+                    className={cn(
+                      "px-2 py-1 text-xs rounded border transition-colors cursor-pointer",
+                      section.mobileColumns === num
+                        ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                        : "border-theme text-theme-secondary hover:bg-theme-tertiary"
+                    )}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-
+          )}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name={`mobile-${section.id}`}
+              checked={section.mobileLayout === "slider"}
+              onChange={() => onUpdate({ mobileLayout: "slider" })}
+              className="accent-[var(--color-brand-red)]"
+            />
+            <span className="text-sm text-theme-secondary">Horizontal slider</span>
+          </label>
+          {/* v3: explicit mobile grid template. When picked, the section
+              reads `gridTemplateMobile` (with desktop as the fallback). */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name={`mobile-${section.id}`}
+              checked={section.mobileLayout === "grid"}
+              onChange={() => onUpdate({ mobileLayout: "grid" })}
+              className="accent-[var(--color-brand-red)]"
+            />
+            <span className="text-sm text-theme-secondary">Custom grid</span>
+          </label>
+        </div>
+      </div>
     </div>
   );
 }

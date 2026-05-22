@@ -153,14 +153,16 @@ export type PageBuilderAction =
       columnId: string;
       name: string;
     }
+  // v3: track-resize dispatches a fresh `grid-template-columns` string for
+  // the active viewport (`desktop` writes `gridTemplateDesktop`; `tablet`
+  // writes `gridTemplateTablet`). Mobile resize isn't wired — the section's
+  // mobile slider / stack short-circuit handles that case via CSS. The
+  // legacy per-column `resizeColumn` action shape is replaced by this.
   | {
-      type: "resizeColumn";
+      type: "resizeGridTemplate";
       sectionId: string;
-      leftColumnId: string;
-      rightColumnId: string;
-      leftWidth: string;
-      rightWidth: string;
-      viewport: ViewportSize;
+      template: string;
+      viewport: "desktop" | "tablet";
     }
   | {
       type: "updateColumn";
@@ -373,7 +375,7 @@ export const LAYOUT_MUTATING_ACTIONS = new Set<PageBuilderAction["type"]>([
   "updateSection",
   "reorderSections",
   "renameColumn",
-  "resizeColumn",
+  "resizeGridTemplate",
   "updateColumn",
   "addBlock",
   "deleteBlock",
@@ -709,27 +711,19 @@ export function pageBuilderReducer(
       };
       break;
     }
-    case "resizeColumn": {
+    case "resizeGridTemplate": {
+      // v3: track-resize rewrites the section's grid template for the
+      // active viewport. Per-column `width` / `tabletWidth` are left alone
+      // (they're @deprecated and the renderer ignores them) so the legacy
+      // form remains recoverable from disk if we ever need to roll back.
       next = {
         ...state,
         sections: state.sections.map((s) => {
           if (s.id !== action.sectionId) return s;
-          return {
-            ...s,
-            columns: s.columns.map((col) => {
-              if (col.id === action.leftColumnId) {
-                return action.viewport === "tablet"
-                  ? { ...col, tabletWidth: action.leftWidth }
-                  : { ...col, width: action.leftWidth };
-              }
-              if (col.id === action.rightColumnId) {
-                return action.viewport === "tablet"
-                  ? { ...col, tabletWidth: action.rightWidth }
-                  : { ...col, width: action.rightWidth };
-              }
-              return col;
-            }),
-          };
+          if (action.viewport === "tablet") {
+            return { ...s, gridTemplateTablet: action.template };
+          }
+          return { ...s, gridTemplateDesktop: action.template };
         }),
       };
       break;

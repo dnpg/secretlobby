@@ -150,6 +150,10 @@ export {
   parseGapValue,
   parseWidthToPercent,
   normalizePercents,
+  percentsToGridTemplate,
+  equalGridTemplate,
+  tokenizeGridTemplate,
+  parseFrToken,
 } from "./blocks/layoutHelpers";
 
 // Page-builder block schema — the shape both the editor saves and the lobby
