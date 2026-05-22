@@ -282,14 +282,15 @@ const mainNavItems = [
 ];
 
 // Lobby-specific navigation items (shown when editing a lobby).
-// Theme, login-page, technical-info and per-lobby password live in the
-// page-builder editor now; password protection is folded into the lobby
-// index alongside the lobby title/description.
+// Theme, login-page, technical-info live in the page-builder editor
+// now. The "Access" item covers identity/policy/invitee management
+// AND the password gate.
 const lobbyNavItems = [
   { to: "", label: "Content", end: true, icon: "content" as const },
   { to: "analytics", label: "Analytics", icon: "analytics" as const },
   { to: "playlists", label: "Playlists", icon: "playlist" as const },
   { to: "social", label: "Social Links", icon: "social" as const },
+  { to: "access", label: "Access", icon: "password" as const },
 ];
 
 export default function AdminLayout() {
