@@ -944,6 +944,13 @@ model AnalyticsEvent {
   // Optional logged-in lobby user (post password-gate); null for anonymous.
   userId     String?
 
+  // Optional LobbyUser id — set when the visitor has been identified
+  // via magic-link or Google sign-in (i.e. session.lobbyUserIds[lobbyId]
+  // was present at ingest time). Enables per-visitor aggregations like
+  // "tracks listened to by this LobbyUser" without joining through
+  // visitorId / sessionId heuristics.
+  lobbyUserId String?
+
   // Event type — short string, e.g. "lobby_password_view", "login",
   // "audio_play", "audio_complete", "track_click". Kept open so new event
   // types don't need a migration.
@@ -975,4 +982,8 @@ model AnalyticsEvent {
   @@index([sessionId])
   @@index([visitorId])
   @@index([occurredAt])
+  // Per-LobbyUser timelines (e.g. the "tracks listened" count on the
+  // lobby-users admin route). Composite with eventType keeps that
+  // filtered count seek-friendly.
+  @@index([lobbyUserId, eventType])
 }
