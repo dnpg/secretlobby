@@ -1,5 +1,6 @@
 import type { Route } from "./+types/api.event";
 import { prisma, Prisma } from "@secretlobby/db";
+import { getSession } from "@secretlobby/auth";
 import {
   buildAnalyticsCookieHeaders,
   readAnalyticsCookies,
@@ -82,6 +83,22 @@ export async function action({ request }: Route.ActionArgs) {
     }
   }
 
+  // Server-stamp lobbyUserId from the visitor's session, never trust the
+  // client. session.lobbyUserIds[lobbyId] is populated when the visitor
+  // completed magic-link or Google sign-in for this lobby (see
+  // packages/auth/src/session.server.ts → updateLobbyAuthSession). For
+  // anonymous (password-only or unauthenticated) hits this stays null.
+  let lobbyUserId: string | null = null;
+  if (lobbyId) {
+    try {
+      const { session } = await getSession(request);
+      lobbyUserId = session.lobbyUserIds?.[lobbyId] ?? null;
+    } catch {
+      // Session decode failure (rotated key, malformed cookie): drop to
+      // anonymous attribution rather than reject the event.
+    }
+  }
+
   const country = request.headers.get("cf-ipcountry") || null;
   const userAgent = toStr(request.headers.get("user-agent"), UA_MAX);
   const path = toStr(payload.path, PATH_MAX);
@@ -103,6 +120,7 @@ export async function action({ request }: Route.ActionArgs) {
         eventType,
         lobbyId,
         accountId,
+        lobbyUserId,
         sessionId: cookies.sessionId,
         visitorId: cookies.visitorId,
         trackId,
