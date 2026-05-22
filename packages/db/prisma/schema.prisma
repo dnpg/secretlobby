@@ -600,15 +600,32 @@ model Subscription {
   gatewaySubscriptionId String // External subscription ID
   gatewayCustomerId     String // External customer ID
 
-  // Subscription details
+  // Linked SubscriptionPlan (preferred source of truth for tier/limits).
+  // Kept optional for backward-compat with rows created before plan
+  // catalog existed; new writes always populate it.
+  planId    String?
+  plan      SubscriptionPlan? @relation(fields: [planId], references: [id])
+
+  // Subscription details. `tier` is a legacy enum mirror of `plan.slug`
+  // — keep it in sync so existing code that reads `account.subscriptionTier`
+  // keeps working until everything has migrated to plan-based lookups.
   tier                SubscriptionTier
   status              SubscriptionStatus @default(ACTIVE)
   billingPeriod       String?            // 'monthly' or 'yearly'
+
+  // Stripe price the subscription is currently billed on. Used to detect
+  // plan changes from Stripe-initiated updates (Customer Portal, retries).
+  gatewayPriceId      String?
 
   // Billing cycle
   currentPeriodStart  DateTime
   currentPeriodEnd    DateTime
   cancelAtPeriodEnd   Boolean  @default(false)
+
+  // Out-of-order webhook protection. Stamp of the most recent Stripe
+  // event we have applied to this row. Older events (by event.created)
+  // are dropped — see packages/payments/src/billing/webhook.server.ts.
+  lastEventAt         DateTime?
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -617,6 +634,7 @@ model Subscription {
   @@unique([gatewayId, gatewaySubscriptionId])
   @@index([accountId])
   @@index([status])
+  @@index([planId])
 }
 
 // ============================================================================
@@ -750,8 +768,62 @@ model SubscriptionPlan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Relations
+  subscriptions Subscription[]
+
   @@index([slug])
   @@index([isActive, position])
+  // Used by Subscription upserts to resolve plan from a Stripe price ID.
+  @@index([stripePriceMonthly])
+  @@index([stripePriceYearly])
+}
+
+// ============================================================================
+// STRIPE WEBHOOK EVENT (Idempotency Ledger)
+// ============================================================================
+
+/// Idempotency ledger for incoming gateway webhook events. We INSERT a row
+/// keyed by (gatewayId, eventId) BEFORE applying the event. If the insert
+/// hits the unique constraint we treat the event as already-processed and
+/// return 200 without touching anything else. See
+/// packages/payments/src/billing/webhook.server.ts.
+///
+/// Rows are immutable except for `processedAt` (filled in on success).
+/// Failed rows stay PENDING so the next retry can resume work — Stripe
+/// will keep redelivering until we ack 2xx.
+model StripeWebhookEvent {
+  id          String   @id @default(cuid())
+
+  /// 'stripe' for now. Future-proofed for paypal etc.
+  gatewayId   String
+
+  /// The external event id from the gateway (e.g. "evt_..." for Stripe).
+  eventId     String
+
+  /// The Stripe event type string (e.g. "customer.subscription.updated").
+  /// Stored verbatim so we can audit which event types we have seen.
+  eventType   String
+
+  /// Stripe event creation timestamp. Used both for ordering and for
+  /// log/audit purposes. Wall-clock from Stripe, not from us.
+  eventCreatedAt DateTime
+
+  /// When we first received the event (insert time on our side).
+  receivedAt  DateTime @default(now())
+
+  /// When we finished applying the event. NULL means we crashed or errored
+  /// after the idempotency insert but before commit — the next retry will
+  /// reprocess (the actual mutations run in a transaction with this row's
+  /// processedAt update, so partial work is impossible).
+  processedAt DateTime?
+
+  /// Optional last-error message for debugging failed deliveries.
+  /// Never contains request body / signature material.
+  error       String?
+
+  @@unique([gatewayId, eventId])
+  @@index([eventType])
+  @@index([receivedAt])
 }
 
 // ============================================================================

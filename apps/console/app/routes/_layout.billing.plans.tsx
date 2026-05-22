@@ -1,3 +1,13 @@
+/**
+ * /billing/plans — pick a plan, start a Checkout session, manage cancellations.
+ *
+ * Security:
+ *   - All POST handlers go through `csrfProtect` before touching Stripe.
+ *   - The plan & billing cycle are validated server-side against the
+ *     SubscriptionPlan catalog; clients cannot inject a Stripe price id.
+ *   - The Stripe customer id is resolved server-side from the account row.
+ */
+
 import { useEffect, useState } from "react";
 import {
   Form,
@@ -10,216 +20,259 @@ import {
 import type { Route } from "./+types/_layout.billing.plans";
 import { toast } from "sonner";
 
-// Types only - these are safe for client
-import type { SubscriptionTier } from "@secretlobby/payments";
+interface PlanRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  priceMonthly: number;
+  priceYearly: number;
+  currency: string;
+  features: string[];
+  maxSongs: number;
+  maxLobbies: number;
+  maxStorage: number;
+  customDomain: boolean;
+  apiAccess: boolean;
+  highlighted: boolean;
+  hasStripePrice: boolean;
+}
 
 export async function loader({ request }: Route.LoaderArgs) {
-  // Server-only imports
-  const { getSession, requireUserAuth } = await import("@secretlobby/auth");
-  const { SUBSCRIPTION_TIERS, paymentManager, registerConfiguredGateways } = await import("@secretlobby/payments");
-  const { getAccountWithBillingInfo } = await import("~/models/queries/account.server");
-  const { getActiveOrPastDueSubscription } = await import("~/models/queries/subscription.server");
-
-  // Register gateways
-  registerConfiguredGateways();
+  const { getSession, requireUserAuth, getCsrfToken } = await import(
+    "@secretlobby/auth"
+  );
+  const { getCurrentSubscription, isBillingConfigured } = await import(
+    "@secretlobby/payments/billing"
+  );
+  const { prisma } = await import("@secretlobby/db");
 
   const { session } = await getSession(request);
   requireUserAuth(session);
 
   const accountId = session.currentAccountId;
-  if (!accountId) {
-    throw redirect("/login");
-  }
+  if (!accountId) throw redirect("/login");
 
-  const account = await getAccountWithBillingInfo(accountId);
+  const current = await getCurrentSubscription(accountId);
 
-  if (!account) {
-    throw redirect("/login");
-  }
+  const plans = await prisma.subscriptionPlan.findMany({
+    where: { isActive: true },
+    orderBy: { position: "asc" },
+  });
 
-  // Get available payment gateways
-  const availableGateways = paymentManager.getAvailableGateways();
+  const planRows: PlanRow[] = plans.map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    description: p.description,
+    priceMonthly: p.priceMonthly,
+    priceYearly: p.priceYearly,
+    currency: p.currency,
+    features: Array.isArray(p.features) ? (p.features as string[]) : [],
+    maxSongs: p.maxSongs,
+    maxLobbies: p.maxLobbies,
+    maxStorage: p.maxStorage,
+    customDomain: p.customDomain,
+    apiAccess: p.apiAccess,
+    highlighted: p.highlighted,
+    hasStripePrice: Boolean(p.stripePriceMonthly || p.stripePriceYearly),
+  }));
 
-  // Get active subscription for cancel flow
-  const subscription = await getActiveOrPastDueSubscription(accountId);
+  const csrfToken = await getCsrfToken(request);
 
   return {
-    account: {
-      id: account.id,
-      subscriptionTier: account.subscriptionTier,
-      stripeCustomerId: account.stripeCustomerId,
+    plans: planRows,
+    current: {
+      planSlug: current.plan.slug,
+      planName: current.plan.name,
+      billingPeriod: current.billingPeriod,
+      cancelAtPeriodEnd: current.cancelAtPeriodEnd,
+      currentPeriodEnd: current.currentPeriodEnd?.toISOString() ?? null,
+      status: current.status,
+      hasSubscription: current.id !== null,
     },
-    subscription: subscription
-      ? {
-          id: subscription.id,
-          gatewayId: subscription.gatewayId,
-          gatewaySubscriptionId: subscription.gatewaySubscriptionId,
-          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-        }
-      : null,
-    tiers: Object.values(SUBSCRIPTION_TIERS) as SubscriptionTier[],
-    availableGateways,
+    billingConfigured: isBillingConfigured(),
+    csrfToken,
   };
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
-  const { paymentManager, registerConfiguredGateways } = await import("@secretlobby/payments");
-  const { getAccountWithOwner } = await import("~/models/queries/account.server");
-  const { getActiveOrPastDueSubscription, getCancellableSubscription } = await import("~/models/queries/subscription.server");
-  const { updateSubscription } = await import("~/models/mutations/subscription.server");
-  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+  const { csrfProtect } = await import("@secretlobby/auth/csrf");
+  const {
+    createCheckoutSession,
+    createCustomerPortalSession,
+    BillingError,
+    getStripeClient,
+    getAppBaseUrl,
+  } = await import("@secretlobby/payments/billing");
+  const { createLogger, formatError } = await import(
+    "@secretlobby/logger/server"
+  );
+  const { prisma } = await import("@secretlobby/db");
 
   const logger = createLogger({ service: "console:billing:plans" });
 
-  // Register gateways
-  registerConfiguredGateways();
+  // CSRF FIRST — this endpoint mutates billing state. Throws a Response
+  // on failure which React Router will return verbatim.
+  await csrfProtect(request);
 
   const { session } = await getSession(request);
   requireUserAuth(session);
 
   const accountId = session.currentAccountId;
-  if (!accountId) {
-    return { error: "Not authenticated" };
-  }
-
-  const account = await getAccountWithOwner(accountId);
-
-  if (!account) {
-    return { error: "Account not found" };
-  }
+  if (!accountId) return { error: "Not authenticated" };
 
   const formData = await request.formData();
   const intent = formData.get("intent");
 
+  // Build absolute redirect URLs from APP_BASE_URL — NOT from the
+  // request's Host header. A misconfigured upstream proxy could
+  // otherwise forward an attacker-controlled Host, causing Stripe's
+  // success redirect to land on `evil.com/billing/success`.
+  // getAppBaseUrl() fails closed (throws) when APP_BASE_URL is unset;
+  // we refuse to start checkout in that case rather than silently
+  // falling back to the request URL.
+  let baseUrl: string;
+  try {
+    baseUrl = getAppBaseUrl();
+  } catch (err) {
+    logger.error(
+      { err: formatError(err) },
+      "APP_BASE_URL not configured — refusing to handle billing intent"
+    );
+    return { error: "Billing is not configured for this deployment." };
+  }
+
   try {
     if (intent === "checkout") {
-      const tierId = formData.get("tierId") as string;
-      const billingPeriod = formData.get("billingPeriod") as
-        | "monthly"
-        | "yearly";
-      const gatewayId = (formData.get("gatewayId") as string) || undefined;
+      const planSlug = String(formData.get("planSlug") ?? "");
+      const billingCycle = String(formData.get("billingCycle") ?? "monthly");
 
-      if (!tierId || !billingPeriod) {
-        return { error: "Missing required fields" };
+      if (
+        !planSlug ||
+        (billingCycle !== "monthly" && billingCycle !== "yearly")
+      ) {
+        return { error: "Invalid plan selection" };
       }
 
-      if (tierId === "FREE") {
-        return { error: "Cannot checkout for free tier" };
-      }
+      const result = await createCheckoutSession({
+        accountId,
+        planSlug,
+        billingCycle,
+        successUrl: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${baseUrl}/billing/plans`,
+      });
 
-      // Get console URL for redirects
-      const url = new URL(request.url);
-      const baseUrl = `${url.protocol}//${url.host}`;
-
-      // Get customer email
-      const ownerEmail =
-        account.users[0]?.user?.email || session.userEmail || "";
-
-      const result = await paymentManager.createCheckoutSession(
-        {
-          accountId,
-          tierId,
-          billingPeriod,
-          successUrl: `${baseUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${baseUrl}/billing/plans`,
-          customerId: account.stripeCustomerId || undefined,
-          customerEmail: ownerEmail,
-          metadata: {
-            accountId,
-          },
-        },
-        gatewayId
+      logger.info(
+        { accountId, planSlug, billingCycle, sessionId: result.sessionId },
+        "Stripe checkout session created"
       );
 
-      // Redirect to checkout
-      return redirect(result.checkoutUrl);
+      return redirect(result.url);
+    }
+
+    if (intent === "portal") {
+      const result = await createCustomerPortalSession({
+        accountId,
+        returnUrl: `${baseUrl}/billing`,
+      });
+      return redirect(result.url);
     }
 
     if (intent === "cancel") {
-      const subscription = await getActiveOrPastDueSubscription(accountId);
-
-      if (!subscription) {
-        return { error: "No active subscription found" };
-      }
-
-      // Cancel at period end (not immediately)
-      await paymentManager.cancelSubscription(
-        subscription.gatewayId,
-        subscription.gatewaySubscriptionId,
-        false
-      );
-
-      // Update local record
-      await updateSubscription(subscription.id, { cancelAtPeriodEnd: true });
-
-      return { success: "Subscription will be cancelled at the end of the billing period" };
+      // Defer cancellation to the Customer Portal — Stripe will fire
+      // the customer.subscription.updated/deleted webhook and our
+      // handler will sync the DB. We just open the portal here.
+      const result = await createCustomerPortalSession({
+        accountId,
+        returnUrl: `${baseUrl}/billing`,
+      });
+      return redirect(result.url);
     }
 
     if (intent === "reactivate") {
-      const subscription = await getCancellableSubscription(accountId);
-
-      if (!subscription) {
+      // Reactivation = clear cancel_at_period_end. Talk to Stripe
+      // directly; the webhook will sync our row.
+      const account = await prisma.subscription.findFirst({
+        where: {
+          accountId,
+          status: { in: ["ACTIVE", "TRIALING", "PAST_DUE"] },
+          cancelAtPeriodEnd: true,
+        },
+        select: { gatewaySubscriptionId: true },
+      });
+      if (!account) {
         return { error: "No subscription to reactivate" };
       }
-
-      // Reactivate by updating cancel_at_period_end to false
-      await paymentManager.updateSubscription(
-        subscription.gatewayId,
-        subscription.gatewaySubscriptionId,
-        { cancelAtPeriodEnd: false }
+      const stripe = getStripeClient();
+      await stripe.subscriptions.update(account.gatewaySubscriptionId, {
+        cancel_at_period_end: false,
+      });
+      logger.info(
+        { accountId, subscriptionId: account.gatewaySubscriptionId },
+        "Subscription reactivated"
       );
-
-      // Update local record
-      await updateSubscription(subscription.id, { cancelAtPeriodEnd: false });
-
-      return { success: "Subscription reactivated successfully" };
+      return { success: "Subscription reactivated" };
     }
 
     return { error: "Invalid action" };
-  } catch (error) {
-    logger.error({ error: formatError(error) }, "Billing action error");
-    return {
-      error:
-        error instanceof Error ? error.message : "An error occurred. Please try again.",
-    };
+  } catch (err) {
+    if (err instanceof BillingError) {
+      logger.warn(
+        { code: err.code, accountId, intent },
+        "Billing action rejected"
+      );
+      return { error: err.message };
+    }
+    // Don't surface raw error messages — they can leak internals.
+    logger.error(
+      { err: formatError(err), accountId, intent },
+      "Billing action failed"
+    );
+    return { error: "Something went wrong. Please try again." };
   }
 }
 
-function formatCurrency(amount: number): string {
+function formatCurrency(cents: number, currency = "usd"): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD",
-  }).format(amount / 100);
+    currency: currency.toUpperCase(),
+  }).format(cents / 100);
 }
 
 export default function BillingPlans() {
-  const { account, subscription, tiers, availableGateways } =
+  const { plans, current, billingConfigured, csrfToken } =
     useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [searchParams] = useSearchParams();
-  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">(
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">(
     "yearly"
   );
-  const [showCancelConfirm, setShowCancelConfirm] = useState(
-    searchParams.get("action") === "cancel"
-  );
-  const [selectedTier, setSelectedTier] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  // searchParams currently unused; reserved for ?action=cancel deep-link UX.
+  void searchParams;
 
   useEffect(() => {
-    if (actionData?.success) {
-      toast.success(actionData.success);
-      setShowCancelConfirm(false);
-    }
-    if (actionData?.error) {
-      toast.error(actionData.error);
-    }
+    if (actionData?.success) toast.success(actionData.success);
+    if (actionData?.error) toast.error(actionData.error);
   }, [actionData]);
 
-  const currentTierIndex = tiers.findIndex(
-    (t) => t.id === account.subscriptionTier
-  );
+  if (!billingConfigured) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold">Plans</h2>
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-6">
+          <h3 className="text-yellow-400 font-semibold mb-2">
+            Billing not configured
+          </h3>
+          <p className="text-sm text-theme-secondary">
+            Stripe API credentials are missing. Contact your administrator.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -227,22 +280,26 @@ export default function BillingPlans() {
         <div>
           <h2 className="text-2xl font-bold mb-2">Choose Your Plan</h2>
           <p className="text-theme-secondary">
-            Select the plan that best fits your needs
+            Current plan:{" "}
+            <span className="text-theme-primary font-medium">
+              {current.planName}
+            </span>
+            {current.billingPeriod && ` (${current.billingPeriod})`}
           </p>
         </div>
         <Link
           to="/billing"
-          className="text-sm text-theme-secondary hover:text-theme-primary transition"
+          className="text-sm text-theme-secondary hover:text-theme-primary transition cursor-pointer"
         >
           Back to Billing
         </Link>
       </div>
 
-      {/* Billing Period Toggle */}
+      {/* Billing cycle toggle */}
       <div className="flex items-center justify-center gap-4">
         <span
           className={`text-sm ${
-            billingPeriod === "monthly"
+            billingCycle === "monthly"
               ? "text-theme-primary font-medium"
               : "text-theme-secondary"
           }`}
@@ -252,49 +309,51 @@ export default function BillingPlans() {
         <button
           type="button"
           onClick={() =>
-            setBillingPeriod((p) => (p === "monthly" ? "yearly" : "monthly"))
+            setBillingCycle((c) => (c === "monthly" ? "yearly" : "monthly"))
           }
           className={`relative w-12 h-6 rounded-full transition-colors cursor-pointer border-0 outline-none focus:outline-none ${
-            billingPeriod === "yearly" ? "bg-green-500" : "bg-gray-600"
+            billingCycle === "yearly" ? "bg-green-500" : "bg-gray-600"
           }`}
+          aria-label="Toggle billing cycle"
         >
           <span
             className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-              billingPeriod === "yearly" ? "translate-x-6" : "translate-x-0"
+              billingCycle === "yearly" ? "translate-x-6" : "translate-x-0"
             }`}
           />
         </button>
         <span
           className={`text-sm ${
-            billingPeriod === "yearly"
+            billingCycle === "yearly"
               ? "text-theme-primary font-medium"
               : "text-theme-secondary"
           }`}
         >
           Yearly
-          <span className="ml-1 text-green-400 text-xs">(Save 17%)</span>
+          <span className="ml-1 text-green-400 text-xs">(Save ~17%)</span>
         </span>
       </div>
 
-      {/* Plans Grid */}
+      {/* Plans grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {tiers.map((tier, index) => {
-          const isCurrent = tier.id === account.subscriptionTier;
-          const isUpgrade = index > currentTierIndex;
-          const isDowngrade = index < currentTierIndex && index > 0;
+        {plans.map((plan) => {
+          const isCurrent = plan.slug === current.planSlug;
           const price =
-            billingPeriod === "yearly" ? tier.priceYearly : tier.priceMonthly;
+            billingCycle === "yearly" ? plan.priceYearly : plan.priceMonthly;
+          const isFreePlan = plan.priceMonthly === 0 && plan.priceYearly === 0;
 
           return (
             <div
-              key={tier.id}
+              key={plan.id}
               className={`bg-theme-secondary border rounded-lg p-6 flex flex-col ${
-                tier.highlighted
+                plan.highlighted
                   ? "border-blue-500 ring-2 ring-blue-500/20"
                   : "border-theme"
-              } ${isCurrent ? "ring-2 ring-green-500/20 border-green-500" : ""}`}
+              } ${
+                isCurrent ? "ring-2 ring-green-500/20 border-green-500" : ""
+              }`}
             >
-              {tier.highlighted && !isCurrent && (
+              {plan.highlighted && !isCurrent && (
                 <div className="text-xs font-semibold text-blue-400 mb-2">
                   MOST POPULAR
                 </div>
@@ -305,71 +364,53 @@ export default function BillingPlans() {
                 </div>
               )}
 
-              <h3 className="text-xl font-bold mb-1">{tier.name}</h3>
+              <h3 className="text-xl font-bold mb-1">{plan.name}</h3>
               <p className="text-sm text-theme-secondary mb-4">
-                {tier.description}
+                {plan.description}
               </p>
 
               <div className="mb-6">
                 <span className="text-3xl font-bold">
-                  {tier.priceMonthly === 0 ? "Free" : formatCurrency(price)}
+                  {isFreePlan ? "Free" : formatCurrency(price, plan.currency)}
                 </span>
-                {tier.priceMonthly > 0 && (
+                {!isFreePlan && (
                   <span className="text-theme-secondary">
-                    /{billingPeriod === "yearly" ? "year" : "month"}
+                    /{billingCycle === "yearly" ? "year" : "month"}
                   </span>
                 )}
               </div>
 
-              <ul className="space-y-2 mb-6 flex-1">
-                {tier.features.map((feature, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 text-sm text-theme-secondary"
-                  >
-                    <svg
-                      className="w-4 h-4 text-green-400 mt-0.5 shrink-0"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    {feature}
-                  </li>
+              <ul className="space-y-2 mb-6 flex-1 text-sm text-theme-secondary">
+                <li>
+                  {plan.maxLobbies === -1 ? "Unlimited" : plan.maxLobbies} lobbies
+                </li>
+                <li>
+                  {plan.maxSongs === -1 ? "Unlimited" : plan.maxSongs} songs
+                </li>
+                {plan.features.map((f, i) => (
+                  <li key={i}>{f}</li>
                 ))}
               </ul>
 
-              {tier.id === "FREE" ? (
-                isCurrent ? (
-                  <div className="px-4 py-2 bg-theme-tertiary text-theme-secondary text-center rounded-lg">
-                    Current Plan
-                  </div>
-                ) : (
-                  <div className="px-4 py-2 bg-theme-tertiary text-theme-secondary text-center rounded-lg text-sm">
-                    Downgrade via cancel
-                  </div>
-                )
-              ) : isCurrent ? (
+              {isCurrent ? (
                 <div className="px-4 py-2 bg-green-500/20 text-green-400 text-center rounded-lg">
                   Current Plan
+                </div>
+              ) : isFreePlan ? (
+                <div className="px-4 py-2 bg-theme-tertiary text-theme-secondary text-center rounded-lg text-sm">
+                  Downgrade via cancel
+                </div>
+              ) : !plan.hasStripePrice ? (
+                <div className="px-4 py-2 bg-yellow-500/10 text-yellow-400 text-center rounded-lg text-xs">
+                  Plan not configured
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => setSelectedTier(tier.id)}
-                  className={`w-full px-4 py-2 rounded-lg transition ${
-                    isUpgrade
-                      ? "btn-primary"
-                      : "btn-secondary"
-                  }`}
+                  onClick={() => setSelectedPlan(plan.slug)}
+                  className="w-full px-4 py-2 btn-primary rounded-lg transition cursor-pointer"
                 >
-                  {isUpgrade ? "Upgrade" : isDowngrade ? "Downgrade" : "Select"}
+                  Switch to {plan.name}
                 </button>
               )}
             </div>
@@ -377,67 +418,45 @@ export default function BillingPlans() {
         })}
       </div>
 
-      {/* Cancel Subscription Section */}
-      {subscription && !subscription.cancelAtPeriodEnd && (
+      {/* Manage subscription via Portal */}
+      {current.hasSubscription && (
         <div className="bg-theme-secondary border border-theme rounded-lg p-6">
-          <h3 className="text-lg font-semibold mb-2">Cancel Subscription</h3>
+          <h3 className="text-lg font-semibold mb-2">Manage Subscription</h3>
           <p className="text-sm text-theme-secondary mb-4">
-            If you cancel, you'll continue to have access until the end of your
-            current billing period.
+            Use the Stripe Customer Portal to update payment methods, view
+            invoices, or cancel your subscription.
           </p>
-
-          {showCancelConfirm ? (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-              <p className="text-sm text-red-400 mb-4">
-                Are you sure you want to cancel? You'll lose access to premium
-                features at the end of your billing period.
-              </p>
-              <div className="flex gap-3">
-                <Form method="post">
-                  <input type="hidden" name="intent" value="cancel" />
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition"
-                  >
-                    Yes, Cancel
-                  </button>
-                </Form>
-                <button
-                  type="button"
-                  onClick={() => setShowCancelConfirm(false)}
-                  className="px-4 py-2 btn-secondary rounded-lg transition"
-                >
-                  Keep Subscription
-                </button>
-              </div>
-            </div>
-          ) : (
+          <Form method="post">
+            <input type="hidden" name="_csrf" value={csrfToken} />
+            <input type="hidden" name="intent" value="portal" />
             <button
-              type="button"
-              onClick={() => setShowCancelConfirm(true)}
-              className="text-red-400 hover:text-red-300 text-sm transition"
+              type="submit"
+              className="px-4 py-2 btn-secondary rounded-lg transition cursor-pointer"
             >
-              Cancel Subscription
+              Open Customer Portal
             </button>
-          )}
+          </Form>
         </div>
       )}
 
-      {/* Reactivate Section */}
-      {subscription?.cancelAtPeriodEnd && (
+      {/* Reactivate */}
+      {current.cancelAtPeriodEnd && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-6">
           <h3 className="text-lg font-semibold mb-2 text-yellow-400">
             Subscription Scheduled for Cancellation
           </h3>
           <p className="text-sm text-theme-secondary mb-4">
-            Your subscription is set to cancel at the end of the current billing
-            period. You can reactivate it to continue your plan.
+            Reactivate to continue beyond{" "}
+            {current.currentPeriodEnd &&
+              new Date(current.currentPeriodEnd).toLocaleDateString()}
+            .
           </p>
           <Form method="post">
+            <input type="hidden" name="_csrf" value={csrfToken} />
             <input type="hidden" name="intent" value="reactivate" />
             <button
               type="submit"
-              className="px-4 py-2 btn-primary rounded-lg transition"
+              className="px-4 py-2 btn-primary rounded-lg transition cursor-pointer"
             >
               Reactivate Subscription
             </button>
@@ -445,133 +464,62 @@ export default function BillingPlans() {
         </div>
       )}
 
-      {/* Gateway Info */}
-      {availableGateways.length === 0 && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-          <p className="text-sm text-yellow-400">
-            Payment processing is not configured. Please contact support.
-          </p>
-        </div>
-      )}
-
-      {/* Plan Selection Confirmation Modal */}
-      {selectedTier && (() => {
-        const tier = tiers.find(t => t.id === selectedTier);
-        if (!tier) return null;
-
-        const price = billingPeriod === "yearly" ? tier.priceYearly : tier.priceMonthly;
-        const currentTier = tiers.find(t => t.id === account.subscriptionTier);
-        const isUpgrade = tiers.findIndex(t => t.id === selectedTier) > currentTierIndex;
-
+      {/* Checkout confirmation modal */}
+      {selectedPlan && (() => {
+        const plan = plans.find((p) => p.slug === selectedPlan);
+        if (!plan) return null;
+        const price =
+          billingCycle === "yearly" ? plan.priceYearly : plan.priceMonthly;
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-theme-primary border border-theme rounded-xl p-6 w-full max-w-md">
-              <h3 className="text-xl font-bold mb-4">
-                {isUpgrade ? "Upgrade to" : "Switch to"} {tier.name}
-              </h3>
-
-              {/* Plan Summary */}
+              <h3 className="text-xl font-bold mb-4">Switch to {plan.name}</h3>
               <div className="bg-theme-secondary rounded-lg p-4 mb-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <div className="font-semibold text-lg">{tier.name}</div>
-                    <div className="text-sm text-theme-secondary">{tier.description}</div>
-                  </div>
+                <div className="flex justify-between items-baseline">
+                  <div className="font-medium">{plan.name}</div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold">{formatCurrency(price)}</div>
+                    <div className="text-2xl font-bold">
+                      {formatCurrency(price, plan.currency)}
+                    </div>
                     <div className="text-sm text-theme-secondary">
-                      per {billingPeriod === "yearly" ? "year" : "month"}
+                      per {billingCycle === "yearly" ? "year" : "month"}
                     </div>
                   </div>
                 </div>
-
-                {currentTier && currentTier.id !== "FREE" && (
-                  <div className="pt-4 border-t border-theme">
-                    <div className="text-sm text-theme-secondary">
-                      Changing from <span className="text-theme-primary font-medium">{currentTier.name}</span>
-                    </div>
-                  </div>
-                )}
               </div>
-
-              {/* Features Preview */}
-              <div className="mb-6">
-                <div className="text-sm font-medium mb-2">Included features:</div>
-                <ul className="space-y-1">
-                  {tier.features.slice(0, 4).map((feature, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm text-theme-secondary">
-                      <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      {feature}
-                    </li>
-                  ))}
-                  {tier.features.length > 4 && (
-                    <li className="text-sm text-theme-secondary pl-6">
-                      +{tier.features.length - 4} more features
-                    </li>
-                  )}
-                </ul>
-              </div>
-
-              {/* Billing Period Toggle in Modal */}
-              <div className="flex items-center justify-center gap-3 mb-6 p-3 bg-theme-tertiary rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setBillingPeriod("monthly")}
-                  className={`px-3 py-1 rounded text-sm transition ${
-                    billingPeriod === "monthly"
-                      ? "bg-theme-primary text-theme-primary"
-                      : "text-theme-secondary hover:text-theme-primary"
-                  }`}
-                >
-                  Monthly
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBillingPeriod("yearly")}
-                  className={`px-3 py-1 rounded text-sm transition ${
-                    billingPeriod === "yearly"
-                      ? "bg-theme-primary text-theme-primary"
-                      : "text-theme-secondary hover:text-theme-primary"
-                  }`}
-                >
-                  Yearly <span className="text-green-400 text-xs">(Save 17%)</span>
-                </button>
-              </div>
-
-              {/* Actions */}
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedTier(null)}
-                  className="flex-1 px-4 py-2 btn-secondary rounded-lg transition"
+                  onClick={() => setSelectedPlan(null)}
+                  className="flex-1 px-4 py-2 btn-secondary rounded-lg transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <Form method="post" className="flex-1">
+                  <input type="hidden" name="_csrf" value={csrfToken} />
                   <input type="hidden" name="intent" value="checkout" />
-                  <input type="hidden" name="tierId" value={selectedTier} />
-                  <input type="hidden" name="billingPeriod" value={billingPeriod} />
-                  {availableGateways.length > 0 && (
-                    <input type="hidden" name="gatewayId" value={availableGateways[0].id} />
-                  )}
+                  <input type="hidden" name="planSlug" value={plan.slug} />
+                  <input
+                    type="hidden"
+                    name="billingCycle"
+                    value={billingCycle}
+                  />
                   <button
                     type="submit"
-                    className="w-full px-4 py-2 btn-primary rounded-lg transition"
+                    className="w-full px-4 py-2 btn-primary rounded-lg transition cursor-pointer"
                   >
                     Continue to Checkout
                   </button>
                 </Form>
               </div>
-
               <p className="text-xs text-theme-secondary text-center mt-4">
-                You'll be redirected to Stripe to complete your payment securely.
+                You'll be redirected to Stripe to complete payment securely.
               </p>
             </div>
           </div>
         );
       })()}
+
     </div>
   );
 }

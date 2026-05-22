@@ -1,7 +1,19 @@
 import { prisma, SubscriptionTier } from "@secretlobby/db";
 
+/**
+ * NOTE — This file is being phased out in favor of
+ * `@secretlobby/payments/billing` (`getCurrentSubscription`,
+ * `enforceAccountLimit`). New code should use those helpers; they are
+ * the single source of truth for plan state.
+ *
+ * The functions below are kept for routes that already use them.
+ */
+
 // Default plan limits by tier (fallback if no SubscriptionPlan record exists)
-const DEFAULT_PLAN_LIMITS: Record<SubscriptionTier, { maxLobbies: number; maxSongs: number; maxStorage: number }> = {
+const DEFAULT_PLAN_LIMITS: Record<
+  SubscriptionTier,
+  { maxLobbies: number; maxSongs: number; maxStorage: number }
+> = {
   FREE: { maxLobbies: 1, maxSongs: 5, maxStorage: 100 },
   STARTER: { maxLobbies: 3, maxSongs: 25, maxStorage: 500 },
   PRO: { maxLobbies: 10, maxSongs: 100, maxStorage: 2000 },
@@ -53,7 +65,9 @@ export async function getAccountPlanLimits(accountId: string): Promise<PlanLimit
   };
 }
 
-export async function canCreateMoreLobbies(accountId: string): Promise<{ allowed: boolean; current: number; max: number }> {
+export async function canCreateMoreLobbies(
+  accountId: string
+): Promise<{ allowed: boolean; current: number; max: number }> {
   const [limits, count] = await Promise.all([
     getAccountPlanLimits(accountId),
     prisma.lobby.count({ where: { accountId } }),
@@ -89,9 +103,17 @@ export async function getActiveOrPastDueSubscription(accountId: string) {
   });
 }
 
-export async function getSubscriptionByStripeId(stripeSubscriptionId: string) {
+/** Look up a subscription by its Stripe-side id. */
+export async function getSubscriptionByStripeId(
+  stripeSubscriptionId: string
+) {
   return prisma.subscription.findUnique({
-    where: { stripeSubscriptionId },
+    where: {
+      gatewayId_gatewaySubscriptionId: {
+        gatewayId: "stripe",
+        gatewaySubscriptionId: stripeSubscriptionId,
+      },
+    },
   });
 }
 
@@ -104,7 +126,12 @@ export async function getCancellableSubscription(accountId: string) {
   });
 }
 
-export async function getSubscriptionByGatewaySubscriptionId(gatewaySubscriptionId: string) {
+/** Alias used by some older callsites. Same semantics as
+ * getSubscriptionByStripeId — both look up the Subscription row
+ * regardless of gateway. */
+export async function getSubscriptionByGatewaySubscriptionId(
+  gatewaySubscriptionId: string
+) {
   return prisma.subscription.findFirst({
     where: { gatewaySubscriptionId },
   });

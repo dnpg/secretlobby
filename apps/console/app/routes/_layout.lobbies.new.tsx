@@ -17,7 +17,7 @@ interface ExistingLobby {
 export async function loader({ request }: Route.LoaderArgs) {
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
   const { getLobbiesByAccountId } = await import("~/models/queries/lobby.server");
-  const { canCreateMoreLobbies } = await import("~/models/queries/subscription.server");
+  const { enforceAccountLimit } = await import("@secretlobby/payments/billing");
 
   const { session } = await getSession(request);
   requireUserAuth(session);
@@ -27,14 +27,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/login");
   }
 
-  const [canCreate, lobbies] = await Promise.all([
-    canCreateMoreLobbies(accountId),
+  const [limit, lobbies] = await Promise.all([
+    enforceAccountLimit({ accountId, kind: "lobbies" }),
     getLobbiesByAccountId(accountId),
   ]);
 
-  if (!canCreate.allowed) {
-    // Redirect back to lobbies list if they can't create more
-    throw redirect("/lobbies");
+  if (!limit.allowed) {
+    // At-limit: bounce to /billing/plans with an upgrade CTA. Lobbies
+    // list shows the same banner so users have multiple entry points.
+    throw redirect("/billing/plans?reason=lobby-limit");
   }
 
   const existingLobbies: ExistingLobby[] = lobbies.map((l) => ({
@@ -46,8 +47,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   return {
     existingLobbies,
     limits: {
-      current: canCreate.current,
-      max: canCreate.max,
+      current: limit.current,
+      max: limit.max,
+      planName: limit.plan.name,
     },
   };
 }
@@ -56,7 +58,7 @@ export async function action({ request }: Route.ActionArgs) {
   const { getSession, requireUserAuth, updateSession } = await import("@secretlobby/auth");
   const { createLobby, duplicateLobby } = await import("~/models/mutations/lobby.server");
   const { getLobbyBySlug, getLobbyById } = await import("~/models/queries/lobby.server");
-  const { canCreateMoreLobbies } = await import("~/models/queries/subscription.server");
+  const { enforceAccountLimit } = await import("@secretlobby/payments/billing");
   const { createLogger, formatError } = await import("@secretlobby/logger/server");
 
   const logger = createLogger({ service: "console:lobbies" });
@@ -69,10 +71,14 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Not authenticated" };
   }
 
-  // Check limits
-  const canCreate = await canCreateMoreLobbies(accountId);
-  if (!canCreate.allowed) {
-    return { error: "Lobby limit reached. Upgrade your plan to create more lobbies." };
+  // Plan-gating: re-check at action time (not just loader) — the
+  // user could open the form, exceed their limit in another tab,
+  // then submit this one. We refuse server-side.
+  const limit = await enforceAccountLimit({ accountId, kind: "lobbies" });
+  if (!limit.allowed) {
+    return {
+      error: `You've reached the ${limit.max} lobby limit on the ${limit.plan.name} plan. Upgrade to create more.`,
+    };
   }
 
   const formData = await request.formData();
@@ -187,7 +193,7 @@ export default function NewLobbyPage() {
           Create a new lobby with its own content, theme, and settings.
           {limits.max !== -1 && (
             <span className="ml-1">
-              ({limits.current + 1} of {limits.max} lobbies)
+              ({limits.current + 1} of {limits.max} lobbies on {limits.planName})
             </span>
           )}
         </p>

@@ -236,8 +236,14 @@ export const stripeGateway: PaymentGateway = {
     return {
       subscriptionId: subscription.id,
       status: mapStripeStatus(subscription.status),
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      // Stripe v18 moved current_period_* off the Subscription root and
+      // onto each SubscriptionItem. Fall back to the first item.
+      currentPeriodStart: new Date(
+        (subscription.items.data[0]?.current_period_start ?? Math.floor(Date.now() / 1000)) * 1000
+      ),
+      currentPeriodEnd: new Date(
+        (subscription.items.data[0]?.current_period_end ?? Math.floor(Date.now() / 1000)) * 1000
+      ),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     };
   },
@@ -290,8 +296,14 @@ export const stripeGateway: PaymentGateway = {
     return {
       subscriptionId: subscription.id,
       status: mapStripeStatus(subscription.status),
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      // Stripe v18 moved current_period_* off the Subscription root and
+      // onto each SubscriptionItem. Fall back to the first item.
+      currentPeriodStart: new Date(
+        (subscription.items.data[0]?.current_period_start ?? Math.floor(Date.now() / 1000)) * 1000
+      ),
+      currentPeriodEnd: new Date(
+        (subscription.items.data[0]?.current_period_end ?? Math.floor(Date.now() / 1000)) * 1000
+      ),
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     };
   },
@@ -333,8 +345,14 @@ export const stripeGateway: PaymentGateway = {
       return {
         subscriptionId: subscription.id,
         status: mapStripeStatus(subscription.status),
-        currentPeriodStart: new Date(subscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+        // Stripe v18 moved current_period_* off the Subscription root and
+        // onto each SubscriptionItem. Fall back to the first item.
+        currentPeriodStart: new Date(
+          (subscription.items.data[0]?.current_period_start ?? Math.floor(Date.now() / 1000)) * 1000
+        ),
+        currentPeriodEnd: new Date(
+          (subscription.items.data[0]?.current_period_end ?? Math.floor(Date.now() / 1000)) * 1000
+        ),
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
       };
     } catch (error) {
@@ -463,10 +481,21 @@ export const stripeGateway: PaymentGateway = {
     // Handle invoice events
     if (event.type.startsWith('invoice.')) {
       const invoice = event.data.object as Stripe.Invoice;
-      accountId = extractAccountIdFromMetadata(invoice.subscription_details?.metadata);
-      subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription?.id;
+      // Stripe v18 reshaped Invoice. The subscription reference moved
+      // under invoice.parent.subscription_details.subscription, and
+      // payment_intent moved out — we use invoice.id as our payment
+      // record id instead (it's unique and human-greppable).
+      const parentSubDetails =
+        invoice.parent?.type === 'subscription_details'
+          ? invoice.parent.subscription_details
+          : null;
+      accountId = extractAccountIdFromMetadata(parentSubDetails?.metadata);
+      subscriptionId =
+        typeof parentSubDetails?.subscription === 'string'
+          ? parentSubDetails.subscription
+          : parentSubDetails?.subscription?.id;
       customerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
-      paymentId = invoice.payment_intent as string;
+      paymentId = invoice.id ?? undefined;
       amount = invoice.amount_paid;
       currency = invoice.currency;
     }
