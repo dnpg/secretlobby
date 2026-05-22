@@ -38,6 +38,7 @@ export default [
       route("playlists/:playlistId", "routes/_layout.lobby.playlists.$playlistId.tsx"),
       route("social", "routes/_layout.lobby.social.tsx"),
       route("access", "routes/_layout.lobby.access.tsx"),
+      route("users", "routes/_layout.lobby.users.tsx"),
     ]),
 
     // Global routes (account-level, not per-lobby)
