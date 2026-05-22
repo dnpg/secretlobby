@@ -40,6 +40,17 @@ export interface SessionData {
   googleCodeVerifier?: string;
   googleInviteCode?: string;
 
+  // Lobby Google sign-in: stashed between the lobby's "sign in with
+  // Google" button click and the central OAuth callback so the callback
+  // knows which lobby to redirect the visitor back to. Cleared on
+  // consume — see apps/console/app/routes/auth.google.callback.tsx.
+  lobbyOAuthLobbyId?: string;
+  lobbyOAuthReturnPath?: string;
+  // Already-validated lobby host (subdomain or verified custom domain).
+  // The callback echoes it back as the redirect destination so the
+  // session cookie lands on the right origin.
+  lobbyOAuthReturnHost?: string;
+
   // CSRF protection
   csrfToken?: string;
 }

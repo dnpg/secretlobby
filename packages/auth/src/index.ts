@@ -66,6 +66,16 @@ export {
   type ConsumeMagicLinkResult,
 } from "./lobby-access.server.js";
 
+// Signed handoff token for lobby Google sign-in (central OAuth callback
+// → per-lobby-host finish route). See lobby-oauth.server.ts for the
+// threat model.
+export {
+  signLobbyOAuthHandoff,
+  verifyLobbyOAuthHandoff,
+  type SignedHandoffInput,
+  type VerifyHandoffResult,
+} from "./lobby-oauth.server.js";
+
 // OAuth
 export {
   getGoogleClient,

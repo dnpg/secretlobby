@@ -15,6 +15,8 @@ export default [
   // Magic-link sign-in (lobby visitor identity flow)
   route("auth/magic/:token", "routes/auth.magic.$token.tsx"),
   route("auth/request-link", "routes/auth.request-link.tsx"),
+  // Google sign-in finish (central console callback hands off here)
+  route("auth/google/finish", "routes/auth.google.finish.tsx"),
 
   // Logout
   route("logout", "routes/logout.tsx"),

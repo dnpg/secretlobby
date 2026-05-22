@@ -254,13 +254,14 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Check if lobby requires password and user is authenticated for THIS specific lobby
   const isAuthenticated = isAuthenticatedForLobby(session, lobby.id);
 
-  // If the lobby uses email-based identity (magic-link or invitation),
-  // the login form lives at /auth/request-link rather than inline on the
-  // lobby page. Forward unauthenticated visitors there; the request-link
-  // route handles password-on-top, invite-list checks, and domain
-  // allowlists. The lobby's own UI is only reached after a successful
-  // magic-link consume sets the session cookie.
-  if (!isAuthenticated && lobby.identityEmail) {
+  // If the lobby uses email-based identity (magic-link/invitation) or
+  // Google sign-in, the login UI lives at /auth/request-link rather than
+  // inline on the lobby page. Forward unauthenticated visitors there;
+  // the request-link route renders whichever methods are configured and
+  // handles password-on-top, invite-list checks, and domain allowlists.
+  // The lobby's own UI is only reached after a successful consume sets
+  // the session cookie.
+  if (!isAuthenticated && (lobby.identityEmail || lobby.identityGoogle)) {
     const target = lobby.isDefault
       ? "/auth/request-link"
       : `/auth/request-link?lobby=${encodeURIComponent(lobby.slug)}`;
@@ -787,11 +788,11 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Lobby not found" };
   }
 
-  // If the lobby switched to email-based identity while a stale tab was
-  // open, the POST here would still try to authenticate by password only
-  // — bypassing the invite-list / domain check the new flow requires.
-  // Fail closed and bounce them to the request-link page.
-  if (tenant.lobby.identityEmail) {
+  // If the lobby switched to email or Google identity while a stale tab
+  // was open, the POST here would still try to authenticate by password
+  // only — bypassing the invite-list / domain check the new flow
+  // requires. Fail closed and bounce them to the request-link page.
+  if (tenant.lobby.identityEmail || tenant.lobby.identityGoogle) {
     const target = tenant.lobby.isDefault
       ? "/auth/request-link"
       : `/auth/request-link?lobby=${encodeURIComponent(tenant.lobby.slug)}`;
