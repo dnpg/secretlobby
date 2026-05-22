@@ -452,6 +452,15 @@ export function LoginPanel({
               type={preview ? "button" : "submit"}
               name={preview ? undefined : "intent"}
               value={preview ? undefined : "google"}
+              // `formNoValidate` skips HTML5 form validation when THIS
+              // button submits — necessary because the form also contains
+              // the (required) email input meant for the email-submit
+              // path. Without this, clicking "Continue with Google"
+              // would bounce off the empty-email validation even when
+              // the visitor's only intent is to use Google. The server
+              // still validates the password (which is the field that
+              // actually matters here).
+              formNoValidate={!preview}
               onClick={preview ? (e) => e.preventDefault() : undefined}
               className={`w-full inline-flex items-center justify-center gap-3 px-4 py-3 bg-white text-gray-900 hover:bg-gray-100 font-medium rounded-lg ${preview ? "cursor-default" : "cursor-pointer"} transition-colors`}
               aria-disabled={preview ? true : undefined}
