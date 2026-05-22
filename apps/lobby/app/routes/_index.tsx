@@ -71,15 +71,18 @@ const EMPTY_IMAGE_URLS = {
 // list per page, and PlayerBlockView ignores playlistId for now. Once
 // multi-playlist support lands the loader will resolve this against a
 // canonical "main" playlist.
+//
+// v3: `gridTemplateDesktop` is the single source of column sizing —
+// `Column.width` is no longer carried here. The single-column section uses
+// `"1fr"` so the grid renders one full-width track.
 const DEFAULT_LOBBY_PAGE_LAYOUT: { sections: Section[]; version: number } = {
-  version: 1,
+  version: 3,
   sections: [
     {
       id: "default-section",
       columns: [
         {
           id: "default-column",
-          width: "100%",
           blocks: [
             {
               id: "default-player",
@@ -98,6 +101,7 @@ const DEFAULT_LOBBY_PAGE_LAYOUT: { sections: Section[]; version: number } = {
       rowGap: "0",
       columnGap: "0",
       mobileLayout: "stack",
+      gridTemplateDesktop: "1fr",
     },
   ],
 };

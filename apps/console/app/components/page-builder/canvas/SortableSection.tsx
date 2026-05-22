@@ -27,12 +27,11 @@ export interface SortableSectionProps {
   onDeleteBlock: (columnId: string, blockId: string) => void;
   onUpdateBlock: (columnId: string, blockId: string, content: Partial<BlockContent>) => void;
   onReorderBlocks: (columnId: string, blockIds: string[]) => void;
-  onResizeColumns?: (
-    leftColumnId: string,
-    rightColumnId: string,
-    leftWidth: string,
-    rightWidth: string,
-    viewport: ViewportSize
+  /** v3: grid-template-columns string for the active viewport. See
+   *  `SectionComponent`'s `onResizeGridTemplate` for the contract. */
+  onResizeGridTemplate?: (
+    nextTemplate: string,
+    viewport: "desktop" | "tablet"
   ) => void;
   onMoveBlockUp: (columnId: string, blockId: string) => void;
   onMoveBlockDown: (columnId: string, blockId: string) => void;
@@ -55,7 +54,7 @@ export function SortableSection({
   onDeleteBlock,
   onUpdateBlock,
   onReorderBlocks,
-  onResizeColumns,
+  onResizeGridTemplate,
   onMoveBlockUp,
   onMoveBlockDown,
   onMoveBlockToColumn,
@@ -141,7 +140,7 @@ export function SortableSection({
         onDeleteBlock={onDeleteBlock}
         onUpdateBlock={onUpdateBlock}
         onReorderBlocks={onReorderBlocks}
-        onResizeColumns={onResizeColumns}
+        onResizeGridTemplate={onResizeGridTemplate}
         onMoveBlockUp={onMoveBlockUp}
         onMoveBlockDown={onMoveBlockDown}
         onMoveBlockToColumn={onMoveBlockToColumn}

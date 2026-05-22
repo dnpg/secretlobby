@@ -18,7 +18,6 @@
 import { getPublicUrl } from "@secretlobby/storage";
 import { defaultSocialLinksSettings, type SocialLinksSettings } from "./social-platforms";
 import {
-  PAGE_LAYOUT_VERSION,
   type Block,
   type CardBlockContent,
   type Column,
@@ -68,13 +67,20 @@ export interface MigrationLegacySettings {
 }
 
 // True when the persisted layout JSON predates v2 — either no `pageLayout`
-// at all (the only state in main), or one with `version` < PAGE_LAYOUT_VERSION.
+// at all (the only state in main), or one with `version` < 2. This check is
+// SPECIFICALLY anchored to v2, NOT `PAGE_LAYOUT_VERSION`: later schema bumps
+// (v3 grid sizing, …) must not retrigger this synthesise-from-legacy-fields
+// migration, or every later edit would clobber the user's saved layout with a
+// freshly-rebuilt one. v2 → v3 (and beyond) live in their own dedicated
+// migrators that operate on the existing section tree instead of rebuilding
+// it from lobby DB columns.
+const V2_TARGET_VERSION = 2;
 export function needsV1Migration(rawLayout: unknown): boolean {
   if (!rawLayout || typeof rawLayout !== "object") return true;
   const obj = rawLayout as Record<string, unknown>;
   if (!Array.isArray(obj.sections)) return true;
   const v = typeof obj.version === "number" ? obj.version : 1;
-  return v < PAGE_LAYOUT_VERSION;
+  return v < V2_TARGET_VERSION;
 }
 
 export function migrateLobbyToV2(
@@ -123,16 +129,20 @@ export function migrateLobbyToV2(
     const content = createSection(2);
     content.name = "Content";
 
+    // v3 sizing: pin the sidebar at 300px and let the player take the
+    // remaining fluid space. Tablet collapses to a single stacked track so
+    // the sidebar drops below the player at narrower widths. We DON'T set
+    // per-column `width` strings anymore — the grid template on the section
+    // is the source of truth.
+    content.gridTemplateDesktop = "1fr 300px";
+    content.gridTemplateTablet = "1fr";
+
     const left: Column = content.columns[0];
     left.name = "Player";
-    left.width = "66.66%";
-    left.tabletWidth = "100%";
     left.blocks = leftBlocks;
 
     const right: Column = content.columns[1];
     right.name = "Sidebar";
-    right.width = "33.33%";
-    right.tabletWidth = "100%";
     right.blocks = rightBlocks;
 
     sections.push(content);
@@ -144,7 +154,13 @@ export function migrateLobbyToV2(
     sections.push(content);
   }
 
-  return { sections, version: PAGE_LAYOUT_VERSION };
+  // Stamp v2 specifically — the loader chains migrateLobbyToV3 immediately
+  // after this, and that step is what bumps the version to the current
+  // `PAGE_LAYOUT_VERSION`. Keeping the explicit `2` here means we don't have
+  // to re-emit `gridTemplateDesktop` on every section in this file (the v3
+  // migrator handles that conversion based on the per-column percentages
+  // we wrote above).
+  return { sections, version: V2_TARGET_VERSION };
 }
 
 // =============================================================================

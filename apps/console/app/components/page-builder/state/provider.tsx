@@ -52,7 +52,7 @@ interface PageBuilderProviderProps {
 // new mutation so the redo stack only survives until the user edits again.
 //
 // Coalescing: typing in an inline editor fires `updateBlock` per keystroke and
-// dragging a column resize fires `resizeColumn` per pixel. Pushing a snapshot
+// dragging a column resize fires `resizeGridTemplate` per pixel. Pushing a snapshot
 // per event would blow the 50-entry cap in a few seconds, and undo would step
 // back one keystroke at a time. Instead, consecutive actions whose
 // `coalesceKey` matches AND fire within COALESCE_MS extend the existing burst
@@ -103,8 +103,11 @@ function coalesceKeyFor(action: PageBuilderAction): string | null {
       return `renameSection:${action.sectionId}`;
     case "updateSection":
       return `updateSection:${action.sectionId}`;
-    case "resizeColumn":
-      return `resizeColumn:${action.leftColumnId}.${action.rightColumnId}`;
+    case "resizeGridTemplate":
+      // v3: track resize fires per pixel of drag; collapse to a single
+      // history slot per (section, viewport) so the undo stack doesn't
+      // blow up with per-frame snapshots.
+      return `resizeGridTemplate:${action.sectionId}.${action.viewport}`;
     case "updateTheme":
       return "updateTheme";
     default:

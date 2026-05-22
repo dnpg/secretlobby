@@ -46,26 +46,31 @@ export function generateId(prefix = "section"): string {
 }
 
 // Generate equal width percentage value.
+// @deprecated v3 sizes columns via `Section.gridTemplateDesktop`. Kept on the
+// module for legacy callers; new code should use `equalGridTemplate` from
+// `@secretlobby/lobby-template`.
 export function getEqualColumnWidth(columnCount: number): string {
   if (columnCount === 1) return "100%";
   const percent = 100 / columnCount;
   return `${percent.toFixed(2)}%`;
 }
 
-// Helper to create columns with equal widths.
-// Each new column is seeded with a single empty paragraph so the surface
-// always renders a "Press '/' for commands" placeholder line; the user can
-// type immediately without first having to click an "Add block" affordance.
+// Helper to create columns. v3 no longer carries per-column widths — sizing
+// lives on `Section.gridTemplateDesktop`. Each new column is seeded with a
+// single empty paragraph so the surface always renders a "Press '/' for
+// commands" placeholder line; the user can type immediately without first
+// having to click an "Add block" affordance.
 export function createColumns(count: number, _gap = "16px"): Column[] {
-  const width = getEqualColumnWidth(count);
   return Array.from({ length: count }, () => ({
     id: generateId("col"),
-    width,
     blocks: [createEmptyParagraphBlock()],
   }));
 }
 
-// Helper to create a new section.
+// Helper to create a new section. v3 seeds an even fr-track grid template
+// matching the requested column count (`"1fr"`, `"1fr 1fr"`, …). Designers
+// can edit the template directly in the section settings to swap in pixel /
+// minmax / repeat values later.
 export function createSection(columnCount = 1): Section {
   const gap = "16";
   return {
@@ -74,6 +79,10 @@ export function createSection(columnCount = 1): Section {
     rowGap: gap,
     columnGap: gap,
     mobileLayout: "stack",
+    gridTemplateDesktop:
+      columnCount <= 1
+        ? "1fr"
+        : Array.from({ length: columnCount }, () => "1fr").join(" "),
   };
 }
 

@@ -1,6 +1,19 @@
+// =============================================================================
+// ColumnSettings
+// -----------------------------------------------------------------------------
+// Right-rail settings panel for a selected column. v3 dropped the per-column
+// width input — column sizing now lives on the parent section's grid template
+// (`Section.gridTemplateDesktop` / `gridTemplateTablet` / `gridTemplateMobile`).
+// To edit a column's width, designers open the SECTION settings and drag the
+// track-resize handle or type a new `grid-template-columns` string.
+//
+// This panel still owns:
+//   - Block gap (vertical spacing between blocks inside this column).
+//   - Column identity / position (read-only labels).
+// =============================================================================
+
 import type { Column, ViewportSize } from "../state/types";
 
-// Inline Column Settings Panel
 interface ColumnSettingsProps {
   column: Column;
   index: number;
@@ -9,9 +22,14 @@ interface ColumnSettingsProps {
   onUpdate: (updates: Partial<Column>) => void;
 }
 
-export function ColumnSettings({ column, index, totalColumns, viewport, onUpdate }: ColumnSettingsProps) {
-  const displayWidth = viewport === "tablet" ? (column.tabletWidth || column.width) : column.width;
-
+export function ColumnSettings({
+  column,
+  index,
+  totalColumns,
+  viewport: _viewport,
+  onUpdate,
+}: ColumnSettingsProps) {
+  void _viewport; // v3: width no longer varies per viewport at the column level
   return (
     <div className="p-3 space-y-4">
       <div>
@@ -33,37 +51,15 @@ export function ColumnSettings({ column, index, totalColumns, viewport, onUpdate
         <p className="text-xs text-theme-secondary mt-1">Vertical spacing between blocks. Numbers default to px.</p>
       </div>
 
-      {/* Width */}
+      {/* v3 sizing hint — points designers at the section panel. */}
       {totalColumns > 1 && (
-        <div>
-          <label className="block text-sm font-medium text-theme-primary mb-2">
-            Width
-            {viewport === "tablet" && <span className="text-xs text-theme-secondary ml-2">(Tablet)</span>}
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={displayWidth}
-              onChange={(e) => {
-                if (viewport === "tablet") {
-                  onUpdate({ tabletWidth: e.target.value });
-                } else {
-                  onUpdate({ width: e.target.value });
-                }
-              }}
-              placeholder="50%, 33.33%"
-              className="flex-1 px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            />
-            {viewport === "tablet" && column.tabletWidth && (
-              <button
-                onClick={() => onUpdate({ tabletWidth: undefined })}
-                className="text-xs text-theme-muted hover:text-red-400 cursor-pointer px-2"
-                title="Reset to desktop width"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+        <div className="rounded-md border border-theme bg-theme-tertiary/40 p-3 text-xs text-theme-secondary">
+          Column widths are now set on the parent section's grid template. Open
+          the section settings to drag the track-resize handle or edit
+          <code className="mx-1 px-1 py-0.5 rounded bg-theme-tertiary font-mono">
+            grid-template-columns
+          </code>
+          directly.
         </div>
       )}
     </div>

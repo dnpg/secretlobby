@@ -185,6 +185,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const { needsV1Migration, migrateLobbyToV2 } = await import(
     "~/lib/migrateLobbyToV2.server"
   );
+  const { needsV2ToV3Migration, migrateLobbyToV3 } = await import(
+    "~/lib/migrateLobbyToV3.server"
+  );
 
   const { session } = await getSession(request);
   requireUserAuth(session);
@@ -296,14 +299,23 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   // can grep for the access site, but never feed it to the runtime.
   void lobbySettings.loginPageLayout;
 
-  // V1 → V2 migration: any lobby whose stored layout predates
-  // `PAGE_LAYOUT_VERSION = 2` (no pageLayout at all, or `version < 2`) gets
-  // an in-memory layout synthesised from its DB columns (banner / profile
-  // media, title, description) + legacy settings keys (technicalInfo,
-  // socialLinks). The result is loaded into the reducer as-is; the next
-  // user autosave persists it, stamped with the new version. Migration is
-  // lazy on read — we never write back on load. Login pages don't have a
-  // block layout so we skip the migration entirely for them.
+  // Layered, idempotent migrations run lazily on read. The reducer loads the
+  // result; the first autosave persists the upgraded form to the DB. Reverting
+  // the branch never writes destructively on its own.
+  //
+  //   V1 → V2 — synthesise the section tree from legacy lobby DB columns and
+  //             settings keys (banner / about / tech-info / social-links).
+  //             Triggered when there's no `pageLayout` at all or
+  //             `version < 2`.
+  //   V2 → V3 — convert per-column percentage `width`s into a single
+  //             `grid-template-columns` string on each section
+  //             (`Section.gridTemplateDesktop` / `gridTemplateTablet`).
+  //             Triggered when `version < 3` OR any section is still missing
+  //             its `gridTemplateDesktop` field (defensive against
+  //             hand-edited JSON).
+  //
+  // Login pages don't carry a block layout, so we skip both migrations for
+  // them entirely.
   let storedLayout: StoredPageLayout | null;
   if (pageKind === "login") {
     storedLayout = null;
@@ -324,8 +336,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       },
       defaultPlaylist.id
     );
+    // V1→V2 leaves per-column percentage `width`s on the columns; chain
+    // through V3 immediately so the reducer always sees the latest schema.
+    storedLayout = migrateLobbyToV3(storedLayout);
   } else {
     storedLayout = parseStoredPageLayout(rawLayout, defaultPlaylist.id);
+    if (storedLayout && needsV2ToV3Migration(storedLayout)) {
+      storedLayout = migrateLobbyToV3(storedLayout);
+    }
   }
 
   // Coerce stored swatch rows into the shape the ColorPicker expects.

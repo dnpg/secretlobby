@@ -191,8 +191,15 @@ button {
      - tablet:  768px ≤ container width < 1024px
      - desktop: container width ≥ 1024px
 
-   `data-mobile-layout` on the section picks between stack / slider / keep
-   at mobile widths (`keep` is the default — columns stay side-by-side).
+   `data-mobile-layout` on the section picks between stack / slider / keep /
+   grid at mobile widths (v3 — `grid` activates the explicit
+   `--section-grid-mobile` template; `stack` is the default).
+
+   v3 sizes columns with CSS Grid: each section emits three custom props —
+   `--section-grid-desktop`, `--section-grid-tablet`, `--section-grid-mobile`
+   — that hold whatever the designer typed for `grid-template-columns`
+   (`"1fr 1fr"`, `"1fr 300px"`, `"minmax(0, 2fr) 1fr"`, …). The container
+   queries below pick which custom prop drives the active template.
 
    This block MUST stay in sync with the matching one in
    apps/console/app/app.css so editor preview and lobby paint identically.
@@ -203,41 +210,43 @@ button {
 }
 
 .lobby-section-columns {
-  display: flex;
-  gap: var(--section-column-gap, 16px);
+  display: grid;
+  grid-template-columns: var(--section-grid-desktop, 1fr);
+  gap: var(--section-row-gap, 16px) var(--section-column-gap, 16px);
 }
 
 .lobby-section-column {
-  flex-shrink: 0;
-  width: var(--col-w-desktop, auto);
+  min-width: 0;
 }
 
-/* Tablet — between 768px and 1023.98px of container width. Only columns
-   that opted in via the data attribute swap to the tablet width; legacy
-   sections without `col.tabletWidth` keep the desktop width. */
+/* Tablet — between 768px and 1023.98px of container width. The section
+   swaps in `--section-grid-tablet` whenever it's been set; SectionView
+   defaults that custom prop to the desktop template so legacy sections
+   without a tablet override keep their desktop layout unchanged. */
 @container lobby-section (min-width: 768px) and (max-width: 1023.98px) {
-  .lobby-section-column[data-has-tablet-width="true"] {
-    width: var(--col-w-tablet);
+  .lobby-section-columns {
+    grid-template-columns: var(--section-grid-tablet, var(--section-grid-desktop, 1fr));
   }
 }
 
-/* Mobile — below 768px of container width. `data-mobile-layout` decides
-   whether columns stack vertically, scroll horizontally (slider), or stay
-   side-by-side (keep — no override, columns squeeze at the narrow width).
+/* Mobile — below 768px of container width. `data-mobile-layout` decides:
+     - "stack"  (default for migrated layouts) — single-column grid.
+     - "keep"   — keep the desktop/tablet template (no override).
+     - "slider" — horizontal scroll strip; column widths auto-size.
+     - "grid"   — use the explicit `--section-grid-mobile` template.
 */
 @container lobby-section (max-width: 767.98px) {
   .lobby-section[data-mobile-layout="stack"] .lobby-section-columns {
-    flex-direction: column;
-    gap: var(--section-row-gap, 16px);
+    grid-template-columns: 1fr;
   }
-  .lobby-section[data-mobile-layout="stack"] .lobby-section-column {
-    width: 100%;
+  .lobby-section[data-mobile-layout="grid"] .lobby-section-columns {
+    grid-template-columns: var(--section-grid-mobile, var(--section-grid-desktop, 1fr));
   }
   .lobby-section[data-mobile-layout="slider"] .lobby-section-columns {
+    display: flex;
     overflow-x: auto;
   }
   .lobby-section[data-mobile-layout="slider"] .lobby-section-column {
-    width: auto;
     min-width: 150px;
     flex: 0 0 auto;
   }

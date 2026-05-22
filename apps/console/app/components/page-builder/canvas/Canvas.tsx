@@ -286,22 +286,19 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
     [dispatch]
   );
 
-  const resizeColumns = useCallback(
+  // v3: grid track resize. The handle dispatches a full new
+  // `grid-template-columns` string for the active viewport rather than
+  // per-column widths — `SectionComponent` owns the fr-token math.
+  const resizeGridTemplate = useCallback(
     (
       sectionId: string,
-      leftColumnId: string,
-      rightColumnId: string,
-      leftWidth: string,
-      rightWidth: string,
-      currentViewport: ViewportSize
+      template: string,
+      currentViewport: "desktop" | "tablet"
     ) => {
       dispatch({
-        type: "resizeColumn",
+        type: "resizeGridTemplate",
         sectionId,
-        leftColumnId,
-        rightColumnId,
-        leftWidth,
-        rightWidth,
+        template,
         viewport: currentViewport,
       });
     },
@@ -544,13 +541,8 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
         ) => updateBlockContent(section.id, columnId, blockId, content),
         onReorderBlocks: (columnId: string, blockIds: string[]) =>
           reorderBlocksInColumn(section.id, columnId, blockIds),
-        onResizeColumns: (
-          leftId: string,
-          rightId: string,
-          leftW: string,
-          rightW: string,
-          vp: ViewportSize
-        ) => resizeColumns(section.id, leftId, rightId, leftW, rightW, vp),
+        onResizeGridTemplate: (template: string, vp: "desktop" | "tablet") =>
+          resizeGridTemplate(section.id, template, vp),
         onMoveBlockUp: (columnId: string, blockId: string) =>
           moveBlockUp(section.id, columnId, blockId),
         onMoveBlockDown: (columnId: string, blockId: string) =>

@@ -26,7 +26,17 @@ import type { LoginPageSettings } from "../LoginPanel";
 export type { ThemeSettings, LoginPageSettings };
 
 export type ViewportSize = "desktop" | "tablet" | "mobile";
-export type MobileLayout = "stack" | "keep" | "slider";
+// `MobileLayout` decides how a section's columns rearrange at mobile
+// container widths:
+//   - "stack"  — columns collapse into a single vertical stack (legacy
+//                default; ignores any mobile grid template).
+//   - "keep"   — columns stay side-by-side (used to opt into `mobileColumns`).
+//   - "slider" — columns scroll horizontally as a strip.
+//   - "grid"   — use the section's explicit `gridTemplateMobile`. When
+//                `gridTemplateMobile` is not set this falls back to "stack"
+//                so legacy v2 layouts that get auto-converted continue to
+//                render the same single-column stack at narrow widths.
+export type MobileLayout = "stack" | "keep" | "slider" | "grid";
 export type BlockType =
   | "image"
   | "player"
@@ -305,8 +315,15 @@ export interface Column {
   id: string;
   // user-editable layer name; defaults to "Column N" in UI
   name?: string;
-  width: string; // Desktop width e.g., "50%", "33.33%"
-  tabletWidth?: string; // Tablet override (optional)
+  /** @deprecated v3 moved per-section column sizing onto `Section.gridTemplateDesktop`
+   *  (CSS `grid-template-columns`). Kept on the type so legacy v2 layout JSON
+   *  still deserializes without TypeScript widening to `any`. SectionView no
+   *  longer reads this field — the migration converts persisted percentages
+   *  into the section's grid template at load time. */
+  width?: string;
+  /** @deprecated See `width`. v3 stores the tablet sizing on
+   *  `Section.gridTemplateTablet`. */
+  tabletWidth?: string;
   blocks: Block[]; // Blocks inside this column
   blockGap?: string; // Gap between blocks (numbers default to px)
   // When true, the column is dimmed in edit mode and skipped entirely in
@@ -322,6 +339,26 @@ export interface Section {
   columnGap: string;
   mobileLayout: MobileLayout;
   mobileColumns?: 1 | 2; // Only used when mobileLayout is "keep"
+  // ---------------------------------------------------------------------------
+  // v3 grid sizing.
+  // ---------------------------------------------------------------------------
+  // `gridTemplate*` strings are dropped straight onto the section's
+  // `grid-template-columns` CSS property — designers can type whatever the CSS
+  // spec accepts (`"1fr 1fr"`, `"1fr 300px"`, `"minmax(0, 2fr) 1fr"`, …). The
+  // editor's resize handle drags only the fr ratios; freeform tokens (px /
+  // minmax / etc.) are preserved untouched so a designer can lock a sidebar
+  // to a pixel width and still resize the fluid track next to it.
+  //
+  // Tablet/mobile templates are OPTIONAL overrides:
+  //   - `gridTemplateTablet` swaps in at tablet container widths; when
+  //     unset the section keeps the desktop template.
+  //   - `gridTemplateMobile` is consulted only when `mobileLayout === "grid"`.
+  //     Any other `mobileLayout` (stack / slider / keep) ignores this field —
+  //     the legacy v2 behaviours survive byte-for-byte.
+  // ---------------------------------------------------------------------------
+  gridTemplateDesktop: string;
+  gridTemplateTablet?: string;
+  gridTemplateMobile?: string;
   // When true, the section is dimmed in edit mode and skipped entirely in
   // preview/published mode.
   hidden?: boolean;
@@ -337,7 +374,11 @@ export interface StoredPageLayout {
 // Bumped to 2 when the page-builder became the source of truth for the lobby
 // content (banner / about / technical info / social links used to render from
 // fixed lobby fields + legacy settings keys; now they live inside the layout's
-// section/column/block tree). Layouts persisted before this bump have either
-// no `version` field or `version: 1` — the editor loader migrates them on
-// read; see `migrateLobbyToV2` in apps/console.
-export const PAGE_LAYOUT_VERSION = 2;
+// section/column/block tree).
+//
+// Bumped to 3 when section sizing moved from per-column `width` percentages
+// to CSS Grid templates (`Section.gridTemplateDesktop` /
+// `gridTemplateTablet` / `gridTemplateMobile`). The editor loader migrates
+// older layouts on read; see `migrateLobbyToV3` in apps/console. The migration
+// is idempotent — running it on an already-v3 layout returns it unchanged.
+export const PAGE_LAYOUT_VERSION = 3;
