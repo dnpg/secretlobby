@@ -227,6 +227,9 @@ importers:
       '@secretlobby/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@secretlobby/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@secretlobby/lobby-template':
         specifier: workspace:*
         version: link:../../packages/lobby-template

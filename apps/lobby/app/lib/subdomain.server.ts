@@ -165,8 +165,11 @@ function extractLobbySlugFromPath(request: Request): string | null {
   // First path segment could be a lobby slug
   if (pathParts.length > 0) {
     const potentialSlug = pathParts[0];
-    // Exclude known routes that aren't lobby slugs
-    const excludedPaths = ["api", "assets", "favicon.ico", "robots.txt", "sitemap.xml"];
+    // Exclude known routes that aren't lobby slugs. "auth" carries the
+    // magic-link consume + request-link routes (see auth.* files in
+    // app/routes); treating it as a lobby slug would break those flows
+    // on the default lobby URL.
+    const excludedPaths = ["api", "assets", "auth", "favicon.ico", "robots.txt", "sitemap.xml", "logout", "exit-preview"];
     if (!excludedPaths.includes(potentialSlug)) {
       return potentialSlug;
     }
@@ -219,6 +222,11 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
             name: true,
             slug: true,
             password: true,
+            passwordRequired: true,
+            accessPolicy: true,
+            identityEmail: true,
+            identityGoogle: true,
+            allowedDomains: true,
             isDefault: true,
             isPublished: true,
             accountId: true,
@@ -305,6 +313,11 @@ export async function resolveTenant(request: Request): Promise<TenantContext> {
                 name: true,
                 slug: true,
                 password: true,
+                passwordRequired: true,
+                accessPolicy: true,
+                identityEmail: true,
+                identityGoogle: true,
+                allowedDomains: true,
                 isDefault: true,
                 isPublished: true,
                 accountId: true,

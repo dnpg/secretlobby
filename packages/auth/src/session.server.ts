@@ -11,6 +11,13 @@ export interface SessionData {
   // Multi-lobby authentication: array of authenticated lobby IDs
   authenticatedLobbyIds?: string[];
 
+  // Identified visitor per lobby: lobbyId → LobbyUser.id. Present when the
+  // visitor entered via magic link or Google sign-in (not password-only).
+  // Lets us look up the LobbyUser row for analytics, lastSeenAt updates,
+  // and "who's currently in this lobby" admin views without re-querying
+  // by email.
+  lobbyUserIds?: Record<string, string>;
+
   // User-based authentication
   userId?: string;
   userEmail?: string;
@@ -124,6 +131,11 @@ export async function logoutFromLobby(
     session.authenticatedLobbyIds = session.authenticatedLobbyIds.filter(id => id !== lobbyId);
   }
 
+  // Drop visitor identity for this lobby. Other lobbies' identities stay.
+  if (session.lobbyUserIds) {
+    delete session.lobbyUserIds[lobbyId];
+  }
+
   // Clear legacy fields if they match this lobby
   if (session.lobbyId === lobbyId) {
     session.isAuthenticated = false;
@@ -148,12 +160,16 @@ export function isAuthenticatedForLobby(session: SessionData, lobbyId: string): 
 }
 
 /**
- * Add a lobby to the authenticated lobbies list
+ * Add a lobby to the authenticated lobbies list. When the visitor is
+ * identified (magic link or Google sign-in), pass `lobbyUserId` to bind
+ * the session to a LobbyUser row — that's what downstream code uses to
+ * look up email, mark lastSeenAt, etc. Password-only sign-ins omit it.
  */
 export async function authenticateForLobby(
   request: Request,
   lobbyId: string,
-  redirectTo: string
+  redirectTo: string,
+  lobbyUserId?: string,
 ): Promise<Response> {
   const response = new Response(null, {
     status: 302,
@@ -170,6 +186,16 @@ export async function authenticateForLobby(
   // Add lobby if not already authenticated
   if (!session.authenticatedLobbyIds.includes(lobbyId)) {
     session.authenticatedLobbyIds.push(lobbyId);
+  }
+
+  // Record visitor identity for this lobby. Overwrites any previous
+  // mapping (e.g. if the same browser was used to consume a link for a
+  // different email — the most recent click wins).
+  if (lobbyUserId) {
+    if (!session.lobbyUserIds) {
+      session.lobbyUserIds = {};
+    }
+    session.lobbyUserIds[lobbyId] = lobbyUserId;
   }
 
   // Also set legacy fields for backwards compatibility

@@ -85,6 +85,19 @@ export const RATE_LIMIT_CONFIGS = {
     windowMs: 15 * 60 * 1000, // 15 minutes
     keyPrefix: "rl:lobby-password",
   } as RateLimitConfig,
+
+  /**
+   * Lobby magic-link issuance: 5 per hour per IP.
+   * Each successful request sends an email, so this also caps outbound
+   * mail to whatever address an attacker picks. The token itself is
+   * single-use, so abuse pressure here is "spam someone's inbox" rather
+   * than "brute-force a lobby."
+   */
+  LOBBY_MAGIC_LINK: {
+    maxAttempts: 5,
+    windowMs: 60 * 60 * 1000, // 1 hour
+    keyPrefix: "rl:lobby-magic-link",
+  } as RateLimitConfig,
 } as const;
 
 // =============================================================================

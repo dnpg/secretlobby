@@ -12,6 +12,10 @@ export default [
   // The resolveTenant function extracts the lobby slug from the URL path
   route(":lobbySlug", "routes/$lobbySlug.tsx"),
 
+  // Magic-link sign-in (lobby visitor identity flow)
+  route("auth/magic/:token", "routes/auth.magic.$token.tsx"),
+  route("auth/request-link", "routes/auth.request-link.tsx"),
+
   // Logout
   route("logout", "routes/logout.tsx"),
 

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { useLoaderData, useActionData } from "react-router";
+import { useLoaderData, useActionData, redirect } from "react-router";
 import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
@@ -254,7 +254,24 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Check if lobby requires password and user is authenticated for THIS specific lobby
   const isAuthenticated = isAuthenticatedForLobby(session, lobby.id);
 
-  const needsPassword = !!lobby.password && !isAuthenticated;
+  // If the lobby uses email-based identity (magic-link or invitation),
+  // the login form lives at /auth/request-link rather than inline on the
+  // lobby page. Forward unauthenticated visitors there; the request-link
+  // route handles password-on-top, invite-list checks, and domain
+  // allowlists. The lobby's own UI is only reached after a successful
+  // magic-link consume sets the session cookie.
+  if (!isAuthenticated && lobby.identityEmail) {
+    const target = lobby.isDefault
+      ? "/auth/request-link"
+      : `/auth/request-link?lobby=${encodeURIComponent(lobby.slug)}`;
+    throw redirect(target);
+  }
+
+  // Password gate uses the explicit `passwordRequired` flag now (set by
+  // the schema migration to true for any lobby with a non-empty
+  // password). This lets admins disable the gate without clearing the
+  // shared secret.
+  const needsPassword = lobby.passwordRequired && !isAuthenticated;
 
   // Extract per-lobby settings from lobby.settings
   let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
@@ -768,6 +785,17 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (!tenant.lobby) {
     return { error: "Lobby not found" };
+  }
+
+  // If the lobby switched to email-based identity while a stale tab was
+  // open, the POST here would still try to authenticate by password only
+  // — bypassing the invite-list / domain check the new flow requires.
+  // Fail closed and bounce them to the request-link page.
+  if (tenant.lobby.identityEmail) {
+    const target = tenant.lobby.isDefault
+      ? "/auth/request-link"
+      : `/auth/request-link?lobby=${encodeURIComponent(tenant.lobby.slug)}`;
+    throw redirect(target);
   }
 
   const formData = await request.formData();
