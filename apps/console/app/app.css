@@ -1,5 +1,43 @@
 @import "tailwindcss";
 @source "../../../packages/ui/src/**/*.{ts,tsx}";
+/* Also scan @secretlobby/lobby-template — every per-block *View, SectionView,
+   ColumnView, PlayerView etc. lives here, and Tailwind needs to see those
+   files to emit the classes used inside them. Same @source MUST exist in
+   the lobby app (apps/lobby/app/app.css) so both apps produce an identical
+   class set from this source tree. */
+@source "../../../packages/lobby-template/src/**/*.{ts,tsx}";
+
+/* Make Tailwind's `dark:` variant follow the app's data-theme attribute
+   (set on <html> in root.tsx) instead of the OS prefers-color-scheme
+   media query. Without this every `dark:` class fires on OS dark mode
+   regardless of the in-app theme toggle. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Page-builder heading gradient.
+   Mirrors the legacy Card title pattern:
+     background: <gradient>;
+     -webkit-background-clip: text;
+     -webkit-text-fill-color: transparent;
+     color: <fallback hex>;
+   `color` carries the resolved fallback hex (never `transparent`), so
+   non-supporting browsers stay readable. CardBlock cascades three vars:
+     --color-text-heading           (the fallback hex)
+     --color-text-heading-image     (the gradient, or `none` for solids)
+     --color-text-heading-fill      (`transparent` for gradient, `currentColor` for solids)
+   The rule is applied to BOTH the heading wrapper and the nested Tiptap
+   text-bearing element. background-clip only clips the background of the
+   element it's set on; setting it on the wrapper alone misses the inner
+   .ProseMirror node that actually paints the glyphs, which is why the
+   wrapper-only style on its own renders blank. */
+.pb-heading-gradient,
+.pb-heading-gradient .ProseMirror,
+.pb-heading-gradient .ProseMirror > * {
+  color: var(--color-text-heading, var(--color-text-primary));
+  background: var(--color-text-heading-image, none);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: var(--color-text-heading-fill, currentColor);
+}
 
 /* Roundo Font for auth pages */
 @font-face {
@@ -437,4 +475,119 @@ textarea:focus-visible {
 .animated-border::before,
 .animated-border::after {
   transition-property: opacity !important;
+}
+
+/* ----------------------------------------------------------------------- */
+/* Page-builder InlineEditor placeholder.
+   Tiptap's Placeholder extension tags empty paragraphs with one of two
+   classes: `is-empty` (the currently focused empty node) and
+   `is-editor-empty` (the whole editor is empty). Match both so the hint
+   renders for every empty paragraph block — including the unselected ones,
+   which the user explicitly wants always visible.
+   Tiptap ships no styles for these classes; without this rule the hint
+   ("Press / to add blocks") would be invisible.
+   The hint must be legible on EVERY lobby theme — light flats, dark flats,
+   custom image backgrounds, gradients. A single flat color can't satisfy
+   that, so we render a mid-grey body with a doubled white + a black
+   text-shadow halo: the white strokes give contrast against dark
+   backgrounds, the black stroke gives contrast against light / colored
+   backgrounds, and the combined halo stays subtle enough not to look like
+   real content. */
+/* Inline links inside text blocks inherit the global lobby link color set
+   on the canvas root via `--color-link`. Falls back to `currentColor` when
+   the variable hasn't been emitted (e.g. preview screenshots that skip the
+   theme injection step). */
+.inline-link {
+  color: var(--color-link, currentColor);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Font smoothing across every page-builder editor surface so the canvas
+   text renders with the same antialiasing as the rest of the console. */
+.inline-editor-content,
+.inline-editor {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.inline-editor-content .is-empty:first-child::before,
+.inline-editor-content .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: black;
+  /* `filter: invert(1)` flips the rendered pixels of the pseudo-element
+     against whatever sits behind it, so black text becomes the per-pixel
+     inverse of the background — guaranteeing contrast on light flats,
+     dark flats, image backgrounds, and gradients without committing to a
+     single accent color. */
+  filter: invert(1);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  font-style: italic;
+  /* Skip the global color transition so the hint doesn't flicker every
+     time the theme color transition rule above retargets it. */
+  transition: none !important;
+}
+
+/* ============================================
+   SectionView responsive layout — CSS container queries
+   --------------------------------------------
+   `<SectionView>` (in @secretlobby/lobby-template) emits one DOM tree per
+   section and these rules pick the layout based on the SECTION's own
+   container width. That lets the editor's device-frame preview (a fixed-
+   width parent) and the lobby's real viewport drive the same breakpoints
+   without JS — the section is `container-type: inline-size`, so its width
+   is what the `@container` queries below evaluate against.
+
+   Breakpoints match what `ImageBlockView`'s `<picture>` `<source media>`
+   already emits, so the column layout tier and the responsive image tier
+   always agree:
+     - mobile:  container width < 768px
+     - tablet:  768px ≤ container width < 1024px
+     - desktop: container width ≥ 1024px
+
+   `data-mobile-layout` on the section picks between stack / slider / keep
+   at mobile widths (`keep` is the default — columns stay side-by-side).
+
+   This block MUST stay in sync with the matching one in
+   apps/lobby/app/app.css so editor preview and lobby paint identically.
+   ============================================ */
+.lobby-section {
+  container-type: inline-size;
+  container-name: lobby-section;
+}
+
+.lobby-section-columns {
+  display: flex;
+  gap: var(--section-column-gap, 16px);
+}
+
+.lobby-section-column {
+  flex-shrink: 0;
+  width: var(--col-w-desktop, auto);
+}
+
+@container lobby-section (min-width: 768px) and (max-width: 1023.98px) {
+  .lobby-section-column[data-has-tablet-width="true"] {
+    width: var(--col-w-tablet);
+  }
+}
+
+@container lobby-section (max-width: 767.98px) {
+  .lobby-section[data-mobile-layout="stack"] .lobby-section-columns {
+    flex-direction: column;
+    gap: var(--section-row-gap, 16px);
+  }
+  .lobby-section[data-mobile-layout="stack"] .lobby-section-column {
+    width: 100%;
+  }
+  .lobby-section[data-mobile-layout="slider"] .lobby-section-columns {
+    overflow-x: auto;
+  }
+  .lobby-section[data-mobile-layout="slider"] .lobby-section-column {
+    width: auto;
+    min-width: 150px;
+    flex: 0 0 auto;
+  }
 }

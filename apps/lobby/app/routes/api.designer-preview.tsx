@@ -4,25 +4,24 @@ import type { Route } from "./+types/api.designer-preview";
 import { prisma } from "@secretlobby/db";
 import { validateDesignerToken, type DesignerPage } from "@secretlobby/auth";
 import { getPublicUrl } from "@secretlobby/storage";
-import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
+import {
+  backgroundToCSS,
+  defaultDarkTheme,
+  generateThemeCSSVars,
+  normalizeThemeBackground,
+  type ThemeSettings,
+} from "@secretlobby/theme";
+import {
+  buildCardStyles,
+  PlayerView,
+  useHlsAudio,
+  useTrackPrefetcher,
+  type ImageUrls,
+  type LoginPageSettings,
+  type SocialLinksSettings,
+  type Track,
+} from "@secretlobby/lobby-template";
 import { ResponsiveImage } from "@secretlobby/ui";
-import type { SocialLinksSettings } from "~/components/SocialLinks";
-import { useHlsAudio } from "~/hooks/useHlsAudio";
-import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
-
-interface LoginPageSettings {
-  title: string;
-  description: string;
-  logoType: "svg" | "image" | null;
-  logoSvg: string;
-  logoImage: string;
-  logoMaxWidth: number;
-  bgColor: string;
-  panelBgColor: string;
-  panelBorderColor: string;
-  textColor: string;
-  buttonLabel: string;
-}
 
 const defaultLoginPageSettings: LoginPageSettings = {
   title: "",
@@ -38,221 +37,35 @@ const defaultLoginPageSettings: LoginPageSettings = {
   buttonLabel: "Enter Lobby",
 };
 
-interface ThemeSettings {
-  bgPrimary: string;
-  bgSecondary: string;
-  bgTertiary: string;
-  textPrimary: string;
-  textSecondary: string;
-  textMuted: string;
-  border: string;
-  primary: string;
-  primaryHover: string;
-  primaryText: string;
-  secondary: string;
-  secondaryHover: string;
-  secondaryText: string;
-  accent: string;
-  visualizerBg: string;
-  visualizerBgOpacity: number;
-  visualizerBar: string;
-  visualizerBarAlt: string;
-  visualizerGlow: string;
-  visualizerUseCardBg: boolean;
-  visualizerBorderShow: boolean;
-  visualizerBorderColor: string;
-  visualizerBorderRadius: number;
-  visualizerBlendMode: string;
-  visualizerType: "equalizer" | "waveform";
-  cardHeadingColor: string;
-  cardContentColor: string;
-  cardMutedColor: string;
-  cardBgType: "solid" | "gradient";
-  cardBgColor: string;
-  cardBgGradientFrom: string;
-  cardBgGradientTo: string;
-  cardBgGradientAngle: number;
-  cardBgOpacity: number;
-  cardBorderShow: boolean;
-  cardBorderType: "solid" | "gradient";
-  cardBorderColor: string;
-  cardBorderGradientFrom: string;
-  cardBorderGradientTo: string;
-  cardBorderGradientAngle: number;
-  cardBorderOpacity: number;
-  cardBorderWidth: string;
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
+// Structural shape for swatches passed into the shared background helper.
+// The lobby's `Account.swatches` Prisma model stores `{ id, value }` rows
+// where `value` is a solid or linear-gradient color part — a structural
+// subset of `@secretlobby/theme#ThemeSwatch[]`.
+interface AccountSwatch {
+  id: string;
+  value:
+    | { type: "solid"; color: string; opacity: number }
+    | {
+        type: "gradient";
+        gradient: { kind: "linear"; angle: number; stops: unknown[] };
+      };
 }
 
-const defaultTheme: ThemeSettings = {
-  bgPrimary: "#030712",
-  bgSecondary: "#111827",
-  bgTertiary: "#1f2937",
-  textPrimary: "#ffffff",
-  textSecondary: "#9ca3af",
-  textMuted: "#6b7280",
-  border: "#374151",
-  primary: "#ffffff",
-  primaryHover: "#e5e7eb",
-  primaryText: "#111827",
-  secondary: "#1f2937",
-  secondaryHover: "#374151",
-  secondaryText: "#ffffff",
-  accent: "#ffffff",
-  visualizerBg: "#111827",
-  visualizerBgOpacity: 0,
-  visualizerBar: "#ffffff",
-  visualizerBarAlt: "#9ca3af",
-  visualizerGlow: "#ffffff",
-  visualizerUseCardBg: false,
-  visualizerBorderShow: false,
-  visualizerBorderColor: "#374151",
-  visualizerBorderRadius: 8,
-  visualizerBlendMode: "normal",
-  visualizerType: "equalizer",
-  cardHeadingColor: "#ffffff",
-  cardContentColor: "#9ca3af",
-  cardMutedColor: "#6b7280",
-  cardBgType: "solid",
-  cardBgColor: "#111827",
-  cardBgGradientFrom: "#1f2937",
-  cardBgGradientTo: "#111827",
-  cardBgGradientAngle: 135,
-  cardBgOpacity: 50,
-  cardBorderShow: true,
-  cardBorderType: "solid",
-  cardBorderColor: "#374151",
-  cardBorderGradientFrom: "#374151",
-  cardBorderGradientTo: "#1f2937",
-  cardBorderGradientAngle: 135,
-  cardBorderOpacity: 100,
-  cardBorderWidth: "1px",
-  cardBorderRadius: 12,
-  buttonBorderRadius: 24,
-  playButtonBorderRadius: 50,
-};
-
-function hexToRgba(hex: string, alpha: number): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
-  }
-  return `rgba(0, 0, 0, ${alpha})`;
-}
-
-function getCardBgCSS(theme: ThemeSettings): string {
-  const opacity = (theme.cardBgOpacity ?? 50) / 100;
-  if (theme.cardBgType === "gradient") {
-    const from = hexToRgba(theme.cardBgGradientFrom, opacity);
-    const to = hexToRgba(theme.cardBgGradientTo, opacity);
-    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
-  }
-  return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
-}
-
-function getBodyBgCSS(theme: ThemeSettings): string {
+// Body background — paints behind the `<main>` content. When the card
+// surface is a gradient we mirror that gradient (preserves the legacy
+// behaviour the designer-preview iframe expects); otherwise we fall through
+// to the canonical layered-background helper.
+function getBodyBgCSS(
+  theme: ThemeSettings,
+  swatches?: AccountSwatch[]
+): string {
   if (theme.cardBgType === "gradient") {
     return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${theme.cardBgGradientFrom}, ${theme.cardBgGradientTo})`;
   }
-  return theme.bgPrimary;
-}
-
-interface CardStyles {
-  bg: string;
-  bgIsGradient: boolean;
-  borderType: "none" | "solid" | "gradient";
-  borderSolid: string;
-  borderGradient: string;
-  borderWidth: string;
-  headingColor: string;
-  contentColor: string;
-  mutedColor: string;
-  visualizerUseCardBg: boolean;
-  visualizerBorderShow: boolean;
-  visualizerBorderColor: string;
-  visualizerBorderRadius: number;
-  visualizerBlendMode: string;
-  visualizerType: "equalizer" | "waveform";
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
-}
-
-function normalizeCSSValue(value: string | undefined, fallback: string): string {
-  if (value === undefined || value === null || value === "") return fallback;
-  const str = String(value).trim();
-  if (!str) return fallback;
-  if (/^[\d.]+$/.test(str)) return `${str}px`;
-  return str;
-}
-
-function computeCardStyles(theme: ThemeSettings): CardStyles {
-  const bg = getCardBgCSS(theme);
-  const borderWidth = normalizeCSSValue(theme.cardBorderWidth, "1px");
-  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
-
-  let borderType: "none" | "solid" | "gradient" = "none";
-  let borderSolid = "";
-  let borderGradient = "";
-
-  if (theme.cardBorderShow) {
-    if (theme.cardBorderType === "gradient") {
-      borderType = "gradient";
-      const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
-      const to = hexToRgba(theme.cardBorderGradientTo, opacity);
-      borderGradient = `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to})`;
-    } else {
-      borderType = "solid";
-      borderSolid = `${borderWidth} solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}`;
-    }
-  }
-
-  return {
-    bg,
-    bgIsGradient: theme.cardBgType === "gradient",
-    borderType,
-    borderSolid,
-    borderGradient,
-    borderWidth,
-    headingColor: theme.cardHeadingColor || theme.textPrimary,
-    contentColor: theme.cardContentColor || theme.textSecondary,
-    mutedColor: theme.cardMutedColor || theme.textMuted,
-    visualizerUseCardBg: theme.visualizerUseCardBg ?? false,
-    visualizerBorderShow: theme.visualizerBorderShow ?? false,
-    visualizerBorderColor: theme.visualizerBorderColor || theme.border,
-    visualizerBorderRadius: theme.visualizerBorderRadius ?? 8,
-    visualizerBlendMode: theme.visualizerBlendMode || "normal",
-    visualizerType: theme.visualizerType || "equalizer",
-    cardBorderRadius: theme.cardBorderRadius ?? 12,
-    buttonBorderRadius: theme.buttonBorderRadius ?? 24,
-    playButtonBorderRadius: theme.playButtonBorderRadius ?? 50,
-  };
-}
-
-function generateThemeCSSVars(theme: ThemeSettings): Record<string, string> {
-  return {
-    "--color-bg-primary": theme.bgPrimary,
-    "--color-bg-secondary": theme.bgSecondary,
-    "--color-bg-tertiary": theme.bgTertiary,
-    "--color-text-primary": theme.textPrimary,
-    "--color-text-secondary": theme.textSecondary,
-    "--color-text-muted": theme.textMuted,
-    "--color-border": theme.border,
-    "--color-primary": theme.primary,
-    "--color-primary-hover": theme.primaryHover,
-    "--color-primary-text": theme.primaryText,
-    "--color-secondary": theme.secondary,
-    "--color-secondary-hover": theme.secondaryHover,
-    "--color-secondary-text": theme.secondaryText,
-    "--color-accent": theme.accent,
-    "--color-visualizer-bg": theme.visualizerBg,
-    "--color-visualizer-bg-opacity": String(theme.visualizerBgOpacity / 100),
-    "--color-visualizer-bar": theme.visualizerBar,
-    "--color-visualizer-bar-alt": theme.visualizerBarAlt,
-    "--color-visualizer-glow": theme.visualizerGlow,
-  };
+  return backgroundToCSS(
+    normalizeThemeBackground(theme),
+    swatches as unknown as Parameters<typeof backgroundToCSS>[1]
+  );
 }
 
 export function headers() {
@@ -353,7 +166,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Extract per-lobby settings
   let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
   let loginLogoImageUrl: string | null = null;
-  let themeSettings: ThemeSettings = defaultTheme;
+  let themeSettings: ThemeSettings = defaultDarkTheme;
   let socialLinksSettings: SocialLinksSettings | null = null;
   let technicalInfo: { title: string; content: string } | null = null;
 
@@ -364,7 +177,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       loginPageSettings = { ...defaultLoginPageSettings, ...(lobbySettings.loginPage as Partial<LoginPageSettings>) };
     }
     if (lobbySettings.theme && typeof lobbySettings.theme === "object") {
-      themeSettings = { ...defaultTheme, ...(lobbySettings.theme as Partial<ThemeSettings>) };
+      themeSettings = { ...defaultDarkTheme, ...(lobbySettings.theme as Partial<ThemeSettings>) };
     }
     if (lobbySettings.socialLinks && typeof lobbySettings.socialLinks === "object") {
       socialLinksSettings = lobbySettings.socialLinks as SocialLinksSettings;
@@ -385,8 +198,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       loginPageSettings = { ...defaultLoginPageSettings, ...(accountSettings.loginPage as Partial<LoginPageSettings>) };
     }
     // Fallback: if lobby doesn't have theme, check account-level settings (legacy)
-    if (themeSettings === defaultTheme && accountSettings.theme && typeof accountSettings.theme === "object") {
-      themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    if (themeSettings === defaultDarkTheme && accountSettings.theme && typeof accountSettings.theme === "object") {
+      themeSettings = { ...defaultDarkTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
     }
     // Fallback: if lobby doesn't have social links, check account-level settings (legacy)
     if (!socialLinksSettings && accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
@@ -405,9 +218,27 @@ export async function loader({ request }: Route.LoaderArgs) {
     loginLogoImageUrl = getPublicUrl(loginPageSettings.logoImage);
   }
 
-  const themeVars = generateThemeCSSVars(themeSettings);
-  const cardStyles = computeCardStyles(themeSettings);
-  const bodyBg = getBodyBgCSS(themeSettings);
+  // Resolve `swatch-ref` entries in the persisted theme JSON against the
+  // owning account's swatch library. Same shape and treatment as the public
+  // lobby renderer so a designer preview matches what visitors see.
+  const accountSwatchRows = await prisma.swatch.findMany({
+    where: { accountId: lobby.accountId },
+    select: { id: true, value: true },
+  });
+  const accountSwatches: AccountSwatch[] = accountSwatchRows.map((r) => ({
+    id: r.id,
+    value: r.value as AccountSwatch["value"],
+  }));
+
+  const themeVars = generateThemeCSSVars(
+    themeSettings,
+    accountSwatches as unknown as Parameters<typeof generateThemeCSSVars>[1]
+  );
+  const cardStyles = buildCardStyles(
+    themeSettings,
+    accountSwatches as unknown as Parameters<typeof buildCardStyles>[1]
+  );
+  const bodyBg = getBodyBgCSS(themeSettings, accountSwatches);
 
   // Helper: resolve a Media record to its public URL
   function mediaUrl(media: { key: string; type: string; embedUrl: string | null } | null | undefined): string | null {

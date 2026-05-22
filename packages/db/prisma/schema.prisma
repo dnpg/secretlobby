@@ -94,6 +94,21 @@ enum StaffRole {
   ADMIN  // Full super-admin access, cannot manage staff
 }
 
+/// Who is allowed to enter a Lobby. Composes with identity flags
+/// (identityEmail / identityGoogle / passwordRequired) on the Lobby row.
+enum LobbyAccessPolicy {
+  PUBLIC           // Anyone (subject to optional password gate)
+  INVITE_ONLY      // Only emails on the LobbyUser invite list
+  DOMAIN_ALLOWLIST // Only emails whose domain matches Lobby.allowedDomains
+}
+
+/// LobbyUser lifecycle. PENDING = invited but never signed in. ACTIVE =
+/// has successfully consumed at least one magic link or Google sign-in.
+enum LobbyUserStatus {
+  PENDING
+  ACTIVE
+}
+
 // ============================================================================
 // ACCOUNT (Tenant)
 // ============================================================================
@@ -123,9 +138,31 @@ model Account {
   paymentMethods PaymentMethod[]
   paymentHistory PaymentHistory[]
   feedback       Feedback[]
+  swatches       Swatch[]
   defaultLobbyId String? // Reference to the default lobby
 
   @@index([slug])
+}
+
+// ============================================================================
+// SWATCH (Saved color/gradient swatches per account — used by ColorPicker)
+// ============================================================================
+
+model Swatch {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  // User-supplied label shown in the saved-swatches grid.
+  name  String
+  // "solid" or "gradient" — mirrors the ColorValue.type field in app code.
+  kind  String
+  // Full ColorValue payload (SolidValue | GradientValue).
+  value Json
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
 }
 
 // ============================================================================
@@ -162,10 +199,11 @@ model User {
   lastLoginAt DateTime?
 
   // Relations
-  accounts AccountUser[]
-  sessions Session[]
-  staff    Staff?
-  feedback Feedback[]
+  accounts          AccountUser[]
+  sessions          Session[]
+  staff             Staff?
+  feedback          Feedback[]
+  invitedLobbyUsers LobbyUser[]   @relation("LobbyUserInvitedBy")
 
   @@index([email])
 }
@@ -258,8 +296,26 @@ model Lobby {
   isDefault   Boolean @default(false) // Is this the account's default lobby?
 
   // Access control
-  password     String? // Optional password protection
-  requiresAuth Boolean @default(false)
+  //
+  // The model is two orthogonal axes — see LobbyAccessPolicy enum.
+  //   * accessPolicy  : WHO is allowed in (Public / Invite / Domain).
+  //   * identityEmail : visitor enters their email + receives a magic link.
+  //   * identityGoogle: visitor signs in with Google (OAuth client shared
+  //                     with the console).
+  //   * passwordRequired: shared password gate (always layered on top of
+  //                     whatever else is enabled; password text lives in
+  //                     `password`, encrypted at rest).
+  //
+  // Validation (enforced in the mutation layer): if accessPolicy is not
+  // PUBLIC, at least one of identityEmail / identityGoogle must be true,
+  // otherwise we have no way to identify the visitor.
+  password         String? // Encrypted shared password (see @secretlobby/auth/lobby-password)
+  requiresAuth     Boolean @default(false)
+  accessPolicy     LobbyAccessPolicy @default(PUBLIC)
+  identityEmail    Boolean @default(false)
+  identityGoogle   Boolean @default(false)
+  passwordRequired Boolean @default(false)
+  allowedDomains   String[] @default([]) // e.g. ["acme.com", "partner.io"] — only consulted when accessPolicy = DOMAIN_ALLOWLIST
 
   // Content & Settings (JSON)
   // Includes: theme, background, banner, playlist, band info, etc.
@@ -281,6 +337,8 @@ model Lobby {
   // Relations
   account             Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
   tracks              Track[]
+  playlists           Playlist[]
+  lobbyUsers          LobbyUser[]
   rateLimitViolations RateLimitViolation[] @relation("LobbyViolations")
   backgroundMedia     Media?               @relation("LobbyBackground", fields: [backgroundMediaId], references: [id], onDelete: SetNull)
   backgroundMediaDark Media?               @relation("LobbyBackgroundDark", fields: [backgroundMediaDarkId], references: [id], onDelete: SetNull)
@@ -295,12 +353,86 @@ model Lobby {
 }
 
 // ============================================================================
+// LOBBY USER (Per-lobby visitor identified by email and/or Google sub)
+// ============================================================================
+//
+// One row per (lobbyId, email). Serves two roles depending on how it was
+// created:
+//   * Admin pre-creates rows (status=PENDING) to populate an invite list
+//     before anyone has clicked through.
+//   * The lobby login flow creates rows on demand when a visitor enters
+//     an email + correct password (PUBLIC + identityEmail mode), or
+//     completes Google sign-in.
+//
+// The magic-link token lives on this row (mirrors the User password-reset
+// pattern). One outstanding token per user at a time — issuing a new link
+// invalidates any previous one. Tokens are random hex, single-use,
+// short-lived (see LOBBY_MAGIC_LINK_TTL_MS in @secretlobby/auth).
+
+model LobbyUser {
+  id      String @id @default(cuid())
+  lobbyId String
+  email   String // Always lowercased before write — see normalizeEmail()
+
+  status    LobbyUserStatus @default(PENDING)
+  googleSub String? // Stable Google "sub" claim; populated on first Google sign-in
+
+  // Magic-link state. Token is random hex (crypto.randomBytes(32).toString("hex")).
+  // Cleared on successful consume; we never re-use tokens.
+  magicLinkToken     String?   @unique
+  magicLinkExpiresAt DateTime?
+  magicLinkSentAt    DateTime?
+
+  // Audit
+  invitedByUserId String? // Admin User who added this row, if any
+  invitedAt       DateTime?
+  firstLoginAt    DateTime?
+  lastSeenAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  lobby       Lobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  invitedBy   User? @relation("LobbyUserInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([lobbyId, email])
+  @@index([lobbyId])
+  @@index([email])
+  @@index([googleSub])
+  @@index([magicLinkExpiresAt])
+}
+
+// ============================================================================
+// PLAYLIST (Named playlists scoped to a lobby; group tracks for player blocks)
+// ============================================================================
+
+model Playlist {
+  id        String   @id @default(cuid())
+  lobbyId   String
+  name      String
+  position  Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lobby  Lobby   @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  tracks Track[]
+
+  @@unique([lobbyId, name])
+  @@index([lobbyId, position])
+}
+
+// ============================================================================
 // TRACK (Audio tracks for a lobby)
 // ============================================================================
 
 model Track {
   id      String @id @default(cuid())
   lobbyId String
+
+  // Phase 6: tracks are owned by a playlist. Nullable initially so the
+  // backfill can run; future migration will tighten to NOT NULL once prod
+  // is verified to have zero null playlistId.
+  playlistId String?
 
   // Track info
   title    String
@@ -315,7 +447,11 @@ model Track {
   // Media reference (new)
   mediaId String?
 
-  // Ordering
+  // Optional cover image (FK to Media) — separate from the audio mediaId.
+  coverMediaId String?
+
+  // Ordering (within playlist; lobbyId kept as denormalized cache for
+  // legacy queries and convenience joins).
   position Int @default(0)
 
   // Timestamps
@@ -323,12 +459,17 @@ model Track {
   updatedAt DateTime @updatedAt
 
   // Relations
-  lobby Lobby @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
-  media Media? @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  lobby      Lobby     @relation(fields: [lobbyId], references: [id], onDelete: Cascade)
+  playlist   Playlist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+  media      Media?    @relation("TrackAudioMedia", fields: [mediaId], references: [id], onDelete: SetNull)
+  coverMedia Media?    @relation("TrackCoverMedia", fields: [coverMediaId], references: [id], onDelete: SetNull)
 
   @@index([lobbyId])
   @@index([lobbyId, position])
+  @@index([playlistId])
+  @@index([playlistId, position])
   @@index([mediaId])
+  @@index([coverMediaId])
 }
 
 // ============================================================================
@@ -406,8 +547,9 @@ model Media {
   lobbyProfiles        Lobby[] @relation("LobbyProfile")
   lobbyProfileDarks    Lobby[] @relation("LobbyProfileDark")
 
-  // Inverse relation (Tracks using this media)
-  tracks    Track[]
+  // Inverse relations (Tracks using this media as audio or cover)
+  tracks       Track[] @relation("TrackAudioMedia")
+  trackCovers  Track[] @relation("TrackCoverMedia")
 
   @@index([accountId, type])
   @@index([accountId, createdAt])
@@ -767,4 +909,70 @@ model FeedbackAttachment {
   feedback Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
 
   @@index([feedbackId])
+}
+
+// ============================================================================
+// ANALYTICS EVENT (First-party lobby event ingest)
+// ============================================================================
+// Stores raw events emitted by the lobby template's trackEvent helper.
+// Dual-fires alongside the customer's GA/GTM (independent destinations).
+// Phase-1 is internal-only; lobbyId + accountId are denormalized into every
+// row so per-account queries don't need joins when customer dashboards
+// land in Phase-2.
+
+model AnalyticsEvent {
+  id         String   @id @default(cuid())
+  // Server-stamped time-of-ingest. Always present; primary sort key.
+  occurredAt DateTime @default(now())
+  // Browser-side timestamp the client claimed when emitting the event;
+  // optional and unreliable, kept for ordering bursts within a session.
+  clientTs   DateTime?
+
+  // Lobby / Account attribution — server-stamped on insert from a Lobby
+  // lookup. Client-supplied lobbyId is trusted only until Phase-2 (customer
+  // dashboards), at which point the server enforces it from the request's
+  // tenant context.
+  accountId  String?
+  lobbyId    String?
+
+  // First-party visitor / session identifiers, set in HttpOnly cookies
+  // (sl_visitor: 1y, sl_session: 30min sliding). Always present from the
+  // ingest endpoint — even the first hit mints both.
+  sessionId  String
+  visitorId  String
+
+  // Optional logged-in lobby user (post password-gate); null for anonymous.
+  userId     String?
+
+  // Event type — short string, e.g. "lobby_password_view", "login",
+  // "audio_play", "audio_complete", "track_click". Kept open so new event
+  // types don't need a migration.
+  eventType  String
+
+  // Optional track scope — set when the event is per-track (audio_play,
+  // audio_complete, etc.).
+  trackId    String?
+
+  // Request context, server-stamped.
+  path       String?
+  referrer   String?
+  userAgent  String?
+  // ISO-3166 country derived from cf-ipcountry (or equivalent) header at
+  // ingest time. Never derived from external GeoIP calls on the hot path.
+  country    String?
+
+  // Free-form per-event payload (originally the second arg to trackEvent).
+  properties Json     @default("{}")
+
+  // Indexes:
+  //  - (accountId, occurredAt): account-scoped time-range queries
+  //  - (lobbyId, eventType, occurredAt): per-lobby, per-event timelines
+  //    (most common dashboard query shape)
+  //  - sessionId / visitorId: session reconstruction & distinct counts
+  //  - occurredAt: cold archive cursor (Phase-3 export-then-delete)
+  @@index([accountId, occurredAt])
+  @@index([lobbyId, eventType, occurredAt])
+  @@index([sessionId])
+  @@index([visitorId])
+  @@index([occurredAt])
 }

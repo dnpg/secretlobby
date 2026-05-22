@@ -1,49 +1,127 @@
 import { useRef, useState, useEffect } from "react";
-import { Form, useLoaderData, useActionData } from "react-router";
+import { useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
 import { getSession, createSessionResponse, authenticateForLobby, isAuthenticatedForLobby } from "@secretlobby/auth";
-import { getSiteContent, getSitePassword, type Track as FileTrack } from "~/lib/content.server";
+import { verifyLobbyPassword } from "@secretlobby/auth/lobby-password";
+import {
+  getSiteContent,
+  getSitePassword,
+  getSwatchesByAccountId,
+  type AccountSwatch,
+  type Track as FileTrack,
+} from "~/lib/content.server";
 import { getPublicUrl } from "@secretlobby/storage";
+import {
+  backgroundToCSS,
+  defaultDarkTheme,
+  generateThemeCSSVars,
+  normalizeThemeBackground,
+  type BackgroundImageTransform,
+  type ThemeSettings,
+} from "@secretlobby/theme";
+import { transformUrl as baseTransformUrl } from "@secretlobby/ui";
 import { generatePreloadToken } from "~/lib/token.server";
-import { PlayerView, type Track, type ImageUrls } from "~/components/PlayerView";
-import { ResponsiveImage } from "@secretlobby/ui";
-import type { SocialLinksSettings } from "~/components/SocialLinks";
-import { PreviewBar } from "~/components/PreviewBar";
-import { useHlsAudio } from "~/hooks/useHlsAudio";
-import { useTrackPrefetcher } from "~/hooks/useTrackPrefetcher";
+import {
+  BlockView,
+  buildCardStyles,
+  LoginAutoplayToggle,
+  LoginPanel,
+  LogoutButton,
+  setAnalyticsContext,
+  StandalonePlayerBlock,
+  PreviewBar,
+  SectionView,
+  SecretLobbyFooter,
+  trackEvent,
+  type ImageUrls,
+  type LoginAccessMode,
+  type LoginPageSettings,
+  type PlayerBlockContent,
+  type Section,
+  type SocialLinksSettings,
+  type Track,
+} from "@secretlobby/lobby-template";
 
-/**
- * Helper function to track events in both Google Analytics (gtag) and Google Tag Manager (dataLayer)
- */
-function trackEvent(eventName: string, params: Record<string, any>) {
-  // Track with Google Analytics (gtag)
-  if (typeof (window as any).gtag === 'function') {
-    (window as any).gtag('event', eventName, params);
+// PlayerView image-urls payload for the page-builder render path. The
+// banner / background / profile images live on the lobby record but in
+// section-based layouts they belong in their own Image blocks — letting
+// PlayerView paint its own banner here would duplicate whatever the
+// designer dropped into the layout as an Image block. Same shape /
+// reasoning as `EMPTY_IMAGE_URLS` in the editor's PlayerBlock
+// (apps/console/.../PlayerBlock.tsx).
+const EMPTY_IMAGE_URLS = {
+  background: null,
+  backgroundDark: null,
+  banner: null,
+  bannerDark: null,
+  profile: null,
+  profileDark: null,
+} satisfies ImageUrls;
+
+// Default page-builder layout for lobbies that haven't been edited in the
+// page-builder yet (no `lobby.settings.pageLayout` saved). One section, one
+// full-width column, one full-variant player block. Drops cleanly into the
+// same SectionView + BlockView pipeline as a saved layout, so the lobby's
+// render path is uniform — saved layouts and the default both flow through
+// PlayerBlockView with the same audio + track wiring.
+//
+// `playlistId` is intentionally empty: the lobby still loads a single track
+// list per page, and PlayerBlockView ignores playlistId for now. Once
+// multi-playlist support lands the loader will resolve this against a
+// canonical "main" playlist.
+const DEFAULT_LOBBY_PAGE_LAYOUT: { sections: Section[]; version: number } = {
+  version: 1,
+  sections: [
+    {
+      id: "default-section",
+      columns: [
+        {
+          id: "default-column",
+          width: "100%",
+          blocks: [
+            {
+              id: "default-player",
+              type: "player",
+              content: {
+                playlistId: "",
+                variant: "full",
+                showVisualizer: true,
+                showPlaylist: true,
+                autoplay: true,
+              },
+            },
+          ],
+        },
+      ],
+      rowGap: "0",
+      columnGap: "0",
+      mobileLayout: "stack",
+    },
+  ],
+};
+
+// Body background — what the lobby paints behind the `<main>` content so the
+// area around shorter pages still picks up the theme. When the card surface
+// is a gradient, the body mirrors that gradient (matches the old behaviour);
+// otherwise it falls through to the canonical layered-background helper from
+// `@secretlobby/theme`. AccountSwatch[] is a structural subset of the
+// package's ThemeSwatch[], hence the cast.
+function getBodyBgCSS(
+  theme: ThemeSettings,
+  swatches?: AccountSwatch[],
+  transformUrl?: BackgroundImageTransform
+): string {
+  if (theme.cardBgType === "gradient") {
+    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${theme.cardBgGradientFrom}, ${theme.cardBgGradientTo})`;
   }
-
-  // Track with Google Tag Manager (dataLayer)
-  if (Array.isArray((window as any).dataLayer)) {
-    (window as any).dataLayer.push({
-      event: eventName,
-      ...params,
-    });
-  }
-}
-
-interface LoginPageSettings {
-  title: string;
-  description: string;
-  logoType: "svg" | "image" | null;
-  logoSvg: string;
-  logoImage: string;
-  logoMaxWidth: number;
-  bgColor: string;
-  panelBgColor: string;
-  panelBorderColor: string;
-  textColor: string;
-  buttonLabel: string;
+  return backgroundToCSS(
+    normalizeThemeBackground(theme),
+    swatches as unknown as Parameters<typeof backgroundToCSS>[1],
+    undefined,
+    transformUrl
+  );
 }
 
 const defaultLoginPageSettings: LoginPageSettings = {
@@ -60,222 +138,6 @@ const defaultLoginPageSettings: LoginPageSettings = {
   buttonLabel: "Enter Lobby",
 };
 
-interface ThemeSettings {
-  bgPrimary: string;
-  bgSecondary: string;
-  bgTertiary: string;
-  textPrimary: string;
-  textSecondary: string;
-  textMuted: string;
-  border: string;
-  primary: string;
-  primaryHover: string;
-  primaryText: string;
-  secondary: string;
-  secondaryHover: string;
-  secondaryText: string;
-  accent: string;
-  visualizerBg: string;
-  visualizerBgOpacity: number;
-  visualizerBar: string;
-  visualizerBarAlt: string;
-  visualizerGlow: string;
-  visualizerUseCardBg: boolean;
-  visualizerBorderShow: boolean;
-  visualizerBorderColor: string;
-  visualizerBorderRadius: number;
-  visualizerBlendMode: string;
-  visualizerType: "equalizer" | "waveform";
-  cardHeadingColor: string;
-  cardContentColor: string;
-  cardMutedColor: string;
-  cardBgType: "solid" | "gradient";
-  cardBgColor: string;
-  cardBgGradientFrom: string;
-  cardBgGradientTo: string;
-  cardBgGradientAngle: number;
-  cardBgOpacity: number;
-  cardBorderShow: boolean;
-  cardBorderType: "solid" | "gradient";
-  cardBorderColor: string;
-  cardBorderGradientFrom: string;
-  cardBorderGradientTo: string;
-  cardBorderGradientAngle: number;
-  cardBorderOpacity: number;
-  cardBorderWidth: string;
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
-}
-
-const defaultTheme: ThemeSettings = {
-  bgPrimary: "#030712",
-  bgSecondary: "#111827",
-  bgTertiary: "#1f2937",
-  textPrimary: "#ffffff",
-  textSecondary: "#9ca3af",
-  textMuted: "#6b7280",
-  border: "#374151",
-  primary: "#ffffff",
-  primaryHover: "#e5e7eb",
-  primaryText: "#111827",
-  secondary: "#1f2937",
-  secondaryHover: "#374151",
-  secondaryText: "#ffffff",
-  accent: "#ffffff",
-  visualizerBg: "#111827",
-  visualizerBgOpacity: 0,
-  visualizerBar: "#ffffff",
-  visualizerBarAlt: "#9ca3af",
-  visualizerGlow: "#ffffff",
-  visualizerUseCardBg: false,
-  visualizerBorderShow: false,
-  visualizerBorderColor: "#374151",
-  visualizerBorderRadius: 8,
-  visualizerBlendMode: "normal",
-  visualizerType: "equalizer",
-  cardHeadingColor: "#ffffff",
-  cardContentColor: "#9ca3af",
-  cardMutedColor: "#6b7280",
-  cardBgType: "solid",
-  cardBgColor: "#111827",
-  cardBgGradientFrom: "#1f2937",
-  cardBgGradientTo: "#111827",
-  cardBgGradientAngle: 135,
-  cardBgOpacity: 50,
-  cardBorderShow: true,
-  cardBorderType: "solid",
-  cardBorderColor: "#374151",
-  cardBorderGradientFrom: "#374151",
-  cardBorderGradientTo: "#1f2937",
-  cardBorderGradientAngle: 135,
-  cardBorderOpacity: 100,
-  cardBorderWidth: "1px",
-  cardBorderRadius: 12,
-  buttonBorderRadius: 24,
-  playButtonBorderRadius: 50,
-};
-
-function hexToRgba(hex: string, alpha: number): string {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (result) {
-    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
-  }
-  return `rgba(0, 0, 0, ${alpha})`;
-}
-
-function getCardBgCSS(theme: ThemeSettings): string {
-  const opacity = (theme.cardBgOpacity ?? 50) / 100;
-  if (theme.cardBgType === "gradient") {
-    const from = hexToRgba(theme.cardBgGradientFrom, opacity);
-    const to = hexToRgba(theme.cardBgGradientTo, opacity);
-    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${from}, ${to})`;
-  }
-  return hexToRgba(theme.cardBgColor || theme.bgSecondary, opacity);
-}
-
-function getBodyBgCSS(theme: ThemeSettings): string {
-  if (theme.cardBgType === "gradient") {
-    return `linear-gradient(${theme.cardBgGradientAngle ?? 135}deg, ${theme.cardBgGradientFrom}, ${theme.cardBgGradientTo})`;
-  }
-  return theme.bgPrimary;
-}
-
-interface CardStyles {
-  bg: string;
-  bgIsGradient: boolean;
-  borderType: "none" | "solid" | "gradient";
-  borderSolid: string;
-  borderGradient: string;
-  borderWidth: string;
-  headingColor: string;
-  contentColor: string;
-  mutedColor: string;
-  visualizerUseCardBg: boolean;
-  visualizerBorderShow: boolean;
-  visualizerBorderColor: string;
-  visualizerBorderRadius: number;
-  visualizerBlendMode: string;
-  visualizerType: "equalizer" | "waveform";
-  cardBorderRadius: number;
-  buttonBorderRadius: number;
-  playButtonBorderRadius: number;
-}
-
-function normalizeCSSValue(value: string | undefined, fallback: string): string {
-  if (value === undefined || value === null || value === "") return fallback;
-  const str = String(value).trim();
-  if (!str) return fallback;
-  if (/^[\d.]+$/.test(str)) return `${str}px`;
-  return str;
-}
-
-function computeCardStyles(theme: ThemeSettings): CardStyles {
-  const bg = getCardBgCSS(theme);
-  const borderWidth = normalizeCSSValue(theme.cardBorderWidth, "1px");
-  const opacity = (theme.cardBorderOpacity ?? 100) / 100;
-
-  let borderType: "none" | "solid" | "gradient" = "none";
-  let borderSolid = "";
-  let borderGradient = "";
-
-  if (theme.cardBorderShow) {
-    if (theme.cardBorderType === "gradient") {
-      borderType = "gradient";
-      const from = hexToRgba(theme.cardBorderGradientFrom, opacity);
-      const to = hexToRgba(theme.cardBorderGradientTo, opacity);
-      borderGradient = `linear-gradient(${theme.cardBorderGradientAngle ?? 135}deg, ${from}, ${to})`;
-    } else {
-      borderType = "solid";
-      borderSolid = `${borderWidth} solid ${hexToRgba(theme.cardBorderColor || theme.border, opacity)}`;
-    }
-  }
-
-  return {
-    bg,
-    bgIsGradient: theme.cardBgType === "gradient",
-    borderType,
-    borderSolid,
-    borderGradient,
-    borderWidth,
-    headingColor: theme.cardHeadingColor || theme.textPrimary,
-    contentColor: theme.cardContentColor || theme.textSecondary,
-    mutedColor: theme.cardMutedColor || theme.textMuted,
-    visualizerUseCardBg: theme.visualizerUseCardBg ?? false,
-    visualizerBorderShow: theme.visualizerBorderShow ?? false,
-    visualizerBorderColor: theme.visualizerBorderColor || theme.border,
-    visualizerBorderRadius: theme.visualizerBorderRadius ?? 8,
-    visualizerBlendMode: theme.visualizerBlendMode || "normal",
-    visualizerType: theme.visualizerType || "equalizer",
-    cardBorderRadius: theme.cardBorderRadius ?? 12,
-    buttonBorderRadius: theme.buttonBorderRadius ?? 24,
-    playButtonBorderRadius: theme.playButtonBorderRadius ?? 50,
-  };
-}
-
-function generateThemeCSSVars(theme: ThemeSettings): Record<string, string> {
-  return {
-    "--color-bg-primary": theme.bgPrimary,
-    "--color-bg-secondary": theme.bgSecondary,
-    "--color-bg-tertiary": theme.bgTertiary,
-    "--color-text-primary": theme.textPrimary,
-    "--color-text-secondary": theme.textSecondary,
-    "--color-text-muted": theme.textMuted,
-    "--color-border": theme.border,
-    "--color-primary": theme.primary,
-    "--color-primary-hover": theme.primaryHover,
-    "--color-primary-text": theme.primaryText,
-    "--color-secondary": theme.secondary,
-    "--color-secondary-hover": theme.secondaryHover,
-    "--color-secondary-text": theme.secondaryText,
-    "--color-accent": theme.accent,
-    "--color-visualizer-bg": theme.visualizerBg,
-    "--color-visualizer-bg-opacity": String(theme.visualizerBgOpacity / 100),
-    "--color-visualizer-bar": theme.visualizerBar,
-    "--color-visualizer-bar-alt": theme.visualizerBarAlt,
-    "--color-visualizer-glow": theme.visualizerGlow,
-  };
-}
 
 export function meta({ data }: Route.MetaArgs) {
   const title = data?.lobby?.title || data?.account?.name || data?.content?.bandName || "SecretLobby";
@@ -298,7 +160,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     return {
       isLocalhost: true,
       content,
-      lobby: null,
+      // Synthetic lobby for localhost dev so the analytics beacon has a
+      // stable identifier to ship — matches the "localhost-lobby" sentinel
+      // already used by the action handler's rate-limit calls (line ~704).
+      lobby: {
+        id: "localhost-lobby",
+        title: null as string | null,
+        description: null as string | null,
+        hasPassword: false,
+      },
       account: null,
       requiresPassword: !isAuthenticated,
       isAuthenticated,
@@ -313,20 +183,32 @@ export async function loader({ request }: Route.LoaderArgs) {
       } satisfies ImageUrls,
       tracks: isAuthenticated ? content.playlist : [],
       autoplayTrackId: null,
+      pageWantsAutoplay: true,
       preloadTrackId: null,
       preloadToken: null,
       preloadTrackMeta: null,
       notFound: false,
       loginPageSettings: defaultLoginPageSettings,
       loginLogoImageUrl: null,
-      themeVars: generateThemeCSSVars(defaultTheme),
-      cardStyles: computeCardStyles(defaultTheme),
-      bodyBg: getBodyBgCSS(defaultTheme),
+      loginLogoImageWidth: null,
+      loginLogoImageHeight: null,
+      themeVars: generateThemeCSSVars(defaultDarkTheme),
+      cardStyles: buildCardStyles(defaultDarkTheme),
+      bodyBg: getBodyBgCSS(defaultDarkTheme),
       socialLinksSettings: null as SocialLinksSettings | null,
       technicalInfo: null as { title: string; content: string } | null,
       gaTrackingId: null as string | null,
       gtmContainerId: null as string | null,
       csrfToken,
+      pageLayout: null as null,
+      themeSettings: defaultDarkTheme,
+      // Login-data slots kept on the localhost dev branch too so the
+      // render path sees a consistent shape — values are all null /
+      // defaults because localhost dev only uses the legacy
+      // password-only gate.
+      accessMode: null as LoginAccessMode | null,
+      loginReasonMessage: null as string | null,
+      magicLinkExpiresInDays: 7,
     };
   }
 
@@ -353,20 +235,28 @@ export async function loader({ request }: Route.LoaderArgs) {
       } satisfies ImageUrls,
       tracks: [],
       autoplayTrackId: null,
+      pageWantsAutoplay: true,
       preloadTrackId: null,
       preloadToken: null,
       preloadTrackMeta: null,
       notFound: true,
       loginPageSettings: defaultLoginPageSettings,
       loginLogoImageUrl: null,
-      themeVars: generateThemeCSSVars(defaultTheme),
-      cardStyles: computeCardStyles(defaultTheme),
-      bodyBg: getBodyBgCSS(defaultTheme),
+      loginLogoImageWidth: null,
+      loginLogoImageHeight: null,
+      themeVars: generateThemeCSSVars(defaultDarkTheme),
+      cardStyles: buildCardStyles(defaultDarkTheme),
+      bodyBg: getBodyBgCSS(defaultDarkTheme),
       socialLinksSettings: null as SocialLinksSettings | null,
       technicalInfo: null as { title: string; content: string } | null,
       gaTrackingId: null as string | null,
       gtmContainerId: null as string | null,
       csrfToken,
+      pageLayout: null as null,
+      themeSettings: defaultDarkTheme,
+      accessMode: null as LoginAccessMode | null,
+      loginReasonMessage: null as string | null,
+      magicLinkExpiresInDays: 7,
     };
   }
 
@@ -375,16 +265,34 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Check if lobby requires password and user is authenticated for THIS specific lobby
   const isAuthenticated = isAuthenticatedForLobby(session, lobby.id);
 
-  const needsPassword = !!lobby.password && !isAuthenticated;
+  // Unified sign-in gate: any combination of (passwordRequired,
+  // identityEmail, identityGoogle) keeps the visitor on this same URL
+  // — the URL never changes during sign-in. The LoginPanel below picks
+  // up `accessMode` when identity methods are on and falls back to the
+  // legacy password-only form otherwise. Failure paths (magic-link
+  // consume / Google finish) redirect back to this URL with
+  // `?reason=<code>`; we surface the matching banner via
+  // `resolveLoginReasonMessage`.
+  const needsLogin =
+    !isAuthenticated &&
+    (lobby.passwordRequired || lobby.identityEmail || lobby.identityGoogle);
+  // Backwards-compat name — preserved because downstream loader logic
+  // gates on it ("don't fetch tracks when on the login screen").
+  const needsPassword = needsLogin;
 
   // Extract per-lobby settings from lobby.settings
   let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
   let loginLogoImageUrl: string | null = null;
-  let themeSettings: ThemeSettings = defaultTheme;
+  let themeSettings: ThemeSettings = defaultDarkTheme;
   let socialLinksSettings: SocialLinksSettings | null = null;
   let technicalInfo: { title: string; content: string } | null = null;
   let gaTrackingId: string | null = null;
   let gtmContainerId: string | null = null;
+  // Page-builder saved layout — `null` when the lobby hasn't been edited in
+  // the page-builder yet. The render path constructs a default
+  // single-section-with-a-player-block layout in that case so every lobby
+  // still paints content.
+  let pageLayout: { sections: unknown[]; version: number } | null = null;
 
   // Read per-lobby settings from lobby.settings
   if (lobby.settings && typeof lobby.settings === "object") {
@@ -393,7 +301,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       loginPageSettings = { ...defaultLoginPageSettings, ...(lobbySettings.loginPage as Partial<LoginPageSettings>) };
     }
     if (lobbySettings.theme && typeof lobbySettings.theme === "object") {
-      themeSettings = { ...defaultTheme, ...(lobbySettings.theme as Partial<ThemeSettings>) };
+      themeSettings = { ...defaultDarkTheme, ...(lobbySettings.theme as Partial<ThemeSettings>) };
     }
     if (lobbySettings.socialLinks && typeof lobbySettings.socialLinks === "object") {
       socialLinksSettings = lobbySettings.socialLinks as SocialLinksSettings;
@@ -402,6 +310,22 @@ export async function loader({ request }: Route.LoaderArgs) {
       const ti = lobbySettings.technicalInfo as { title?: string; content?: string };
       if (ti.title || ti.content) {
         technicalInfo = { title: ti.title || "", content: ti.content || "" };
+      }
+    }
+    // Page-builder layout — the editor writes
+    // `{ sections: Section[], version: number }` here on every save. We
+    // accept anything with a sections array; the render side coerces it
+    // through `@secretlobby/lobby-template`'s Section type at the boundary.
+    if (
+      lobbySettings.pageLayout &&
+      typeof lobbySettings.pageLayout === "object"
+    ) {
+      const pl = lobbySettings.pageLayout as Record<string, unknown>;
+      if (Array.isArray(pl.sections)) {
+        pageLayout = {
+          sections: pl.sections,
+          version: typeof pl.version === "number" ? pl.version : 1,
+        };
       }
     }
   }
@@ -414,8 +338,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       loginPageSettings = { ...defaultLoginPageSettings, ...(accountSettings.loginPage as Partial<LoginPageSettings>) };
     }
     // Fallback: if lobby doesn't have theme, check account-level settings (legacy)
-    if (themeSettings === defaultTheme && accountSettings.theme && typeof accountSettings.theme === "object") {
-      themeSettings = { ...defaultTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
+    if (themeSettings === defaultDarkTheme && accountSettings.theme && typeof accountSettings.theme === "object") {
+      themeSettings = { ...defaultDarkTheme, ...(accountSettings.theme as Partial<ThemeSettings>) };
     }
     // Fallback: if lobby doesn't have social links, check account-level settings (legacy)
     if (!socialLinksSettings && accountSettings.socialLinks && typeof accountSettings.socialLinks === "object") {
@@ -439,13 +363,46 @@ export async function loader({ request }: Route.LoaderArgs) {
       }
     }
   }
+  let loginLogoImageWidth: number | null = null;
+  let loginLogoImageHeight: number | null = null;
   if (loginPageSettings.logoType === "image" && loginPageSettings.logoImage) {
     loginLogoImageUrl = getPublicUrl(loginPageSettings.logoImage);
+    // Look up intrinsic dimensions so the rendered <img> carries width/height
+    // attrs — the browser reserves the right aspect-ratio box before the
+    // bitmap loads, killing layout shift on first paint.
+    const logoMedia = await prisma.media.findFirst({
+      where: { key: loginPageSettings.logoImage, accountId: account.id },
+      select: { width: true, height: true },
+    });
+    loginLogoImageWidth = logoMedia?.width ?? null;
+    loginLogoImageHeight = logoMedia?.height ?? null;
   }
 
-  const themeVars = generateThemeCSSVars(themeSettings);
-  const cardStyles = computeCardStyles(themeSettings);
-  const bodyBg = getBodyBgCSS(themeSettings);
+  // Resolve any swatch-ref entries in the persisted theme JSON. Swatches are
+  // per-account so we fetch the full list once and thread it into the CSS
+  // generators.
+  const accountSwatches = await getSwatchesByAccountId(account.id);
+
+  // Bind the URL transform pattern from env so background CSS emits a
+  // resolution-aware `image-set(url(@1x) 1x, url(@2x) 2x)` for the lobby's
+  // body bg image. Without an env pattern this stays a passthrough and the
+  // emitted CSS keeps using a plain `url(...)`.
+  const imageTransformPattern =
+    process.env.IMAGE_TRANSFORM_PATTERN || "{url}";
+  const bgTransformUrl: BackgroundImageTransform = (src, { width }) =>
+    baseTransformUrl(src, { width }, imageTransformPattern);
+
+  const themeVars = generateThemeCSSVars(
+    themeSettings,
+    accountSwatches as unknown as Parameters<typeof generateThemeCSSVars>[1],
+    undefined,
+    bgTransformUrl
+  );
+  const cardStyles = buildCardStyles(
+    themeSettings,
+    accountSwatches as unknown as Parameters<typeof buildCardStyles>[1]
+  );
+  const bodyBg = getBodyBgCSS(themeSettings, accountSwatches, bgTransformUrl);
 
   // Fetch lobby with media relations for image URL resolution
   const lobbyWithMedia = await prisma.lobby.findUnique({
@@ -479,10 +436,67 @@ export async function loader({ request }: Route.LoaderArgs) {
   let preloadTrackId: string | null = null;
   let preloadToken: string | null = null;
 
-  const rawTracks = needsPassword
-    ? []
-    : await prisma.track.findMany({
-        where: { lobbyId: lobby.id },
+  // Scope the track query to the playlistIds the saved layout actually
+  // references. A lobby can have multiple playlists (Phase 6 made tracks
+  // `playlistId`-owned), and each player block stores its own
+  // `content.playlistId`; querying by `lobbyId` alone returns the union
+  // across every playlist, which visibly duplicates rows when the page has
+  // more than one player block — or even just makes a single block render
+  // tracks that belong to a different playlist.
+  //
+  // We walk the saved pageLayout (when present), collect every player
+  // block's `playlistId`, and filter the track query to that exact set. The
+  // tracks are then tagged with their owning `playlistId` so the component-
+  // side `renderPlayer(content)` can slice the right subset per block.
+  //
+  // Legacy fallback: when no pageLayout is saved (or its player blocks have
+  // no playlistId — pre-Phase-6 layout shape), we fall back to the lobby's
+  // `isDefault` playlist if one exists, then to the page-wide `lobbyId`
+  // query as a last resort so very old lobbies still render their tracks.
+  const requiredPlaylistIds = new Set<string>();
+  if (pageLayout && Array.isArray(pageLayout.sections)) {
+    for (const section of pageLayout.sections) {
+      if (!section || typeof section !== "object") continue;
+      const cols = (section as { columns?: unknown }).columns;
+      if (!Array.isArray(cols)) continue;
+      for (const col of cols) {
+        if (!col || typeof col !== "object") continue;
+        const blocks = (col as { blocks?: unknown }).blocks;
+        if (!Array.isArray(blocks)) continue;
+        for (const block of blocks) {
+          if (
+            block &&
+            typeof block === "object" &&
+            (block as { type?: unknown }).type === "player"
+          ) {
+            const content = (block as { content?: unknown }).content;
+            const pid = (content as { playlistId?: unknown } | null)?.playlistId;
+            if (typeof pid === "string" && pid !== "") {
+              requiredPlaylistIds.add(pid);
+            }
+          }
+        }
+      }
+    }
+  }
+  const fallbackDefaultPlaylist =
+    !needsPassword && requiredPlaylistIds.size === 0
+      ? await prisma.playlist.findFirst({
+          where: { lobbyId: lobby.id, isDefault: true },
+          select: { id: true },
+        })
+      : null;
+  const trackWhere = needsPassword
+    ? null
+    : requiredPlaylistIds.size > 0
+      ? { playlistId: { in: Array.from(requiredPlaylistIds) } }
+      : fallbackDefaultPlaylist
+        ? { playlistId: fallbackDefaultPlaylist.id }
+        : { lobbyId: lobby.id };
+
+  const rawTracks = trackWhere
+    ? await prisma.track.findMany({
+        where: trackWhere,
         orderBy: { position: "asc" },
         select: {
           id: true,
@@ -490,6 +504,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           artist: true,
           duration: true,
           position: true,
+          playlistId: true,
           filename: true,
           hlsReady: true,
           waveformPeaks: true,
@@ -501,8 +516,18 @@ export async function loader({ request }: Route.LoaderArgs) {
               waveformPeaks: true,
             },
           },
+          // Per-track cover image. Surfaced as a public URL on the wire
+          // `Track` shape so the PlayerBlock's `showTrackImage` toggle can
+          // render each row's thumbnail. Selected unconditionally because the
+          // page can host multiple PlayerBlocks with different toggle values;
+          // hiding the field at the server layer would force a re-query when
+          // one of them opts in.
+          coverMedia: {
+            select: { key: true },
+          },
         },
-      });
+      })
+    : [];
 
   // Normalize: prefer media-level values over legacy track-level values
   const tracks = rawTracks.map((t) => ({
@@ -511,14 +536,57 @@ export async function loader({ request }: Route.LoaderArgs) {
     artist: t.artist,
     duration: t.media?.duration ?? t.duration,
     position: t.position,
+    // Tag with owning playlist id so the component-side renderPlayer can
+    // slice the page-level track list down to the subset belonging to the
+    // block's `content.playlistId`.
+    playlistId: t.playlistId,
     filename: t.media?.key ?? t.filename,
     hlsReady: t.media?.hlsReady ?? t.hlsReady,
     waveformPeaks: t.media?.waveformPeaks ?? t.waveformPeaks,
+    // Public URL of the cover, or null when the track has no cover assigned.
+    // The PlayerView playlist render uses this when the PlayerBlock's
+    // `showTrackImage` toggle is on.
+    image: t.coverMedia ? getPublicUrl(t.coverMedia.key) : null,
   }));
 
   // Get autoplay track from lobby settings (or default to first track)
   const lobbySettings = (lobby.settings as Record<string, unknown>) || {};
   const autoplayTrackId = (lobbySettings.autoplayTrackId as string) || null;
+
+  // Per-block autoplay intent — when EVERY player block on the page has
+  // `content.autoplay === false`, the lobby must NOT auto-play on load.
+  // We default to `true` for legacy / un-migrated layouts (the
+  // `DEFAULT_LOBBY_PAGE_LAYOUT` also sets `autoplay: true`) so existing
+  // lobbies keep auto-playing. Any single block opting in keeps the page
+  // auto-playing — the user's request is "if autoplay is off, no sound",
+  // so we only suppress when nothing wants it.
+  const pageWantsAutoplay = (() => {
+    if (!pageLayout || !Array.isArray(pageLayout.sections)) return true;
+    let sawPlayer = false;
+    for (const section of pageLayout.sections) {
+      if (!section || typeof section !== "object") continue;
+      const cols = (section as { columns?: unknown }).columns;
+      if (!Array.isArray(cols)) continue;
+      for (const col of cols) {
+        if (!col || typeof col !== "object") continue;
+        const blocks = (col as { blocks?: unknown }).blocks;
+        if (!Array.isArray(blocks)) continue;
+        for (const block of blocks) {
+          if (
+            block &&
+            typeof block === "object" &&
+            (block as { type?: unknown }).type === "player"
+          ) {
+            sawPlayer = true;
+            const c = (block as { content?: unknown }).content;
+            const ap = (c as { autoplay?: unknown } | null)?.autoplay;
+            if (ap === true) return true;
+          }
+        }
+      }
+    }
+    return !sawPlayer; // no player blocks → no opinion, leave autoplay on
+  })();
 
   // If password required, find the autoplay track (or first track) for preloading
   let preloadTrackMeta: { hlsReady: boolean; duration: number | null; waveformPeaks: number[] | null } | null = null;
@@ -571,6 +639,47 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
+  // Inline sign-in support data — computed only when we'll actually
+  // render the LoginPanel. Keeping it conditional avoids paying for
+  // these reads on every authenticated page view.
+  const { getLobbyGoogleSignInUrl, resolveLoginReasonMessage, LOGIN_MAGIC_LINK_EXPIRES_IN_DAYS } =
+    needsLogin
+      ? await import("~/lib/login-page.server")
+      : ({
+          getLobbyGoogleSignInUrl: () => null,
+          resolveLoginReasonMessage: () => null,
+          LOGIN_MAGIC_LINK_EXPIRES_IN_DAYS: 7,
+        } as const);
+
+  const googleSignInUrl = needsLogin
+    ? getLobbyGoogleSignInUrl(request, {
+        id: lobby.id,
+        slug: lobby.slug,
+        isDefault: lobby.isDefault,
+        identityGoogle: lobby.identityGoogle,
+      })
+    : null;
+
+  const reasonParam = new URL(request.url).searchParams.get("reason");
+  const loginReasonMessage = needsLogin
+    ? resolveLoginReasonMessage(reasonParam)
+    : null;
+
+  // The LoginPanel's `accessMode` prop turns on the multi-method form
+  // (email + Google + optional password). When identity methods are
+  // off, we omit accessMode so LoginPanel falls back to its legacy
+  // password-only render — same behavior as before this refactor.
+  const accessMode =
+    needsLogin && (lobby.identityEmail || lobby.identityGoogle)
+      ? {
+          identityEmail: lobby.identityEmail,
+          identityGoogle: lobby.identityGoogle,
+          passwordRequired: lobby.passwordRequired,
+          googleSignInUrl,
+          lobbySlug: lobby.slug,
+        }
+      : null;
+
   const data = {
     isLocalhost: false,
     content: null,
@@ -578,6 +687,13 @@ export async function loader({ request }: Route.LoaderArgs) {
       id: lobby.id,
       title: lobby.title,
       description: lobby.description,
+      slug: lobby.slug,
+      isDefault: lobby.isDefault,
+      // True when the lobby is password-gated. The authenticated render
+      // path uses this to decide whether to show the Logout button —
+      // distinct from `requiresPassword`, which is only true BEFORE
+      // login. We never expose the raw password.
+      hasPassword: !!lobby.password,
     },
     account: {
       name: account.name,
@@ -585,16 +701,22 @@ export async function loader({ request }: Route.LoaderArgs) {
     },
     requiresPassword: needsPassword,
     isAuthenticated: !needsPassword,
+    accessMode,
+    loginReasonMessage,
+    magicLinkExpiresInDays: LOGIN_MAGIC_LINK_EXPIRES_IN_DAYS,
     isPreview: tenant.isPreview,
     imageUrls,
     tracks,
     autoplayTrackId,
+    pageWantsAutoplay,
     preloadTrackId,
     preloadToken,
     preloadTrackMeta: preloadTrackMeta ?? null,
     notFound: false,
     loginPageSettings,
     loginLogoImageUrl,
+    loginLogoImageWidth,
+    loginLogoImageHeight,
     themeVars,
     cardStyles,
     bodyBg,
@@ -603,6 +725,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     gaTrackingId,
     gtmContainerId,
     csrfToken,
+    pageLayout,
+    // Surface the structured theme so the component's BlockView can hand it
+    // down to per-block views (image border fallbacks, etc.). `themeVars` is
+    // the CSS-variable form for the <main> style; this is the same data in
+    // its typed-object form.
+    themeSettings,
   };
 
   // Persist preview token in cookie when present in URL so it survives navigation (e.g. after password submit)
@@ -713,10 +841,80 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  // Branch on the form's intent. The LoginPanel stamps `intent` onto
+  // the submit button (`google` / `email`) when accessMode is in use;
+  // the legacy password-only form posts no intent at all.
+  if (intent === "google") {
+    // passwordRequired branch — the Google submit button only renders
+    // when accessMode.passwordRequired is true. Verify the password
+    // on the lobby side before we hand the visitor off to Google;
+    // stash a short-lived session marker so /auth/google/finish can
+    // confirm the gate actually happened (defends against a malicious
+    // direct GET to AUTH_URL/auth/google that would otherwise skip
+    // the password check entirely).
+    const { updateSession } = await import("@secretlobby/auth");
+    const { LOBBY_PASSWORD_VERIFICATION_TTL_MS } = await import(
+      "@secretlobby/auth/lobby-access"
+    );
+
+    if (!tenant.lobby.passwordRequired) {
+      // Bogus form payload — the button shouldn't have shipped intent=
+      // google for a lobby without passwordRequired. Treat it as a
+      // misuse and reject rather than skipping the check.
+      return { error: "Password verification not required for this lobby." };
+    }
+    if (!tenant.lobby.identityGoogle) {
+      return { error: "Google sign-in is not enabled for this lobby." };
+    }
+    const submittedPassword = (formData.get("password") as string) || "";
+    if (!verifyLobbyPassword(submittedPassword, tenant.lobby.password ?? "")) {
+      return { error: "Incorrect password." };
+    }
+
+    const authBase = process.env.AUTH_URL;
+    if (!authBase) {
+      return { error: "Google sign-in is not configured." };
+    }
+    const url = new URL(request.url);
+    const params = new URLSearchParams({
+      lobby: tenant.lobby.id,
+      host: url.host,
+      returnPath: tenant.lobby.isDefault ? "/" : `/${tenant.lobby.slug}`,
+    });
+    const googleStartUrl = `${authBase.replace(/\/$/, "")}/auth/google?${params.toString()}`;
+
+    // Set the marker, then redirect carrying the session's Set-Cookie
+    // header so the marker survives the cross-origin hop to the
+    // console OAuth start.
+    const { response: sessionResponse } = await updateSession(request, {
+      lobbyPasswordVerified: {
+        lobbyId: tenant.lobby.id,
+        expiresAt: Date.now() + LOBBY_PASSWORD_VERIFICATION_TTL_MS,
+      },
+    });
+    const cookieHeader = sessionResponse.headers.get("Set-Cookie");
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: googleStartUrl,
+        ...(cookieHeader ? { "Set-Cookie": cookieHeader } : {}),
+      },
+    });
+  }
+
+  if (intent === "email" || formData.has("email")) {
+    const { handleMagicLinkRequest } = await import("~/lib/login-page.server");
+    return handleMagicLinkRequest(request, tenant.lobby, formData);
+  }
+
   const password = formData.get("password") as string;
 
-  // Verify password
-  if (password !== tenant.lobby.password) {
+  // Verify password — decrypts the stored value with constant-time-ish
+  // compare. Legacy plaintext values still verify until the migration
+  // script encrypts them in place.
+  if (!verifyLobbyPassword(password, tenant.lobby.password ?? "")) {
     return { error: "Invalid password" };
   }
 
@@ -736,19 +934,54 @@ export default function LobbyIndex() {
   const data = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
-  // Audio state lives here so it persists across login → player transition
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const audioHook = useHlsAudio(audioRef);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  // The page no longer owns a shared <audio> element — each
+  // <StandalonePlayerBlock/> below creates its own so two player blocks
+  // can play independently and their visualizers animate only when THEIR
+  // audio is playing. The only page-level audio state we keep is the
+  // LoginAutoplayToggle's value, which the standalone blocks read as a
+  // master "is autoplay allowed at all?" gate.
   const [autoplayEnabled, setAutoplayEnabled] = useState(true);
-  const loadedTrackRef = useRef<string | null>(null);
+  // Page-level "which player block is currently playing" registry. Each
+  // StandalonePlayerBlock claims this slot on play and pauses itself when
+  // a different block takes over — enforces the rule that only one player
+  // plays at a time across the entire page.
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const wasAuthenticatedRef = useRef(!data.requiresPassword);
+
+  // Register the first-party analytics context BEFORE any other useEffect
+  // fires trackEvent. The login/logout-transition effect below depends on
+  // the context being set (otherwise its events would be dropped by the
+  // beacon path). The accountId is left null on the client and stamped by
+  // the ingest endpoint from a Lobby lookup — keeps the client lighter and
+  // prevents per-tenant spoofing once Phase-2 customer dashboards land.
+  useEffect(() => {
+    const lobbyId = data.lobby?.id ?? null;
+    if (!lobbyId) return;
+    setAnalyticsContext({ lobbyId, accountId: null });
+  }, [data.lobby?.id]);
+
+  // Fire `lobby_password_view` whenever the visitor lands on (or returns to)
+  // the password gate. This is the entry-point event for the "how many
+  // people reached the gate vs. actually got in?" funnel. Deliberately
+  // re-fires on logout → password-page returns since that's a fresh attempt
+  // from the visitor's perspective.
+  useEffect(() => {
+    if (!data.requiresPassword) return;
+    trackEvent('lobby_password_view', {
+      event_category: 'lobby_entry',
+      lobby_id: data.lobby?.id,
+    });
+  }, [data.requiresPassword, data.lobby?.id]);
 
   // Apply body background from theme settings
   useEffect(() => {
     const bg = data.bodyBg;
-    if (bg.startsWith("linear-gradient")) {
+    if (
+      bg.startsWith("linear-gradient") ||
+      bg.startsWith("radial-gradient") ||
+      bg.startsWith("conic-gradient") ||
+      bg.startsWith("url(")
+    ) {
       document.body.style.background = bg;
     } else {
       document.body.style.backgroundColor = bg;
@@ -816,15 +1049,14 @@ export default function LobbyIndex() {
       }))
     : (data.tracks as Track[]);
 
-  // Prefetch the next track's HLS resources while the current track plays
-  useTrackPrefetcher({ tracks, currentTrackId: activeTrackId, isPlaying });
-
-  // Handle authentication state changes (login/logout) and tracking
+  // Track login/logout transitions for analytics. Audio cleanup on logout
+  // is owned by each StandalonePlayerBlock — it unmounts on the password
+  // page so its `<audio>` element, useHlsAudio instance, and playback
+  // state are torn down automatically.
   useEffect(() => {
     const wasAuthenticated = wasAuthenticatedRef.current;
     const isAuthenticated = !data.requiresPassword;
 
-    // Track successful login (unauthenticated → authenticated transition)
     if (isAuthenticated && !wasAuthenticated) {
       trackEvent('login', {
         event_category: 'authentication',
@@ -832,67 +1064,15 @@ export default function LobbyIndex() {
       });
     }
 
-    // Stop audio on logout (authenticated → unauthenticated transition)
     if (data.requiresPassword && wasAuthenticated) {
-      // Track logout (server-side logout detection)
       trackEvent('logout', {
         event_category: 'authentication',
         method: 'session_expired',
       });
-
-      audioRef.current?.pause();
-      audioHook.cleanup();
-      setIsPlaying(false);
-      loadedTrackRef.current = null;
     }
 
-    // Update ref after tracking and cleanup
     wasAuthenticatedRef.current = isAuthenticated;
   }, [data.requiresPassword]);
-
-  // Preload the first track on the password page (before authentication)
-  useEffect(() => {
-    if (data.requiresPassword && data.preloadTrackId && data.preloadToken && !loadedTrackRef.current) {
-      loadedTrackRef.current = data.preloadTrackId;
-      audioHook.loadTrack(data.preloadTrackId, data.preloadToken, data.preloadTrackMeta ?? { hlsReady: true });
-    }
-  }, [data.requiresPassword, data.preloadTrackId, data.preloadToken]);
-
-  // After login: continue downloading remaining segments or load from scratch
-  // Use the autoplay track if set, otherwise fall back to first track
-  const autoplayTrack = data.autoplayTrackId
-    ? tracks.find((t) => t.id === data.autoplayTrackId)
-    : null;
-  const initialTrack = autoplayTrack || tracks[0];
-  const initialTrackId = initialTrack?.id;
-  useEffect(() => {
-    if (!initialTrackId || data.requiresPassword) return;
-
-    if (loadedTrackRef.current === initialTrackId) {
-      // Track was preloaded — resume with session auth, re-apply metadata
-      // that may have been lost during login navigation
-      audioHook.continueDownload({
-        waveformPeaks: (initialTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
-        duration: initialTrack?.duration ?? null,
-      });
-    } else {
-      // No preload — load from scratch
-      loadedTrackRef.current = initialTrackId;
-      const hlsOpts = initialTrack ? {
-        hlsReady: (initialTrack as { hlsReady?: boolean }).hlsReady ?? false,
-        duration: initialTrack.duration,
-        waveformPeaks: (initialTrack as { waveformPeaks?: number[] | null }).waveformPeaks ?? null,
-      } : undefined;
-      audioHook.loadTrack(initialTrackId, undefined, hlsOpts);
-    }
-  }, [initialTrackId, data.requiresPassword]);
-
-  // Auto-play when the first track becomes ready and user is authenticated (if autoplay is enabled)
-  useEffect(() => {
-    if (audioHook.isReady && !data.requiresPassword && !isPlaying && autoplayEnabled) {
-      audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  }, [audioHook.isReady, data.requiresPassword, autoplayEnabled]);
 
   // Not found state
   if (data.notFound) {
@@ -908,14 +1088,21 @@ export default function LobbyIndex() {
     );
   }
 
-  const { lobby, account, requiresPassword, isPreview, isLocalhost, content, imageUrls, loginPageSettings, loginLogoImageUrl, cardStyles, socialLinksSettings, technicalInfo } = data;
+  const { requiresPassword, isPreview, loginPageSettings, loginLogoImageUrl, loginLogoImageWidth, loginLogoImageHeight, cardStyles, socialLinksSettings } = data;
 
-  // Compute content based on authentication state
+  // Login-page title / description are read by LoginPanel directly from
+  // `settings`, so we don't recompute them here. The lobby's banner / band
+  // name / description / technical info were previously read by PlayerView
+  // in its "full lobby chrome" mode; under the section-based render those
+  // things are expressed as their own page-builder blocks (Image /
+  // Paragraph / etc.), so we don't thread them through the PlayerBlockView
+  // call any more — see `renderPlayer` below.
+  //
+  // `socialLinksSettings` IS still needed: a designer who drops a
+  // `socialLinks` block into their layout reads them from the lobby's
+  // resolved settings via BlockView's `socialLinks` prop. PlayerBlockView
+  // never receives them now.
   const lp = loginPageSettings;
-  const loginTitle = lp.title || null;
-  const loginDescription = lp.description || null;
-  const bandName = isLocalhost ? content?.bandName : (lobby?.title || account?.name);
-  const bandDescription = isLocalhost ? content?.bandDescription : lobby?.description;
 
   // Handle skip link click - scroll to and focus the target
   const handleSkipLink = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -945,213 +1132,234 @@ export default function LobbyIndex() {
       {isPreview && <div aria-hidden className="shrink-0" style={{ minHeight: 44 }} />}
 
       {requiresPassword ? (
-        // Login page content
+        // Login page content — LoginPanel renders the bg wrapper + the panel
+        // card; the audio-autoplay toggle slots in below via `belowPanel`.
+        //
+        // `style={data.themeVars}` MUST be set here (same as the
+        // authenticated branch below) so the LoginPanel's submit button —
+        // styled entirely from the global `--btn-*` theme vars — actually
+        // paints. Without this, the buttons read undefined vars and render
+        // with no background. Mirrors how the editor's <LoginPagePreview>
+        // wraps the panel in a themed surface.
         <main
           id="main-content"
-          className="min-h-dvh flex items-center justify-center overflow-hidden"
-          style={{ backgroundColor: lp.bgColor }}
           aria-label="Login"
+          className="flex flex-col"
+          style={{
+            ...(data.themeVars as React.CSSProperties),
+            // LoginPanel paints its own full-bleed `bgColor` wrapper
+            // inside, so we don't need to set `background` on the main —
+            // but we DO need `--btn-*` and friends to cascade so the
+            // submit button + below-panel toggle pick up the global
+            // theme. font-size is set so any text inside the panel
+            // (descriptions, errors) reads the global base.
+            //
+            // `paddingBottom` reserves the slot for the floating
+            // SecretLobbyFooter (`position: fixed` on this branch only).
+            // Combined with `min-height: 100dvh` + Tailwind preflight's
+            // global `box-sizing: border-box`, the main's TOTAL height is
+            // exactly the viewport — no scroll when the panel content
+            // also fits — and the LoginPanel inside (passed `flex-1`)
+            // grows to fill ONLY the remaining `(100dvh - footer)` area
+            // so the panel + footer never overlap.
+            fontSize: "var(--text-base-size, 16px)",
+            minHeight: "100dvh",
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 56px)",
+          }}
         >
-          <div className="w-full max-w-md p-8">
-            <div
-              className="rounded-2xl p-8 shadow-2xl border"
-              style={{
-                backgroundColor: lp.panelBgColor,
-                borderColor: lp.panelBorderColor,
-              }}
-            >
-              <div className="text-center mb-8">
-                {lp.logoType === "image" && loginLogoImageUrl && (
-                  <div className="flex justify-center mb-4 w-full">
-                    <ResponsiveImage
-                      src={loginLogoImageUrl}
-                      alt={loginTitle || "Logo"}
-                      widths={[200, 400, 600, 800]}
-                      sizes={`(min-width: 448px) ${Math.round(384 * (lp.logoMaxWidth || 50) / 100)}px, calc((100vw - 64px) * ${(lp.logoMaxWidth || 50) / 100})`}
-                      className="object-contain"
-                      style={{ maxWidth: `${lp.logoMaxWidth || 50}%` }}
-                    />
-                  </div>
-                )}
-                {loginTitle && (
-                  <h1 className="text-2xl font-bold" style={{ color: lp.textColor }}>
-                    {loginTitle}
-                  </h1>
-                )}
-                {loginDescription && (
-                  <p className="mt-2" style={{ color: lp.textColor, opacity: 0.7 }}>
-                    {loginDescription}
-                  </p>
-                )}
-              </div>
-
-              {actionData?.error && (
-                <div
-                  className="mb-6 text-red-400 text-sm text-center bg-red-500/10 py-3 px-4 rounded-lg"
-                  role="alert"
-                  aria-live="polite"
-                >
-                  {actionData.error}
-                </div>
-              )}
-
-              <Form method="post" className="space-y-4">
-                <input type="hidden" name="_csrf" value={data.csrfToken} />
-                <div>
-                  <label
-                    htmlFor="password"
-                    className="block text-sm font-medium mb-1"
-                    style={{ color: lp.textColor, opacity: 0.85 }}
-                  >
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    placeholder="Enter the password"
-                    required
-                    autoFocus
-                    className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style={{
-                      backgroundColor: "#ffffff",
-                      borderColor: lp.panelBorderColor,
-                      color: "#111827",
-                    }}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                >
-                  {lp.buttonLabel || "Enter Lobby"}
-                </button>
-              </Form>
-            </div>
-
-            {/* Audio autoplay toggle - separate box below login panel */}
-            {/* Uses same panel colors as login box for consistent contrast */}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoplayEnabled}
-              aria-label={autoplayEnabled ? "Autoplay is on. Press to disable autoplay" : "Autoplay is off. Press to enable autoplay"}
-              onClick={() => setAutoplayEnabled(!autoplayEnabled)}
-              className="mt-4 w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-offset-2"
-              style={{
-                backgroundColor: lp.panelBgColor,
-                border: `1px solid ${lp.panelBorderColor}`,
-                // Use panel border color for focus ring offset to match the background
-                // @ts-expect-error CSS custom property
-                "--tw-ring-offset-color": lp.bgColor,
-                "--tw-ring-color": "#3b82f6",
-              }}
-            >
-              <span
-                className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-transform duration-200"
-                style={{
-                  backgroundColor: autoplayEnabled ? "rgba(59, 130, 246, 0.25)" : "rgba(128, 128, 128, 0.25)",
-                }}
-                aria-hidden="true"
-              >
-                {autoplayEnabled ? (
-                  <svg
-                    className="w-5 h-5"
-                    style={{ color: "#3b82f6" }}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                    />
-                  </svg>
-                ) : (
-                  <svg
-                    className="w-5 h-5"
-                    style={{ color: lp.textColor, opacity: 0.5 }}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"
-                    />
-                  </svg>
-                )}
-              </span>
-              <span className="flex-1 text-left">
-                <span
-                  className="block text-sm font-medium"
-                  style={{ color: lp.textColor }}
-                  aria-live="polite"
-                >
-                  {autoplayEnabled ? "Music will play automatically" : "Autoplay disabled"}
-                </span>
-                <span
-                  className="block text-xs"
-                  style={{ color: lp.textColor, opacity: 0.7 }}
-                >
-                  {autoplayEnabled
-                    ? "Click to enter silently"
-                    : "Click to enable autoplay"}
-                </span>
-              </span>
-            </button>
-          </div>
+          <LoginPanel
+            settings={lp}
+            logoImageUrl={loginLogoImageUrl}
+            logoImageWidth={loginLogoImageWidth}
+            logoImageHeight={loginLogoImageHeight}
+            // Show actionData errors when present, fall back to the
+            // reason banner (from a failed magic-link click landing
+            // back on /?reason=...). Form errors are interactive and
+            // therefore take precedence.
+            errorMessage={
+              actionData && "error" in actionData
+                ? actionData.error
+                : data.loginReasonMessage
+            }
+            // `submitted` is set when the magic-link action returned
+            // success — LoginPanel swaps the form for the "check your
+            // email" message. Only meaningful with accessMode.
+            submitted={
+              !!(actionData && "magicLink" in actionData && "success" in actionData)
+            }
+            magicLinkExpiresInDays={data.magicLinkExpiresInDays}
+            accessMode={data.accessMode ?? undefined}
+            csrfToken={data.csrfToken}
+            wrapperClassName="flex-1 flex items-center justify-center overflow-hidden"
+            belowPanel={
+              <LoginAutoplayToggle
+                enabled={autoplayEnabled}
+                onToggle={() => setAutoplayEnabled(!autoplayEnabled)}
+                settings={lp}
+              />
+            }
+          />
+          <SecretLobbyFooter floating />
         </main>
       ) : (
-        // Authenticated player content
-        <main id="main-content" style={data.themeVars as React.CSSProperties}>
-          <PlayerView
-            tracks={tracks}
-            imageUrls={imageUrls}
-            bandName={bandName}
-            bandDescription={bandDescription}
-            audio={{
-              audioRef,
-              loadTrack: audioHook.loadTrack,
-              isLoading: audioHook.isLoading,
-              isSeeking: audioHook.isSeeking,
-              loadingProgress: audioHook.loadingProgress,
-              isReady: audioHook.isReady,
-              seekTo: audioHook.seekTo,
-              cancelAutoPlay: audioHook.cancelAutoPlay,
-              estimatedDuration: audioHook.estimatedDuration,
-              isAllSegmentsCached: audioHook.isAllSegmentsCached,
-              blobTimeOffset: audioHook.blobTimeOffset,
-              blobHasLastSegment: audioHook.blobHasLastSegment,
-              isBlobMode: audioHook.isBlobMode,
-              waveformPeaks: audioHook.waveformPeaks,
-              isSafari: audioHook.isSafari,
-              isExtendingBlobRef: audioHook.isExtendingBlobRef,
-              lastSaneTimeRef: audioHook.lastSaneTimeRef,
-            }}
-            isPlaying={isPlaying}
-            onPlayingChange={setIsPlaying}
-            onTrackChange={setActiveTrackId}
-            cardStyles={cardStyles}
-            socialLinksSettings={socialLinksSettings}
-            technicalInfo={technicalInfo}
-            initialTrackId={data.autoplayTrackId}
-            csrfToken={data.csrfToken}
-          />
+        // Authenticated lobby content — renders the page-builder layout
+        // through the same `SectionView` + `BlockView` pipeline the editor
+        // preview uses, so the published lobby paints exactly what
+        // designers see in the canvas. Page chrome (themed surface +
+        // centered max-width container + padding) mirrors the editor's
+        // desktop preview branch in Canvas.tsx so the two surfaces are
+        // byte-for-byte the same layout.
+        //
+        // The themed surface style applies the theme's background CSS vars
+        // (color / image / size / position / repeat / attachment) plus the
+        // global font-size and the raw theme CSS vars. Same shape the
+        // editor builds in Canvas.tsx — kept in sync intentionally because
+        // any divergence shows up as "the lobby looks different from the
+        // editor preview".
+        //
+        // `data.bodyBg` is still applied to `document.body` via the
+        // useEffect below — covers the area around the main when content
+        // is shorter than the viewport, and the small SSR window before
+        // hydration. The main carrying its own background means the
+        // page paints correctly the moment the HTML lands, before any JS
+        // runs.
+        //
+        // For lobbies WITHOUT a saved layout, the in-memory
+        // DEFAULT_LOBBY_PAGE_LAYOUT (single section, single full-variant
+        // player block) flows through the same pipeline — one render
+        // path, no special-case branch.
+        <main
+          id="main-content"
+          style={{
+            ...(data.themeVars as React.CSSProperties),
+            background: "var(--color-bg)",
+            backgroundSize: "var(--bg-size, auto)",
+            backgroundPosition: "var(--bg-position, center)",
+            backgroundRepeat: "var(--bg-repeat, no-repeat)",
+            backgroundAttachment: "var(--bg-attachment, scroll)",
+            fontSize: "var(--text-base-size, 16px)",
+            minHeight: "100vh",
+          }}
+        >
+          <div
+            className="mx-auto w-full px-4 transition-[max-width] duration-300"
+            style={{ maxWidth: 1152 }}
+          >
+            <div className="py-4 space-y-4 min-h-[600px]">
+              {/* Logout button — part of the lobby PAGE, top-right.
+                  Renders only when the lobby is password-gated; styling
+                  flows from the theme's button CSS vars so the button
+                  matches whatever the designer configured globally. */}
+              {data.lobby?.hasPassword && (
+                <div className="flex justify-end">
+                  <LogoutButton csrfToken={data.csrfToken} />
+                </div>
+              )}
+              {(() => {
+            // `renderPlayer(content)` is the host's bridge to PlayerBlockView.
+            // Captures every audio + track prop from this component's scope so
+            // the hidden `<audio>` element and the autoplay state are shared
+            // across every PlayerBlockView instance on the page — which means
+            // designers can drop multiple player blocks into a section and
+            // they'll all coordinate through the same playback state.
+            //
+            // We deliberately pass `imageUrls`, `bandName`, `bandDescription`,
+            // `socialLinksSettings`, and `technicalInfo` as empty/null — same
+            // values the editor canvas's PlayerBlock uses (see
+            // apps/console/.../PlayerBlock.tsx `EMPTY_IMAGE_URLS`). PlayerView
+            // would otherwise paint the lobby's banner, band info, social
+            // links, and technical-info cards INSIDE the player block, and
+            // those things are now expressed as their own page-builder
+            // blocks (Image / Paragraph / SocialLinks). Letting PlayerView
+            // paint them too would duplicate every one of them on the page.
+            // The player block is JUST the audio controls now.
+            const renderPlayer = (content: PlayerBlockContent, blockId: string) => {
+              // Per-block playlist slice — every player block in the saved
+              // layout points at a specific `content.playlistId`, so we hand
+              // it ONLY the tracks owned by that playlist. Falls back to the
+              // full page-level list when the block has no playlistId set
+              // (legacy / unmigrated player block).
+              const blockTracks =
+                content.playlistId
+                  ? tracks.filter((t) => t.playlistId === content.playlistId)
+                  : tracks;
+              // Each <StandalonePlayerBlock /> creates its OWN `<audio>` +
+              // `useHlsAudio` + isPlaying state, so two player blocks on
+              // the same page play independently and their visualizers
+              // animate only when THEIR audio plays. `blockId` +
+              // `activeBlockId` enforce single-player-at-a-time across
+              // the page: starting block A pauses block B.
+              return (
+                <StandalonePlayerBlock
+                  content={content}
+                  tracks={blockTracks}
+                  imageUrls={EMPTY_IMAGE_URLS}
+                  bandName={null}
+                  bandDescription={null}
+                  cardStyles={cardStyles}
+                  socialLinksSettings={null}
+                  technicalInfo={null}
+                  initialTrackId={content.autoplayTrackId ?? data.autoplayTrackId}
+                  csrfToken={data.csrfToken}
+                  pageAutoplayEnabled={autoplayEnabled}
+                  blockId={blockId}
+                  activeBlockId={activeBlockId}
+                  onActivate={setActiveBlockId}
+                />
+              );
+            };
+
+            // Un-migrated lobbies (no saved pageLayout, or a saved layout
+            // with zero sections) get the module-level default in-memory:
+            // a single section with a single full-variant player block.
+            // Every lobby — saved or not — flows through the same
+            // SectionView + BlockView pipeline below, so the lobby has
+            // exactly one render path for content.
+            const savedSections = data.pageLayout?.sections;
+            const sections: Section[] =
+              savedSections && savedSections.length > 0
+                ? (savedSections as unknown as Section[])
+                : DEFAULT_LOBBY_PAGE_LAYOUT.sections;
+            // The editor's preview canvas wraps the section list in an
+            // extra `<div class="space-y-4">` (originally from its DnDContext
+            // host). We emit the same wrapper here so the published lobby's
+            // DOM matches the preview byte-for-byte — the outer `py-4
+            // space-y-4` gives LogoutButton ↔ sections breathing room, the
+            // inner gives section ↔ section breathing room.
+            return (
+              <div className="space-y-4">
+                {sections.map((section) => (
+                  <SectionView
+                    key={section.id}
+                section={section}
+                renderBlock={(block) => (
+                  <BlockView
+                    block={block}
+                    theme={
+                      data.themeSettings
+                    }
+                    socialLinks={
+                      (socialLinksSettings ?? {
+                        links: [],
+                      }) as SocialLinksSettings
+                    }
+                    renderFallback={(b) =>
+                      b.type === "player"
+                        ? renderPlayer(b.content as PlayerBlockContent, b.id)
+                        : null
+                    }
+                  />
+                )}
+              />
+                ))}
+              </div>
+            );
+          })()}
+            </div>
+          </div>
+          <SecretLobbyFooter />
         </main>
       )}
-      {/* Audio element - always rendered in the same position to persist across login */}
-      <audio ref={audioRef} style={{ display: "none" }} aria-hidden="true" />
     </>
   );
 }

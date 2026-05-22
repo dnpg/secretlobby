@@ -1,6 +1,8 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.google.callback";
-import { getGoogleClient, authenticateWithGoogle, getSession, createSessionResponse } from "@secretlobby/auth";
+import { getGoogleClient, authenticateWithGoogle, getSession, createSessionResponse, updateSession } from "@secretlobby/auth";
+import { checkLobbyAccess, normalizeEmail } from "@secretlobby/auth/lobby-access";
+import { signLobbyOAuthHandoff } from "@secretlobby/auth/lobby-oauth";
 import { prisma, InvitationStatus } from "@secretlobby/db";
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -85,6 +87,116 @@ export async function loader({ request }: Route.LoaderArgs) {
       name: googleUserInfo.name,
       picture: googleUserInfo.picture,
     };
+
+    // Branch: if this OAuth round-trip started from a lobby (the lobby
+    // app's "Sign in with Google" button parks the lobbyId in session
+    // via auth.google.tsx), handle the lobby-visitor case and bail
+    // before touching the console User/Account logic. The visitor
+    // never becomes a console user — they just get a lobby session
+    // cookie on their own host.
+    if (session.lobbyOAuthLobbyId) {
+      const lobbyId = session.lobbyOAuthLobbyId;
+      const returnHost = session.lobbyOAuthReturnHost;
+      const returnPath = session.lobbyOAuthReturnPath;
+
+      // Always clear the stashed lobby state before we do anything that
+      // could exit early. Avoids a half-consumed handoff if mail/db is
+      // slow and the user retries.
+      await updateSession(request, {
+        lobbyOAuthLobbyId: undefined,
+        lobbyOAuthReturnPath: undefined,
+        lobbyOAuthReturnHost: undefined,
+        googleState: undefined,
+        googleCodeVerifier: undefined,
+      });
+
+      if (!returnHost) {
+        logger.error({ lobbyId }, "Lobby OAuth callback missing returnHost");
+        throw redirect("/login?error=oauth_failed");
+      }
+
+      // Look up the lobby + the account, with everything we need to
+      // both authorize and redirect.
+      const lobby = await prisma.lobby.findUnique({
+        where: { id: lobbyId },
+        select: {
+          id: true,
+          slug: true,
+          isDefault: true,
+          isPublished: true,
+          identityGoogle: true,
+          accessPolicy: true,
+          allowedDomains: true,
+        },
+      });
+      if (!lobby || !lobby.isPublished || !lobby.identityGoogle) {
+        // The lobby toggled Google off (or got unpublished) between
+        // the start of the flow and now. Bounce back to the lobby root
+        // — _index surfaces the reason banner above the sign-in form.
+        const proto = process.env.NODE_ENV === "production" ? "https" : "http";
+        throw redirect(`${proto}://${returnHost}/?reason=not_authorized`);
+      }
+
+      const email = normalizeEmail(googleUser.email);
+      const proto = process.env.NODE_ENV === "production" ? "https" : "http";
+      const lobbyOrigin = `${proto}://${returnHost}`;
+      const lobbyPath = returnPath ?? (lobby.isDefault ? "/" : `/${lobby.slug}`);
+
+      const allowed = await checkLobbyAccess(
+        { id: lobby.id, accessPolicy: lobby.accessPolicy, allowedDomains: lobby.allowedDomains },
+        email,
+      );
+      if (!allowed.allowed) {
+        logger.info(
+          { lobbyId, reason: allowed.reason },
+          "Lobby Google sign-in denied (policy)",
+        );
+        // Bounce to the lobby's actual path (default lobby → /, else
+        // /<slug>) with the reason banner. lobbyPath was computed
+        // above as `returnPath ?? (isDefault ? "/" : "/<slug>")`.
+        throw redirect(`${lobbyOrigin}${lobbyPath}${lobbyPath.includes("?") ? "&" : "?"}reason=not_authorized`);
+      }
+
+      // Upsert the LobbyUser. First Google sign-in stamps googleSub
+      // and flips status to ACTIVE; subsequent sign-ins refresh the
+      // sub (cheap protection against a stale value) and lastSeenAt.
+      const now = new Date();
+      const lobbyUser = await prisma.lobbyUser.upsert({
+        where: { lobbyId_email: { lobbyId: lobby.id, email } },
+        create: {
+          lobbyId: lobby.id,
+          email,
+          status: "ACTIVE",
+          googleSub: googleUser.sub,
+          firstLoginAt: now,
+          lastSeenAt: now,
+        },
+        update: {
+          status: "ACTIVE",
+          googleSub: googleUser.sub,
+          lastSeenAt: now,
+          // firstLoginAt is intentionally omitted on update — Prisma
+          // leaves omitted fields alone, so the original first-login
+          // timestamp survives.
+        },
+        select: { id: true },
+      });
+
+      // Reset the OAuth rate-limit window — successful auth is a
+      // valid retry signal.
+      await resetRateLimit(request, RATE_LIMIT_CONFIGS.OAUTH);
+
+      const handoff = signLobbyOAuthHandoff({
+        lobbyId: lobby.id,
+        lobbyUserId: lobbyUser.id,
+      });
+      const finishUrl = new URL(`${lobbyOrigin}/auth/google/finish`);
+      finishUrl.searchParams.set("t", handoff);
+      if (lobbyPath !== "/" && lobbyPath !== `/${lobby.slug}`) {
+        finishUrl.searchParams.set("returnPath", lobbyPath);
+      }
+      throw redirect(finishUrl.toString());
+    }
 
     // Check system settings for prelaunch mode
     const settings = await getSystemSettings();

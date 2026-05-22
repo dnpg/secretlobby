@@ -11,6 +11,11 @@ export default [
   // Protected routes with layout
   layout("routes/_layout.tsx", [
     index("routes/_layout._index.tsx"),
+    route("analytics", "routes/_layout.analytics.tsx"),
+    route(
+      "analytics/lobby/:lobbyId",
+      "routes/_layout.analytics.lobby.$lobbyId.tsx",
+    ),
     route("accounts", "routes/_layout.accounts.tsx"),
     // Account detail routes with nested layout
     route("accounts/:accountId", "routes/_layout.accounts.$accountId.tsx", [

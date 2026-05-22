@@ -33,21 +33,17 @@ export default [
     // Per-lobby routes - use route with children for nested layout
     route("lobby/:lobbyId", "routes/_layout.lobby.tsx", [
       index("routes/_layout.lobby._index.tsx"),
-      route("playlist", "routes/_layout.lobby.playlist.tsx"),
-      route("theme", "routes/_layout.lobby.theme.tsx"),
-      route("login-page", "routes/_layout.lobby.login.tsx"),
+      route("analytics", "routes/_layout.lobby.analytics.tsx"),
+      route("playlists", "routes/_layout.lobby.playlists.tsx"),
+      route("playlists/:playlistId", "routes/_layout.lobby.playlists.$playlistId.tsx"),
       route("social", "routes/_layout.lobby.social.tsx"),
-      route("technical-info", "routes/_layout.lobby.technical-info.tsx"),
-      route("password", "routes/_layout.lobby.password.tsx"),
+      route("access", "routes/_layout.lobby.access.tsx"),
     ]),
 
     // Global routes (account-level, not per-lobby)
     route("media", "routes/_layout.media.tsx"),
     route("playlist", "routes/_layout.playlist.tsx"),
-    route("theme", "routes/_layout.theme.tsx"),
-    route("login-page", "routes/_layout.login.tsx"),
     route("social", "routes/_layout.social.tsx"),
-    route("technical-info", "routes/_layout.technical-info.tsx"),
     route("settings", "routes/_layout.settings.tsx"),
     route("profile", "routes/_layout.profile.tsx"),
     route("billing", "routes/_layout.billing.tsx"),

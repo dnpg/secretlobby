@@ -12,6 +12,14 @@ export default [
   // The resolveTenant function extracts the lobby slug from the URL path
   route(":lobbySlug", "routes/$lobbySlug.tsx"),
 
+  // Magic-link sign-in (lobby visitor identity flow). Both consumers
+  // are loader-only and redirect back to the lobby root with
+  // `?reason=<code>` on failure — the user never sees an /auth/* URL
+  // beyond the brief redirect. The sign-in FORM lives on the lobby
+  // root itself; see apps/lobby/app/routes/_index.tsx.
+  route("auth/magic/:token", "routes/auth.magic.$token.tsx"),
+  route("auth/google/finish", "routes/auth.google.finish.tsx"),
+
   // Logout
   route("logout", "routes/logout.tsx"),
 
@@ -25,4 +33,8 @@ export default [
 
   // Admin API for clearing in-memory rate limits
   route("api/clear-rate-limit/:ipAddress", "routes/api.clear-rate-limit.$ipAddress.ts"),
+
+  // First-party analytics ingest (POST). Same-origin beacon target for the
+  // lobby template's trackEvent helper.
+  route("api/event", "routes/api.event.ts"),
 ] satisfies RouteConfig;

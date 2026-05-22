@@ -10,6 +10,9 @@ export async function getLobbyById(lobbyId: string) {
   });
 }
 
+// Lobby + every media slot. Used by the page-builder loader so the editor
+// can render existing image/banner/background/profile assignments and
+// surface them in the image-block picker.
 export async function getLobbyByIdWithMedia(lobbyId: string) {
   return prisma.lobby.findUnique({
     where: { id: lobbyId },
@@ -32,6 +35,9 @@ export async function getLobbyByIdWithMedia(lobbyId: string) {
           filename: true,
           type: true,
           embedUrl: true,
+          width: true,
+          height: true,
+          alt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -43,6 +49,9 @@ export async function getLobbyByIdWithMedia(lobbyId: string) {
           filename: true,
           type: true,
           embedUrl: true,
+          width: true,
+          height: true,
+          alt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -54,6 +63,9 @@ export async function getLobbyByIdWithMedia(lobbyId: string) {
           filename: true,
           type: true,
           embedUrl: true,
+          width: true,
+          height: true,
+          alt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -65,6 +77,9 @@ export async function getLobbyByIdWithMedia(lobbyId: string) {
           filename: true,
           type: true,
           embedUrl: true,
+          width: true,
+          height: true,
+          alt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -76,6 +91,9 @@ export async function getLobbyByIdWithMedia(lobbyId: string) {
           filename: true,
           type: true,
           embedUrl: true,
+          width: true,
+          height: true,
+          alt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -87,6 +105,9 @@ export async function getLobbyByIdWithMedia(lobbyId: string) {
           filename: true,
           type: true,
           embedUrl: true,
+          width: true,
+          height: true,
+          alt: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -118,6 +139,7 @@ export async function getLobbyByIdWithTracks(lobbyId: string) {
           artist: true,
           position: true,
           lobbyId: true,
+          playlistId: true,
           mediaId: true,
           createdAt: true,
           updatedAt: true,
@@ -131,6 +153,38 @@ export async function getLobbyByIdWithTracks(lobbyId: string) {
               duration: true,
               createdAt: true,
               updatedAt: true,
+            },
+          },
+        },
+      },
+      playlists: {
+        orderBy: [{ isDefault: "desc" }, { position: "asc" }, { createdAt: "asc" }],
+        include: {
+          tracks: {
+            orderBy: { position: "asc" },
+            select: {
+              id: true,
+              title: true,
+              artist: true,
+              position: true,
+              lobbyId: true,
+              playlistId: true,
+              mediaId: true,
+              createdAt: true,
+              updatedAt: true,
+              media: {
+                select: {
+                  id: true,
+                  key: true,
+                  filename: true,
+                  type: true,
+                  hlsReady: true,
+                  duration: true,
+                  waveformPeaks: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+              },
             },
           },
         },

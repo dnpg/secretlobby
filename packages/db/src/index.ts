@@ -9,6 +9,7 @@ export type {
   Staff,
   Session,
   Lobby,
+  LobbyUser,
   Track,
   Domain,
   AuditLog,
@@ -25,6 +26,7 @@ export type {
   EmailTemplate,
   Feedback,
   FeedbackAttachment,
+  AnalyticsEvent,
 } from "./generated/client/client.js";
 
 // Re-export enums
@@ -41,7 +43,23 @@ export {
   InvitationStatus,
   FeedbackType,
   FeedbackStatus,
+  LobbyAccessPolicy,
+  LobbyUserStatus,
 } from "./generated/client/enums.js";
 
 // Re-export Prisma types for advanced queries
 export { Prisma } from "./generated/client/client.js";
+
+// Analytics aggregations — used by super-admin overview, super-admin per-lobby
+// drill-down, and the console per-lobby analytics tab.
+export {
+  getAnalyticsForPeriod,
+  lastNDaysWindow,
+  type AnalyticsPeriod,
+  type AnalyticsSummary,
+  type AnalyticsForPeriod,
+  type DailyPoint,
+  type TopLobbyRow,
+  type TopCountryRow,
+  type TopTrackRow,
+} from "./analytics.js";
