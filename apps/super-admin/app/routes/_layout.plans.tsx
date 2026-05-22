@@ -131,6 +131,72 @@ export async function action({ request }: Route.ActionArgs) {
     return { success: true, message: "Plans reordered" };
   }
 
+  if (intent === "sync-stripe") {
+    // Look up the SubscriptionPlan's Stripe prices and verify they
+    // (a) exist in Stripe and (b) match the local currency.
+    //
+    // Canonicality: Stripe is canonical for the PRICE *amount* and
+    // *recurrence*. We mirror those into our DB on read. The local
+    // SubscriptionPlan is canonical for everything else (slug, limits,
+    // features, display).
+    //
+    // This is a read-only verify pass — no mutations to Stripe. To
+    // create a new price, do it in the Stripe Dashboard and paste the
+    // resulting price_... id into the plan's stripePriceMonthly /
+    // Yearly field here.
+    const id = formData.get("id") as string;
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id } });
+    if (!plan) return { success: false, message: "Plan not found" };
+
+    try {
+      const { getStripeClient } = await import("@secretlobby/payments/billing");
+      const stripe = getStripeClient();
+      const results: string[] = [];
+
+      for (const [label, priceId] of [
+        ["monthly", plan.stripePriceMonthly],
+        ["yearly", plan.stripePriceYearly],
+      ] as const) {
+        if (!priceId) continue;
+        try {
+          const stripePrice = await stripe.prices.retrieve(priceId);
+          const localAmount =
+            label === "monthly" ? plan.priceMonthly : plan.priceYearly;
+          if (stripePrice.unit_amount !== localAmount) {
+            results.push(
+              `${label}: Stripe says ${stripePrice.unit_amount}, local says ${localAmount}`
+            );
+          } else if (stripePrice.currency !== plan.currency) {
+            results.push(
+              `${label}: currency mismatch — Stripe=${stripePrice.currency} local=${plan.currency}`
+            );
+          } else {
+            results.push(`${label}: ok (${stripePrice.id})`);
+          }
+        } catch (err) {
+          results.push(
+            `${label}: Stripe lookup failed — ${
+              err instanceof Error ? err.message : "unknown"
+            }`
+          );
+        }
+      }
+
+      return {
+        success: true,
+        message: results.length
+          ? `Sync check: ${results.join(" | ")}`
+          : "No Stripe prices configured for this plan",
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message:
+          err instanceof Error ? err.message : "Stripe client unavailable",
+      };
+    }
+  }
+
   return { success: false, message: "Unknown action" };
 }
 
@@ -235,7 +301,7 @@ export default function PlansPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setEditingPlan(plan as Plan)}
-                className="flex-1 px-3 py-2 text-sm bg-theme-tertiary hover:bg-theme-secondary rounded-lg transition"
+                className="flex-1 px-3 py-2 text-sm bg-theme-tertiary hover:bg-theme-secondary rounded-lg transition cursor-pointer"
               >
                 Edit
               </button>
@@ -249,12 +315,25 @@ export default function PlansPage() {
                       e.preventDefault();
                     }
                   }}
-                  className="w-full px-3 py-2 text-sm bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded-lg transition"
+                  className="w-full px-3 py-2 text-sm bg-red-900/50 hover:bg-red-800/50 text-red-400 rounded-lg transition cursor-pointer"
                 >
                   Delete
                 </button>
               </fetcher.Form>
             </div>
+            {(plan.stripePriceMonthly || plan.stripePriceYearly) && (
+              <fetcher.Form method="post" className="mt-2">
+                <input type="hidden" name="intent" value="sync-stripe" />
+                <input type="hidden" name="id" value={plan.id} />
+                <button
+                  type="submit"
+                  className="w-full px-3 py-2 text-xs bg-blue-900/40 hover:bg-blue-800/40 text-blue-300 rounded-lg transition cursor-pointer"
+                  title="Verify Stripe price ids match local plan"
+                >
+                  Verify Stripe prices
+                </button>
+              </fetcher.Form>
+            )}
           </div>
         ))}
       </div>

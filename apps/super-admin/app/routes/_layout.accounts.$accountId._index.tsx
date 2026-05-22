@@ -29,6 +29,27 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw new Response("Account not found", { status: 404 });
   }
 
+  // Read-only view of subscription state for this account. Includes the
+  // canonical Subscription row (the one ACTIVE/TRIALING/PAST_DUE, if
+  // any) plus the last 10 payments. Super-admin can use this to
+  // diagnose dunning issues without poking the production Stripe
+  // dashboard.
+  const [subscription, recentPayments] = await Promise.all([
+    prisma.subscription.findFirst({
+      where: {
+        accountId,
+        status: { in: ["ACTIVE", "TRIALING", "PAST_DUE"] },
+      },
+      orderBy: { updatedAt: "desc" },
+      include: { plan: true },
+    }),
+    prisma.paymentHistory.findMany({
+      where: { accountId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+  ]);
+
   // Get base domain from environment
   const baseDomain = process.env.CORE_DOMAIN || "secretlobby.co";
 
@@ -38,11 +59,52 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const isLocalDev = hostname.includes("localhost") || hostname.includes(".local");
   const protocol = isLocalDev ? "http" : "https";
 
-  return { account, baseDomain, protocol };
+  return {
+    account,
+    baseDomain,
+    protocol,
+    subscription: subscription
+      ? {
+          id: subscription.id,
+          status: subscription.status,
+          billingPeriod: subscription.billingPeriod,
+          currentPeriodStart: subscription.currentPeriodStart.toISOString(),
+          currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+          gatewayId: subscription.gatewayId,
+          gatewaySubscriptionId: subscription.gatewaySubscriptionId,
+          gatewayCustomerId: subscription.gatewayCustomerId,
+          gatewayPriceId: subscription.gatewayPriceId,
+          planName: subscription.plan?.name ?? subscription.tier,
+          planSlug: subscription.plan?.slug ?? subscription.tier,
+          lastEventAt: subscription.lastEventAt?.toISOString() ?? null,
+          createdAt: subscription.createdAt.toISOString(),
+          updatedAt: subscription.updatedAt.toISOString(),
+        }
+      : null,
+    recentPayments: recentPayments.map((p) => ({
+      id: p.id,
+      amount: p.amount,
+      currency: p.currency,
+      status: p.status,
+      gatewayPaymentId: p.gatewayPaymentId,
+      description: p.description,
+      createdAt: p.createdAt.toISOString(),
+      invoiceUrl: p.invoiceUrl,
+    })),
+  };
+}
+
+function formatCurrency(cents: number, currency = "usd"): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+  }).format(cents / 100);
 }
 
 export default function AccountDetails() {
-  const { account, baseDomain, protocol } = useLoaderData<typeof loader>();
+  const { account, baseDomain, protocol, subscription, recentPayments } =
+    useLoaderData<typeof loader>();
 
   const primaryDomain = account.domains.find(d => d.status === "VERIFIED")?.domain
     || `${account.slug}.${baseDomain}`;
@@ -117,6 +179,123 @@ export default function AccountDetails() {
             </div>
           )}
         </dl>
+      </div>
+
+      {/* Subscription (read-only diagnostic view) */}
+      <div className="card p-6">
+        <h3 className="text-lg font-semibold mb-4">Subscription</h3>
+        {subscription ? (
+          <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <dt className="text-sm text-theme-secondary">Plan</dt>
+              <dd>
+                {subscription.planName}{" "}
+                <span className="text-xs text-theme-muted font-mono">
+                  ({subscription.planSlug})
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Status</dt>
+              <dd>
+                <span
+                  className={`px-2 py-0.5 text-xs rounded-full ${
+                    subscription.status === "ACTIVE"
+                      ? "bg-green-500/20 text-green-400"
+                      : subscription.status === "PAST_DUE"
+                      ? "bg-red-500/20 text-red-400"
+                      : "bg-yellow-500/20 text-yellow-400"
+                  }`}
+                >
+                  {subscription.status}
+                </span>
+                {subscription.cancelAtPeriodEnd && (
+                  <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-yellow-500/20 text-yellow-400">
+                    Cancelling
+                  </span>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Billing Period</dt>
+              <dd>{subscription.billingPeriod || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Current Period Ends</dt>
+              <dd>{new Date(subscription.currentPeriodEnd).toLocaleString()}</dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Gateway Subscription</dt>
+              <dd className="font-mono text-xs break-all">
+                {subscription.gatewaySubscriptionId}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Gateway Customer</dt>
+              <dd className="font-mono text-xs break-all">
+                {subscription.gatewayCustomerId}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Gateway Price</dt>
+              <dd className="font-mono text-xs break-all">
+                {subscription.gatewayPriceId || "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-theme-secondary">Last Event Applied</dt>
+              <dd>
+                {subscription.lastEventAt
+                  ? new Date(subscription.lastEventAt).toLocaleString()
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-theme-secondary text-sm">
+            No active subscription (account is on the Free tier).
+          </p>
+        )}
+
+        {recentPayments.length > 0 && (
+          <>
+            <h4 className="text-sm font-semibold mt-6 mb-2">
+              Recent Payments
+            </h4>
+            <div className="space-y-2">
+              {recentPayments.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between p-2 bg-theme-tertiary rounded text-sm"
+                >
+                  <div>
+                    <div>{p.description || "Subscription Payment"}</div>
+                    <div className="text-xs text-theme-muted font-mono">
+                      {p.gatewayPaymentId} ·{" "}
+                      {new Date(p.createdAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-0.5 text-xs rounded-full ${
+                        p.status === "SUCCEEDED"
+                          ? "bg-green-500/20 text-green-400"
+                          : p.status === "FAILED"
+                          ? "bg-red-500/20 text-red-400"
+                          : "bg-yellow-500/20 text-yellow-400"
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                    <span className="font-semibold">
+                      {formatCurrency(p.amount, p.currency)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Domains */}

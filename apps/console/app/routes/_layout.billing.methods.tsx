@@ -5,13 +5,15 @@ import { PaymentMethodCard } from "@secretlobby/ui";
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
-  const { paymentManager, registerConfiguredGateways } = await import("@secretlobby/payments");
-  const { getAccountStripeCustomerId } = await import("~/models/queries/account.server");
-  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+  const { getStripeClient } = await import("@secretlobby/payments/billing");
+  const { getAccountStripeCustomerId } = await import(
+    "~/models/queries/account.server"
+  );
+  const { createLogger, formatError } = await import(
+    "@secretlobby/logger/server"
+  );
 
   const logger = createLogger({ service: "console:billing:methods" });
-
-  registerConfiguredGateways();
 
   const { session } = await getSession(request);
   requireUserAuth(session);
@@ -35,7 +37,6 @@ export async function loader({ request }: Route.LoaderArgs) {
     };
   }
 
-  // Fetch payment methods from Stripe
   let paymentMethods: {
     id: string;
     type: "card" | "paypal" | "bank_account" | "other";
@@ -47,19 +48,29 @@ export async function loader({ request }: Route.LoaderArgs) {
   }[] = [];
 
   try {
-    const gateway = paymentManager.getGateway("stripe");
-    if (gateway) {
-      const methods = await gateway.getPaymentMethods(account.stripeCustomerId);
-      paymentMethods = methods.map((m) => ({
-        id: m.id,
-        type: m.type as "card" | "paypal" | "bank_account" | "other",
-        last4: m.last4,
-        brand: m.brand,
-        expiryMonth: m.expiryMonth,
-        expiryYear: m.expiryYear,
-        isDefault: m.isDefault,
-      }));
-    }
+    const stripe = getStripeClient();
+    const [methods, customer] = await Promise.all([
+      stripe.paymentMethods.list({
+        customer: account.stripeCustomerId,
+        type: "card",
+        limit: 20,
+      }),
+      stripe.customers.retrieve(account.stripeCustomerId),
+    ]);
+    const defaultId =
+      typeof customer !== "string" && !customer.deleted
+        ? customer.invoice_settings?.default_payment_method
+        : null;
+
+    paymentMethods = methods.data.map((m) => ({
+      id: m.id,
+      type: "card" as const,
+      last4: m.card?.last4,
+      brand: m.card?.brand,
+      expiryMonth: m.card?.exp_month,
+      expiryYear: m.card?.exp_year,
+      isDefault: m.id === defaultId,
+    }));
   } catch (error) {
     logger.error(
       { error: formatError(error) },

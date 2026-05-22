@@ -6,14 +6,14 @@ import { toast } from "sonner";
 export async function loader({ request }: Route.LoaderArgs) {
   // Server-only imports
   const { getSession, requireUserAuth } = await import("@secretlobby/auth");
-  const { SUBSCRIPTION_TIERS, getStripeClient, registerConfiguredGateways } = await import("@secretlobby/payments");
-  const { getAccountById } = await import("~/models/queries/account.server");
-  const { getActiveSubscription } = await import("~/models/queries/subscription.server");
-  const { createLogger, formatError } = await import("@secretlobby/logger/server");
+  const { getStripeClient, getCurrentSubscription } = await import(
+    "@secretlobby/payments/billing"
+  );
+  const { createLogger, formatError } = await import(
+    "@secretlobby/logger/server"
+  );
 
   const logger = createLogger({ service: "console:billing:success" });
-
-  registerConfiguredGateways();
 
   const { session } = await getSession(request);
   requireUserAuth(session);
@@ -30,19 +30,34 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect("/billing");
   }
 
-  // Verify the checkout session with Stripe
-  let checkoutTierId: string | null = null;
+  // Verify the checkout session belongs to us by checking the
+  // metadata Stripe stamped during creation. We do NOT trust any
+  // claim in the URL itself.
+  let checkoutPlanSlug: string | null = null;
   let checkoutCompleted = false;
 
   try {
     const stripe = getStripeClient();
     const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId);
 
+    // Defensive: only treat the session as ours if metadata.accountId
+    // matches the logged-in account. Otherwise a user could brute-force
+    // sessionIds and see another tenant's success page.
+    const sessionAccountId = checkoutSession.metadata?.accountId;
+    if (sessionAccountId && sessionAccountId !== accountId) {
+      logger.warn(
+        { sessionId, sessionAccountId, accountId },
+        "Checkout session accountId mismatch on /billing/success"
+      );
+      throw redirect("/billing");
+    }
+
     if (checkoutSession.payment_status === "paid") {
       checkoutCompleted = true;
-      checkoutTierId = checkoutSession.metadata?.tierId || null;
+      checkoutPlanSlug = checkoutSession.metadata?.planSlug || null;
     }
   } catch (error) {
+    if (error instanceof Response) throw error;
     logger.error(
       { error: formatError(error) },
       "Failed to verify checkout session"
@@ -50,43 +65,27 @@ export async function loader({ request }: Route.LoaderArgs) {
     // Continue anyway - we'll check the database
   }
 
-  // Get the latest account data
-  const account = await getAccountById(accountId);
+  // Get the current subscription from our DB.
+  const current = await getCurrentSubscription(accountId);
 
-  if (!account) {
-    throw redirect("/login");
-  }
-
-  // Check if subscription has been updated in the database
-  const subscription = await getActiveSubscription(accountId);
-
-  // Determine if we're still waiting for webhook to process
+  // Still waiting for the webhook? Yes if Stripe says "paid" but our
+  // DB still shows the old plan slug.
   const isProcessing =
     checkoutCompleted &&
-    checkoutTierId &&
-    account.subscriptionTier !== checkoutTierId &&
-    account.subscriptionTier === "FREE";
-
-  const tier = SUBSCRIPTION_TIERS[account.subscriptionTier] || SUBSCRIPTION_TIERS.FREE;
-  const expectedTier = checkoutTierId
-    ? SUBSCRIPTION_TIERS[checkoutTierId as keyof typeof SUBSCRIPTION_TIERS]
-    : null;
+    !!checkoutPlanSlug &&
+    current.plan.slug !== checkoutPlanSlug;
 
   return {
     tier: {
-      id: account.subscriptionTier,
-      name: tier.name,
-      description: tier.description,
+      id: current.plan.slug,
+      name: current.plan.name,
+      description: current.plan.slug,
     },
-    expectedTier: expectedTier
-      ? {
-          id: checkoutTierId,
-          name: expectedTier.name,
-          description: expectedTier.description,
-        }
+    expectedTier: checkoutPlanSlug
+      ? { id: checkoutPlanSlug, name: checkoutPlanSlug, description: "" }
       : null,
     isProcessing,
-    hasSubscription: !!subscription,
+    hasSubscription: current.id !== null,
     sessionId,
   };
 }
