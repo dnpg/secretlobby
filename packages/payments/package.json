@@ -15,17 +15,29 @@
     "./webhooks": {
       "types": "./src/webhooks/handler.ts",
       "import": "./src/webhooks/handler.ts"
+    },
+    "./billing": {
+      "types": "./src/billing/index.ts",
+      "import": "./src/billing/index.ts"
+    },
+    "./billing/webhook": {
+      "types": "./src/billing/webhook.server.ts",
+      "import": "./src/billing/webhook.server.ts"
     }
   },
   "scripts": {
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@secretlobby/db": "workspace:*",
-    "stripe": "^17.5.0"
+    "@secretlobby/logger": "workspace:*",
+    "stripe": "^18.5.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^4.0.18"
   }
 }

@@ -370,6 +370,9 @@ importers:
       '@secretlobby/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@secretlobby/payments':
+        specifier: workspace:*
+        version: link:../../packages/payments
       '@secretlobby/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -583,13 +586,19 @@ importers:
       '@secretlobby/db':
         specifier: workspace:*
         version: link:../db
+      '@secretlobby/logger':
+        specifier: workspace:*
+        version: link:../logger
       stripe:
-        specifier: ^17.5.0
-        version: 17.7.0
+        specifier: ^18.5.0
+        version: 18.5.0(@types/node@25.2.1)
     devDependencies:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.2.1)(@vitest/ui@4.0.18)(happy-dom@20.4.0)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.21.0)
 
   packages/storage:
     dependencies:
@@ -8246,9 +8255,14 @@ packages:
     resolution: {integrity: sha512-1tB5mhVo7U+ETBKNf92xT4hrQa3pm0MZ0PQvuDnWgAAGHDsfp4lPSpiS6psrSiet87wyGPh9ft6wmhOMQ0hDiw==}
     engines: {node: '>=14.16'}
 
-  stripe@17.7.0:
-    resolution: {integrity: sha512-aT2BU9KkizY9SATf14WhhYVv2uOapBWX0OFWF4xvcj1mPaNotlSc2CsxpS4DS46ZueSppmCF5BX1sNYBtwBvfw==}
+  stripe@18.5.0:
+    resolution: {integrity: sha512-Hp+wFiEQtCB0LlNgcFh5uVyKznpDjzyUZ+CNVEf+I3fhlYvh7rZruIg+jOwzJRCpy0ZTPMjlzm7J2/M2N6d+DA==}
     engines: {node: '>=12.*'}
+    peerDependencies:
+      '@types/node': '>=12.x.x'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   strnum@2.1.2:
     resolution: {integrity: sha512-l63NF9y/cLROq/yqKXSLtcMeeyOfnSQlfMSlzFt/K73oIaD8DGaQWd7Z34X9GPiKqP5rbSh84Hl4bOlLcjiSrQ==}
@@ -18613,10 +18627,11 @@ snapshots:
 
   strip-json-comments@5.0.3: {}
 
-  stripe@17.7.0:
+  stripe@18.5.0(@types/node@25.2.1):
     dependencies:
-      '@types/node': 25.1.0
       qs: 6.14.1
+    optionalDependencies:
+      '@types/node': 25.2.1
 
   strnum@2.1.2: {}
 
