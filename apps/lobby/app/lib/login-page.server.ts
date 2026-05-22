@@ -31,6 +31,8 @@ export const LOGIN_REASON_MESSAGES: Record<string, string> = {
     "That email isn't currently authorized to access this lobby. If this is wrong, please contact the lobby owner.",
   missing_token:
     "Sign-in link was missing. Enter your email below to get a new one.",
+  password_required:
+    "Please enter the lobby password and continue with Google again — your previous attempt timed out.",
 };
 
 export function resolveLoginReasonMessage(reason: string | null): string | null {

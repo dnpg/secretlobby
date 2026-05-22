@@ -48,6 +48,14 @@ export const LOBBY_MAGIC_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // magic-link TTL above; the URL dies on first click regardless.
 export const LOBBY_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// How long a lobby-password verification (the shared-password POST that
+// gates Google sign-in when `passwordRequired` is on) stays valid in
+// the session before the visitor has to re-enter it. 5 minutes covers
+// the full OAuth round-trip with comfortable headroom on a slow Google
+// login screen but is short enough that a stolen session cookie can't
+// be replayed an hour later. See auth.google.finish for enforcement.
+export const LOBBY_PASSWORD_VERIFICATION_TTL_MS = 5 * 60 * 1000;
+
 const TOKEN_BYTES = 32; // 64 hex chars — matches Invitation.code length
 
 // RFC 5321/5322 is too permissive for our purposes; we just need a sane

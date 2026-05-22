@@ -841,14 +841,70 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
+  const intent = formData.get("intent");
 
-  // Branch on form shape rather than lobby config — the rendered form
-  // dictates which fields the submit carries. An `email` field means
-  // the visitor used the multi-method sign-in form; anything else is
-  // the legacy password-only gate. This makes the action robust to
-  // stale tabs (the form they're submitting is whatever they actually
-  // saw).
-  if (formData.has("email")) {
+  // Branch on the form's intent. The LoginPanel stamps `intent` onto
+  // the submit button (`google` / `email`) when accessMode is in use;
+  // the legacy password-only form posts no intent at all.
+  if (intent === "google") {
+    // passwordRequired branch — the Google submit button only renders
+    // when accessMode.passwordRequired is true. Verify the password
+    // on the lobby side before we hand the visitor off to Google;
+    // stash a short-lived session marker so /auth/google/finish can
+    // confirm the gate actually happened (defends against a malicious
+    // direct GET to AUTH_URL/auth/google that would otherwise skip
+    // the password check entirely).
+    const { updateSession } = await import("@secretlobby/auth");
+    const { LOBBY_PASSWORD_VERIFICATION_TTL_MS } = await import(
+      "@secretlobby/auth/lobby-access"
+    );
+
+    if (!tenant.lobby.passwordRequired) {
+      // Bogus form payload — the button shouldn't have shipped intent=
+      // google for a lobby without passwordRequired. Treat it as a
+      // misuse and reject rather than skipping the check.
+      return { error: "Password verification not required for this lobby." };
+    }
+    if (!tenant.lobby.identityGoogle) {
+      return { error: "Google sign-in is not enabled for this lobby." };
+    }
+    const submittedPassword = (formData.get("password") as string) || "";
+    if (!verifyLobbyPassword(submittedPassword, tenant.lobby.password ?? "")) {
+      return { error: "Incorrect password." };
+    }
+
+    const authBase = process.env.AUTH_URL;
+    if (!authBase) {
+      return { error: "Google sign-in is not configured." };
+    }
+    const url = new URL(request.url);
+    const params = new URLSearchParams({
+      lobby: tenant.lobby.id,
+      host: url.host,
+      returnPath: tenant.lobby.isDefault ? "/" : `/${tenant.lobby.slug}`,
+    });
+    const googleStartUrl = `${authBase.replace(/\/$/, "")}/auth/google?${params.toString()}`;
+
+    // Set the marker, then redirect carrying the session's Set-Cookie
+    // header so the marker survives the cross-origin hop to the
+    // console OAuth start.
+    const { response: sessionResponse } = await updateSession(request, {
+      lobbyPasswordVerified: {
+        lobbyId: tenant.lobby.id,
+        expiresAt: Date.now() + LOBBY_PASSWORD_VERIFICATION_TTL_MS,
+      },
+    });
+    const cookieHeader = sessionResponse.headers.get("Set-Cookie");
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: googleStartUrl,
+        ...(cookieHeader ? { "Set-Cookie": cookieHeader } : {}),
+      },
+    });
+  }
+
+  if (intent === "email" || formData.has("email")) {
     const { handleMagicLinkRequest } = await import("~/lib/login-page.server");
     return handleMagicLinkRequest(request, tenant.lobby, formData);
   }

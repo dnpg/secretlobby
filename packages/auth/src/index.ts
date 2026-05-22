@@ -51,6 +51,7 @@ export {
 export {
   LOBBY_MAGIC_LINK_TTL_MS,
   LOBBY_SESSION_TTL_MS,
+  LOBBY_PASSWORD_VERIFICATION_TTL_MS,
   normalizeEmail,
   isValidEmailShape,
   extractEmailDomain,

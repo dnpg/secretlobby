@@ -14,7 +14,7 @@
 
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.google.finish";
-import { authenticateForLobby } from "@secretlobby/auth";
+import { authenticateForLobby, getSession } from "@secretlobby/auth";
 import { verifyLobbyOAuthHandoff } from "@secretlobby/auth/lobby-oauth";
 import { prisma } from "@secretlobby/db";
 import { resolveTenant } from "~/lib/subdomain.server";
@@ -53,6 +53,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           isDefault: true,
           accountId: true,
           isPublished: true,
+          passwordRequired: true,
         },
       },
     },
@@ -64,6 +65,29 @@ export async function loader({ request }: Route.LoaderArgs) {
     !lobbyUser.lobby.isPublished
   ) {
     throw redirect("/?reason=lobby_mismatch");
+  }
+
+  // Shared-password gate: when the lobby has `passwordRequired`, the
+  // visitor must have POSTed the password to the lobby root before the
+  // OAuth round-trip started — that POST set `session.lobbyPasswordVerified`.
+  // If the marker is missing, expired, or for a different lobby, the
+  // visitor either skipped the gate (direct GET to AUTH_URL/auth/google)
+  // or sat on the Google login screen for too long. Bounce them back
+  // to the lobby root so they can re-enter the password.
+  if (lobbyUser.lobby.passwordRequired) {
+    const lobbyHome = lobbyUser.lobby.isDefault ? "/" : `/${lobbyUser.lobby.slug}`;
+    const { session } = await getSession(request);
+    const verifiedMarker = session.lobbyPasswordVerified;
+    const passwordOk =
+      verifiedMarker &&
+      verifiedMarker.lobbyId === lobbyUser.lobby.id &&
+      verifiedMarker.expiresAt > Date.now();
+    if (!passwordOk) {
+      // Don't drop a stale marker here — `updateSession` would mint a
+      // new cookie just for that side-effect. The marker will simply
+      // be ignored on subsequent finishes until it's overwritten.
+      throw redirect(`${lobbyHome}?reason=password_required`);
+    }
   }
 
   // Honor the explicit returnPath if it's a sane in-lobby path,
@@ -79,6 +103,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     safeReturnPath ??
     (lobbyUser.lobby.isDefault ? "/" : `/${lobbyUser.lobby.slug}`);
 
+  // authenticateForLobby internally clears `session.lobbyPasswordVerified`
+  // as part of completing the sign-in — keeps the marker's lifecycle
+  // tied to "did the visitor actually get in" rather than scattering
+  // the clear across every successful path.
   return authenticateForLobby(request, lobbyUser.lobby.id, target, lobbyUser.id);
 }
 

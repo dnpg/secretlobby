@@ -291,12 +291,21 @@ export function LoginPanel({
     </>
   );
 
-  // Multi-method content used when accessMode is set. Composes the
-  // Google anchor (outside any form so a click won't submit), an
-  // optional "or" divider, and the email magic-link form (with the
-  // shared password layered when passwordRequired). On success the
-  // form is replaced by the "check your email" message — the chrome
-  // stays so the visitor still sees the lobby branding.
+  // Multi-method content used when accessMode is set. Layout depends
+  // on whether the lobby requires the shared password:
+  //
+  //   * passwordRequired=true  → ONE form: password field at the top,
+  //     then a Google submit button (if identityGoogle) and an email
+  //     field + submit (if identityEmail). The form's `intent` field
+  //     carries which path the user picked. Critical for security:
+  //     the password is POSTed with whichever button was clicked, so
+  //     the lobby's action verifies it BEFORE either flow continues.
+  //   * passwordRequired=false → Google stays an anchor (no password to
+  //     gate), and the email form (if enabled) sits below.
+  //
+  // On submit-success the form is replaced by the "check your email"
+  // message but the chrome stays so the visitor still sees the lobby
+  // branding.
   const inputStyle = {
     backgroundColor: "#ffffff",
     borderColor: lp.panelBorderColor,
@@ -305,58 +314,155 @@ export function LoginPanel({
   const labelStyle = { color: lp.textColor, opacity: 0.85 };
   const helpStyle = { color: lp.textColor, opacity: 0.6 };
 
-  const multiMethodContent = accessMode ? (
-    <>
-      {chrome}
-      {errorBlock}
-      {submitted ? (
-        <div
-          className="text-sm rounded-lg p-4"
-          style={{
-            backgroundColor: "rgba(16, 185, 129, 0.1)",
-            border: "1px solid rgba(16, 185, 129, 0.3)",
-            color: lp.textColor,
-          }}
-        >
-          {submittedMessage ??
-            `If that email is authorized to access this lobby, we've sent a sign-in link. The link expires in ${magicLinkExpiresInDays} day${magicLinkExpiresInDays === 1 ? "" : "s"} and can only be used once. Check your spam folder if you don't see it.`}
+  // Google brand icon — used by both the anchor (no-password mode) and
+  // the submit button (password-gated mode). Factored out so the SVG
+  // doesn't appear in source 4× across the preview/live branches.
+  const googleIcon = (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+    </svg>
+  );
+
+  const orDivider = (
+    <div
+      className="my-4 flex items-center gap-3 text-xs uppercase tracking-wider"
+      style={{ color: lp.textColor, opacity: 0.5 }}
+    >
+      <div className="flex-1 h-px" style={{ backgroundColor: lp.panelBorderColor }} />
+      <span>or</span>
+      <div className="flex-1 h-px" style={{ backgroundColor: lp.panelBorderColor }} />
+    </div>
+  );
+
+  const passwordField = accessMode?.passwordRequired ? (
+    <div>
+      <label
+        htmlFor="password"
+        className="block text-sm font-medium mb-1"
+        style={labelStyle}
+      >
+        Lobby password
+      </label>
+      <input
+        type="password"
+        id="password"
+        name="password"
+        placeholder="Shared password"
+        required={!preview}
+        disabled={preview}
+        autoComplete="off"
+        autoFocus={!preview}
+        className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+        style={inputStyle}
+      />
+      <p className="mt-1 text-xs" style={helpStyle}>
+        Enter the password the lobby owner shared with you to continue.
+      </p>
+    </div>
+  ) : null;
+
+  // Submitted "check your email" message — replaces the form in both
+  // preview and live branches once the magic link has been requested.
+  const submittedBlock = accessMode ? (
+    <div
+      className="text-sm rounded-lg p-4"
+      style={{
+        backgroundColor: "rgba(16, 185, 129, 0.1)",
+        border: "1px solid rgba(16, 185, 129, 0.3)",
+        color: lp.textColor,
+      }}
+    >
+      {submittedMessage ??
+        `If that email is authorized to access this lobby, we've sent a sign-in link. The link expires in ${magicLinkExpiresInDays} day${magicLinkExpiresInDays === 1 ? "" : "s"} and can only be used once. Check your spam folder if you don't see it.`}
+    </div>
+  ) : null;
+
+  // Misconfiguration banner — only ever shows when an admin has turned
+  // off ALL sign-in methods. The console mutation layer guards against
+  // this on save, but render-time defense is cheap.
+  const noMethodsBlock = accessMode && !accessMode.identityEmail && !accessMode.identityGoogle && !accessMode.passwordRequired ? (
+    <div
+      className="text-sm rounded-lg p-4 text-center"
+      style={{
+        backgroundColor: "rgba(234, 179, 8, 0.1)",
+        border: "1px solid rgba(234, 179, 8, 0.3)",
+        color: lp.textColor,
+      }}
+    >
+      This lobby has no sign-in method configured. Please contact the lobby owner.
+    </div>
+  ) : null;
+
+  // Decide what to render INSIDE the panel card.
+  //
+  // Legacy mode (no accessMode) keeps the password-only form posting
+  // to the lobby root — same behavior the original lobby has had since
+  // the password gate was introduced.
+  //
+  // Multi-method mode (accessMode set) splits on `passwordRequired`:
+  //
+  //   gated (passwordRequired=true): everything lives inside ONE
+  //   form. Password input at the top, then a Google submit button
+  //   (intent=google), an "or" divider, and the email field + email
+  //   submit (intent=email). Whichever button the user clicks, the
+  //   password POSTs alongside so the server can verify it BEFORE
+  //   handing control to Google or issuing a magic link.
+  //
+  //   open (passwordRequired=false): Google is an anchor (no password
+  //   to gate); the email form sits below as before.
+  //
+  // The submitted state and "no methods configured" banner share both
+  // branches (declared above).
+  let panelInner: React.ReactNode;
+  if (accessMode) {
+    if (submitted) {
+      panelInner = (
+        <div>
+          {chrome}
+          {errorBlock}
+          {submittedBlock}
         </div>
-      ) : (
+      );
+    } else if (noMethodsBlock) {
+      panelInner = (
+        <div>
+          {chrome}
+          {errorBlock}
+          {noMethodsBlock}
+        </div>
+      );
+    } else if (accessMode.passwordRequired) {
+      // Password-gated branch: single form, password first, then
+      // identity buttons. Visually consistent regardless of preview
+      // mode; only the inputs/buttons go inert in preview.
+      const fields = (
         <>
+          {csrfToken !== undefined && csrfToken !== null && (
+            <input type="hidden" name="_csrf" value={csrfToken} />
+          )}
+          {accessMode.lobbySlug && (
+            <input type="hidden" name="lobbySlug" value={accessMode.lobbySlug} />
+          )}
+          {passwordField}
           {accessMode.identityGoogle && (
-            <a
-              href={accessMode.googleSignInUrl ?? "#"}
+            <button
+              type={preview ? "button" : "submit"}
+              name={preview ? undefined : "intent"}
+              value={preview ? undefined : "google"}
               onClick={preview ? (e) => e.preventDefault() : undefined}
-              className={`w-full mb-4 inline-flex items-center justify-center gap-3 px-4 py-3 bg-white text-gray-900 hover:bg-gray-100 font-medium rounded-lg ${preview ? "cursor-default" : "cursor-pointer"} transition-colors`}
+              className={`w-full inline-flex items-center justify-center gap-3 px-4 py-3 bg-white text-gray-900 hover:bg-gray-100 font-medium rounded-lg ${preview ? "cursor-default" : "cursor-pointer"} transition-colors`}
               aria-disabled={preview ? true : undefined}
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
+              {googleIcon}
               Continue with Google
-            </a>
+            </button>
           )}
-          {accessMode.identityEmail && accessMode.identityGoogle && (
-            <div
-              className="my-4 flex items-center gap-3 text-xs uppercase tracking-wider"
-              style={{ color: lp.textColor, opacity: 0.5 }}
-            >
-              <div
-                className="flex-1 h-px"
-                style={{ backgroundColor: lp.panelBorderColor }}
-              />
-              <span>or</span>
-              <div
-                className="flex-1 h-px"
-                style={{ backgroundColor: lp.panelBorderColor }}
-              />
-            </div>
-          )}
+          {accessMode.identityEmail && accessMode.identityGoogle && orDivider}
           {accessMode.identityEmail && (
-            <div className="space-y-4">
+            <>
               <div>
                 <label
                   htmlFor="email"
@@ -373,192 +479,145 @@ export function LoginPanel({
                   required={!preview}
                   disabled={preview}
                   autoComplete="email"
-                  autoFocus={!preview}
                   className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
                   style={inputStyle}
                 />
               </div>
-              {accessMode.passwordRequired && (
-                <div>
-                  <label
-                    htmlFor="password"
-                    className="block text-sm font-medium mb-1"
-                    style={labelStyle}
-                  >
-                    Lobby password
-                  </label>
-                  <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    placeholder="Shared password"
-                    required={!preview}
-                    disabled={preview}
-                    autoComplete="off"
-                    className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style={inputStyle}
-                  />
-                  <p className="mt-1 text-xs" style={helpStyle}>
-                    The password the lobby owner shared with you.
-                  </p>
-                </div>
-              )}
               <button
                 type={preview ? "button" : "submit"}
+                name={preview ? undefined : "intent"}
+                value={preview ? undefined : "email"}
                 onClick={preview ? (e) => e.preventDefault() : undefined}
                 className={`lobby-login-submit w-full py-3 px-4 font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${preview ? "cursor-default" : "cursor-pointer"}`}
               >
                 {lp.buttonLabel || "Send sign-in link"}
               </button>
-              {accessMode.lobbySlug && (
-                <input type="hidden" name="lobbySlug" value={accessMode.lobbySlug} />
-              )}
-            </div>
-          )}
-          {!accessMode.identityEmail && !accessMode.identityGoogle && (
-            <div
-              className="text-sm rounded-lg p-4 text-center"
-              style={{
-                backgroundColor: "rgba(234, 179, 8, 0.1)",
-                border: "1px solid rgba(234, 179, 8, 0.3)",
-                color: lp.textColor,
-              }}
-            >
-              This lobby has no sign-in method configured. Please contact the lobby owner.
-            </div>
+            </>
           )}
         </>
-      )}
-    </>
-  ) : null;
-
-  // Decide what to render INSIDE the panel card. Legacy mode keeps the
-  // password-only Form posting to the lobby root. Multi-method mode
-  // splits into: Google anchor (outside the Form so a click doesn't
-  // submit), then the email Form. The success state is just static
-  // content — no Form needed.
-  const panelInner = accessMode ? (
-    preview ? (
-      <div>{multiMethodContent}</div>
-    ) : submitted ? (
-      <div>{multiMethodContent}</div>
-    ) : (
-      <div>
-        {/* Render chrome + Google button + (optional) "or" outside the
-            form so the Google anchor doesn't accidentally submit. The
-            email-submission form is the only thing that needs <Form>. */}
-        {chrome}
-        {errorBlock}
-        {accessMode.identityGoogle && (
-          <a
-            href={accessMode.googleSignInUrl ?? "#"}
-            className="w-full mb-4 inline-flex items-center justify-center gap-3 px-4 py-3 bg-white text-gray-900 hover:bg-gray-100 font-medium rounded-lg cursor-pointer transition-colors"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-            </svg>
-            Continue with Google
-          </a>
-        )}
-        {accessMode.identityEmail && accessMode.identityGoogle && (
-          <div
-            className="my-4 flex items-center gap-3 text-xs uppercase tracking-wider"
-            style={{ color: lp.textColor, opacity: 0.5 }}
-          >
-            <div className="flex-1 h-px" style={{ backgroundColor: lp.panelBorderColor }} />
-            <span>or</span>
-            <div className="flex-1 h-px" style={{ backgroundColor: lp.panelBorderColor }} />
-          </div>
-        )}
-        {accessMode.identityEmail && (
-          <Form method="post" action={action} className="space-y-4">
-            {csrfToken !== undefined && csrfToken !== null && (
-              <input type="hidden" name="_csrf" value={csrfToken} />
-            )}
-            {accessMode.lobbySlug && (
-              <input type="hidden" name="lobbySlug" value={accessMode.lobbySlug} />
-            )}
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium mb-1"
-                style={labelStyle}
-              >
-                Email
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                placeholder="you@example.com"
-                required
-                autoComplete="email"
-                autoFocus
-                className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={inputStyle}
-              />
-            </div>
-            {accessMode.passwordRequired && (
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium mb-1"
-                  style={labelStyle}
-                >
-                  Lobby password
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  name="password"
-                  placeholder="Shared password"
-                  required
-                  autoComplete="off"
-                  className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  style={inputStyle}
-                />
-                <p className="mt-1 text-xs" style={helpStyle}>
-                  The password the lobby owner shared with you.
-                </p>
-              </div>
-            )}
-            <button
-              type="submit"
-              className="lobby-login-submit w-full py-3 px-4 font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors cursor-pointer"
+      );
+      panelInner = (
+        <div>
+          {chrome}
+          {errorBlock}
+          {preview ? (
+            <div className="space-y-4">{fields}</div>
+          ) : (
+            <Form method="post" action={action} className="space-y-4">
+              {fields}
+            </Form>
+          )}
+        </div>
+      );
+    } else {
+      // Open branch (no shared password): Google anchor + email form,
+      // each independently submittable. Anchor lives outside the email
+      // <Form> so clicking it can't accidentally submit the form.
+      panelInner = (
+        <div>
+          {chrome}
+          {errorBlock}
+          {accessMode.identityGoogle && (
+            <a
+              href={accessMode.googleSignInUrl ?? "#"}
+              onClick={preview ? (e) => e.preventDefault() : undefined}
+              className={`w-full mb-4 inline-flex items-center justify-center gap-3 px-4 py-3 bg-white text-gray-900 hover:bg-gray-100 font-medium rounded-lg ${preview ? "cursor-default" : "cursor-pointer"} transition-colors`}
+              aria-disabled={preview ? true : undefined}
             >
-              {lp.buttonLabel || "Send sign-in link"}
-            </button>
-          </Form>
-        )}
-        {!accessMode.identityEmail && !accessMode.identityGoogle && (
-          <div
-            className="text-sm rounded-lg p-4 text-center"
-            style={{
-              backgroundColor: "rgba(234, 179, 8, 0.1)",
-              border: "1px solid rgba(234, 179, 8, 0.3)",
-              color: lp.textColor,
-            }}
-          >
-            This lobby has no sign-in method configured. Please contact the lobby owner.
-          </div>
-        )}
-      </div>
-    )
-  ) : preview ? (
+              {googleIcon}
+              Continue with Google
+            </a>
+          )}
+          {accessMode.identityEmail && accessMode.identityGoogle && orDivider}
+          {accessMode.identityEmail && (
+            preview ? (
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-medium mb-1"
+                    style={labelStyle}
+                  >
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="you@example.com"
+                    disabled
+                    autoComplete="email"
+                    className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={inputStyle}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => e.preventDefault()}
+                  className="lobby-login-submit w-full py-3 px-4 font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors cursor-default"
+                >
+                  {lp.buttonLabel || "Send sign-in link"}
+                </button>
+              </div>
+            ) : (
+              <Form method="post" action={action} className="space-y-4">
+                {csrfToken !== undefined && csrfToken !== null && (
+                  <input type="hidden" name="_csrf" value={csrfToken} />
+                )}
+                {accessMode.lobbySlug && (
+                  <input
+                    type="hidden"
+                    name="lobbySlug"
+                    value={accessMode.lobbySlug}
+                  />
+                )}
+                <input type="hidden" name="intent" value="email" />
+                <div>
+                  <label
+                    htmlFor="email"
+                    className="block text-sm font-medium mb-1"
+                    style={labelStyle}
+                  >
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="you@example.com"
+                    required
+                    autoFocus
+                    autoComplete="email"
+                    className="w-full px-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={inputStyle}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="lobby-login-submit w-full py-3 px-4 font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors cursor-pointer"
+                >
+                  {lp.buttonLabel || "Send sign-in link"}
+                </button>
+              </Form>
+            )
+          )}
+        </div>
+      );
+    }
+  } else if (preview) {
     // Legacy preview branch — plain wrapper so nested inputs/buttons
     // don't accidentally submit. The editor canvas sometimes lives
     // inside an outer <form> wrapper and we want zero chance of
     // bubbling a submit.
-    <div>{legacyFields}</div>
-  ) : (
-    <Form method="post" action={action} className="space-y-0">
-      <input type="hidden" name="_csrf" value={csrfToken ?? ""} />
-      {legacyFields}
-    </Form>
-  );
+    panelInner = <div>{legacyFields}</div>;
+  } else {
+    panelInner = (
+      <Form method="post" action={action} className="space-y-0">
+        <input type="hidden" name="_csrf" value={csrfToken ?? ""} />
+        {legacyFields}
+      </Form>
+    );
+  }
 
   const panel = (
     <div

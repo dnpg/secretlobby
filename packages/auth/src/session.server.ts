@@ -51,6 +51,19 @@ export interface SessionData {
   // session cookie lands on the right origin.
   lobbyOAuthReturnHost?: string;
 
+  // Set on the lobby's session when a visitor passes the shared-
+  // password gate while initiating Google sign-in (passwordRequired +
+  // identityGoogle). The /auth/google/finish route reads this before
+  // calling authenticateForLobby — it ensures someone who hit the
+  // OAuth start URL directly (skipping the password POST) can't
+  // complete the lobby sign-in. Cleared after consume. Short TTL
+  // (LOBBY_PASSWORD_VERIFICATION_TTL_MS = 5 min) covers the full
+  // round-trip + a slow Google login screen.
+  lobbyPasswordVerified?: {
+    lobbyId: string;
+    expiresAt: number; // ms since epoch
+  };
+
   // CSRF protection
   csrfToken?: string;
 }
@@ -207,6 +220,14 @@ export async function authenticateForLobby(
       session.lobbyUserIds = {};
     }
     session.lobbyUserIds[lobbyId] = lobbyUserId;
+  }
+
+  // Successful auth consumes any password-verified marker that was set
+  // during the Google sign-in flow. Cleared here (rather than in the
+  // /auth/google/finish route) so every code path that completes
+  // lobby auth drops the marker — no risk of forgetting in a new path.
+  if (session.lobbyPasswordVerified) {
+    session.lobbyPasswordVerified = undefined;
   }
 
   // Also set legacy fields for backwards compatibility
