@@ -50,11 +50,36 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     password: lobby.password ? decryptLobbyPassword(lobby.password) : null,
   };
 
+  // LobbyUser viewer — read-only here. Support / sales agents use this
+  // to debug "I can't get in" tickets. We pull all rows (most lobbies
+  // will have at most a few dozen invitees); pagination can come later
+  // if a band has thousands of invitees.
+  const lobbyUsers = await prisma.lobbyUser.findMany({
+    where: { lobbyId },
+    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    take: 200,
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      googleSub: true,
+      magicLinkSentAt: true,
+      invitedAt: true,
+      firstLoginAt: true,
+      lastSeenAt: true,
+      createdAt: true,
+      invitedBy: { select: { email: true } },
+    },
+  });
+  const lobbyUserTotal = await prisma.lobbyUser.count({ where: { lobbyId } });
+
   return {
     lobby: decryptedLobby,
     accountSlug: account?.slug ?? "",
     accountDefaultLobbyId: account?.defaultLobbyId ?? null,
     lobbyUrl,
+    lobbyUsers,
+    lobbyUserTotal,
   };
 }
 
@@ -64,12 +89,36 @@ export async function action({ params, request }: Route.ActionArgs) {
     return { error: "Missing params" };
   }
 
-  const { updateLobbyCore, setAsDefaultLobby } = await import(
+  const { updateLobbyCore, setAsDefaultLobby, updateLobbyAccessSettings } = await import(
     "~/models/lobbies/mutations.server"
   );
 
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
+
+  if (intent === "update-access") {
+    const accessPolicy = (formData.get("accessPolicy") as string) || "PUBLIC";
+    if (
+      accessPolicy !== "PUBLIC" &&
+      accessPolicy !== "INVITE_ONLY" &&
+      accessPolicy !== "DOMAIN_ALLOWLIST"
+    ) {
+      return { error: "Invalid access policy", intent };
+    }
+    const allowedDomains = ((formData.get("allowedDomains") as string) || "")
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const result = await updateLobbyAccessSettings(lobbyId, accountId, {
+      accessPolicy,
+      identityEmail: formData.get("identityEmail") === "on",
+      identityGoogle: formData.get("identityGoogle") === "on",
+      passwordRequired: formData.get("passwordRequired") === "on",
+      allowedDomains,
+    });
+    if ("error" in result) return { error: result.error, intent };
+    return { success: "Access settings updated.", intent };
+  }
 
   if (intent === "update-core") {
     const result = await updateLobbyCore(lobbyId, accountId, {
@@ -95,12 +144,14 @@ export async function action({ params, request }: Route.ActionArgs) {
 }
 
 export default function LobbyConfig() {
-  const { lobby, lobbyUrl, accountDefaultLobbyId } = useLoaderData<typeof loader>();
+  const { lobby, lobbyUrl, accountDefaultLobbyId, lobbyUsers, lobbyUserTotal } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
   const [showPassword, setShowPassword] = useState(false);
+  const [accessPolicy, setAccessPolicy] = useState(lobby.accessPolicy);
 
   useEffect(() => {
     if (!actionData) return;
@@ -297,6 +348,170 @@ export default function LobbyConfig() {
                 Set as default
               </button>
             </Form>
+          </div>
+        )}
+      </div>
+
+      {/* Access controls (parity with /lobby/:id/access in the console) */}
+      <div className="card p-6">
+        <h4 className="text-base font-semibold mb-2">Access Control</h4>
+        <p className="text-sm text-theme-secondary mb-4">
+          Identity methods, access policy, and shared-password gate. Mirrors
+          the customer-facing settings on /lobby/:id/access in the console.
+        </p>
+        <Form method="post" className="space-y-5">
+          <input type="hidden" name="intent" value="update-access" />
+
+          <fieldset>
+            <legend className="text-sm font-medium mb-2">Identity methods</legend>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="identityEmail"
+                  defaultChecked={lobby.identityEmail}
+                  className="rounded border-theme bg-theme-tertiary text-(--color-brand-red) focus:ring-(--color-brand-red)"
+                />
+                <span className="text-sm">Email magic link</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="identityGoogle"
+                  defaultChecked={lobby.identityGoogle}
+                  className="rounded border-theme bg-theme-tertiary text-(--color-brand-red) focus:ring-(--color-brand-red)"
+                />
+                <span className="text-sm">Sign in with Google</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="passwordRequired"
+                  defaultChecked={lobby.passwordRequired}
+                  className="rounded border-theme bg-theme-tertiary text-(--color-brand-red) focus:ring-(--color-brand-red)"
+                />
+                <span className="text-sm">Require shared password</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="text-sm font-medium mb-2">Access policy</legend>
+            <div className="space-y-2">
+              {(
+                [
+                  { value: "PUBLIC", label: "Public" },
+                  { value: "INVITE_ONLY", label: "Invite only (LobbyUser list)" },
+                  { value: "DOMAIN_ALLOWLIST", label: "Domain allowlist" },
+                ] as const
+              ).map((opt) => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="accessPolicy"
+                    value={opt.value}
+                    checked={accessPolicy === opt.value}
+                    onChange={() => setAccessPolicy(opt.value)}
+                    className="text-(--color-brand-red) focus:ring-(--color-brand-red)"
+                  />
+                  <span className="text-sm">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div>
+            <label htmlFor="allowedDomains" className="block text-sm font-medium text-theme-secondary mb-1">
+              Allowed domains
+            </label>
+            <textarea
+              id="allowedDomains"
+              name="allowedDomains"
+              defaultValue={lobby.allowedDomains.join("\n")}
+              rows={3}
+              placeholder={"acme.com\npartner.io"}
+              disabled={accessPolicy !== "DOMAIN_ALLOWLIST"}
+              className="w-full px-4 py-2 bg-theme-tertiary border border-theme rounded-lg text-theme-primary font-mono text-xs focus:outline-none focus:ring-2 focus:ring-(--color-brand-red) disabled:opacity-50"
+            />
+            <p className="mt-1 text-xs text-theme-muted">
+              One hostname per line. Only consulted when access policy is "Domain allowlist".
+            </p>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition cursor-pointer"
+            >
+              {isSubmitting ? "Saving…" : "Save access settings"}
+            </button>
+          </div>
+        </Form>
+      </div>
+
+      {/* LobbyUser viewer (read-only) */}
+      <div className="card p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-base font-semibold">Lobby Users ({lobbyUserTotal})</h4>
+          <span className="text-xs text-theme-muted">
+            Showing up to 200, newest first
+          </span>
+        </div>
+        {lobbyUsers.length === 0 ? (
+          <div className="text-sm text-theme-muted py-4 text-center border border-dashed border-theme rounded-lg">
+            No LobbyUser rows yet. Visitors create rows when they sign in or
+            admins add them via /lobby/:id/access.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase tracking-wide text-theme-muted">
+                <tr className="border-b border-theme">
+                  <th className="text-left font-medium py-2 pr-3">Email</th>
+                  <th className="text-left font-medium py-2 pr-3">Status</th>
+                  <th className="text-left font-medium py-2 pr-3">Google</th>
+                  <th className="text-left font-medium py-2 pr-3">Invited by</th>
+                  <th className="text-left font-medium py-2 pr-3">Invited</th>
+                  <th className="text-left font-medium py-2 pr-3">First login</th>
+                  <th className="text-left font-medium py-2 pr-3">Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lobbyUsers.map((u) => (
+                  <tr key={u.id} className="border-b border-theme last:border-0">
+                    <td className="py-2 pr-3 font-mono text-xs break-all">{u.email}</td>
+                    <td className="py-2 pr-3">
+                      <span
+                        className={cn(
+                          "px-2 py-0.5 text-xs rounded-full",
+                          u.status === "ACTIVE"
+                            ? "bg-green-500/20 text-green-400"
+                            : "bg-yellow-500/20 text-yellow-400",
+                        )}
+                      >
+                        {u.status}
+                      </span>
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-theme-muted">
+                      {u.googleSub ? "Yes" : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-theme-muted">
+                      {u.invitedBy?.email ?? "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-theme-muted">
+                      {u.invitedAt ? new Date(u.invitedAt).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-theme-muted">
+                      {u.firstLoginAt ? new Date(u.firstLoginAt).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-xs text-theme-muted">
+                      {u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleDateString() : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

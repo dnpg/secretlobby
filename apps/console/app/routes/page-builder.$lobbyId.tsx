@@ -367,6 +367,20 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   // for published lobbies the lobby endpoints ignore it harmlessly.
   const lobbyPreviewToken = generatePreviewToken(lobby.id, accountId);
 
+  // Pull the access-control flags as a tiny separate read so the
+  // login-page canvas can preview the exact fields the visitor will see
+  // (email input, Google button, shared-password input) without us
+  // having to widen getLobbyByIdWithMedia's selection across every caller.
+  const { prisma: prismaForAccess } = await import("@secretlobby/db");
+  const lobbyAccess = await prismaForAccess.lobby.findUnique({
+    where: { id: lobbyId },
+    select: {
+      identityEmail: true,
+      identityGoogle: true,
+      passwordRequired: true,
+    },
+  });
+
   return {
     lobby: {
       id: lobby.id,
@@ -378,6 +392,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       // TopHeader can preview the Logout button — never expose the raw
       // password value to the client.
       hasPassword: !!lobby.password,
+      // Access-control flags drive what the login-page canvas previews —
+      // see LoginPagePreview. The schema enforces booleans (not nullable)
+      // so the fallback only kicks in for legacy lobbies that haven't
+      // been hit by the migration yet.
+      identityEmail: lobbyAccess?.identityEmail ?? false,
+      identityGoogle: lobbyAccess?.identityGoogle ?? false,
+      passwordRequired: lobbyAccess?.passwordRequired ?? false,
     },
     lobbyOrigin,
     lobbyPreviewToken,

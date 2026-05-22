@@ -32,7 +32,25 @@ export function LoginPagePreview() {
     loginLogoImageUrl,
     loginLogoImageWidth,
     loginLogoImageHeight,
+    lobbyAccess,
   } = state;
+
+  // Only render the multi-method preview when at least one identity
+  // method is on. Otherwise the legacy password-only form is the
+  // visitor experience — LoginPanel renders that when accessMode is
+  // omitted, matching production behavior.
+  const accessMode =
+    lobbyAccess.identityEmail || lobbyAccess.identityGoogle
+      ? {
+          identityEmail: lobbyAccess.identityEmail,
+          identityGoogle: lobbyAccess.identityGoogle,
+          passwordRequired: lobbyAccess.passwordRequired,
+          // Preview mode renders the Google anchor inert (the panel's
+          // preview prop suppresses navigation), so the URL doesn't
+          // need to be real.
+          googleSignInUrl: null,
+        }
+      : undefined;
   const { swatches, drafts } = useSwatches();
   // Designer-facing toggle for the "Music will play automatically" preview.
   // Defaults to `true` to match the published lobby's initial state (see
@@ -82,6 +100,7 @@ export function LoginPagePreview() {
             logoImageWidth={loginLogoImageWidth}
             logoImageHeight={loginLogoImageHeight}
             preview
+            accessMode={accessMode}
             belowPanel={
               <LoginAutoplayToggle
                 enabled={autoplayPreview}
@@ -119,6 +138,7 @@ export function LoginPagePreview() {
           logoImageWidth={loginLogoImageWidth}
           logoImageHeight={loginLogoImageHeight}
           preview
+          accessMode={accessMode}
         />
         <SecretLobbyFooter />
       </div>

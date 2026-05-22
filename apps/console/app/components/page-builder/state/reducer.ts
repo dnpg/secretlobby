@@ -107,6 +107,15 @@ export interface PageBuilderState {
   loginPageDirty: boolean;
   loginPageSaveStatus: SaveStatus;
   loginPageLastSavedAt: number | null;
+  // Access-control flags lifted from the Lobby row — read-only in the
+  // page builder (managed on the /lobby/:id/access route). The login-page
+  // canvas reads these so the designer sees a preview that matches what
+  // visitors will see at runtime.
+  lobbyAccess: {
+    identityEmail: boolean;
+    identityGoogle: boolean;
+    passwordRequired: boolean;
+  };
 }
 
 export type PageBuilderAction =

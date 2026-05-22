@@ -39,6 +39,11 @@ interface PageBuilderLoaderData {
     // True when the lobby has a password gate. Used by TopHeader to preview
     // the Logout button — never carries the raw password string.
     hasPassword: boolean;
+    // Access-control flags — drive what the LoginPagePreview shows so
+    // the designer sees the exact form fields the visitor will see.
+    identityEmail: boolean;
+    identityGoogle: boolean;
+    passwordRequired: boolean;
   };
   pageLayout: StoredPageLayout | null;
   // Which layout the loader returned — main lobby page or the login page.
@@ -220,6 +225,11 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
       loginPageDirty: false,
       loginPageSaveStatus: "idle",
       loginPageLastSavedAt: null,
+      lobbyAccess: {
+        identityEmail: lobby.identityEmail,
+        identityGoogle: lobby.identityGoogle,
+        passwordRequired: lobby.passwordRequired,
+      },
     };
     // We intentionally seed only once; subsequent URL changes are handled by
     // selection/viewport effects inside the inner component.
