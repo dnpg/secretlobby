@@ -32,37 +32,54 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Verify the checkout session belongs to us by checking the
   // metadata Stripe stamped during creation. We do NOT trust any
-  // claim in the URL itself.
-  let checkoutPlanSlug: string | null = null;
-  let checkoutCompleted = false;
-
+  // claim in the URL itself, and we fail CLOSED on any error path —
+  // a Stripe outage or missing metadata must not let an attacker see
+  // another tenant's success page.
+  let checkoutSession: Awaited<
+    ReturnType<
+      ReturnType<typeof getStripeClient>["checkout"]["sessions"]["retrieve"]
+    >
+  >;
   try {
     const stripe = getStripeClient();
-    const checkoutSession = await stripe.checkout.sessions.retrieve(sessionId);
-
-    // Defensive: only treat the session as ours if metadata.accountId
-    // matches the logged-in account. Otherwise a user could brute-force
-    // sessionIds and see another tenant's success page.
-    const sessionAccountId = checkoutSession.metadata?.accountId;
-    if (sessionAccountId && sessionAccountId !== accountId) {
-      logger.warn(
-        { sessionId, sessionAccountId, accountId },
-        "Checkout session accountId mismatch on /billing/success"
-      );
-      throw redirect("/billing");
-    }
-
-    if (checkoutSession.payment_status === "paid") {
-      checkoutCompleted = true;
-      checkoutPlanSlug = checkoutSession.metadata?.planSlug || null;
-    }
+    checkoutSession = await stripe.checkout.sessions.retrieve(sessionId);
   } catch (error) {
     if (error instanceof Response) throw error;
     logger.error(
-      { error: formatError(error) },
-      "Failed to verify checkout session"
+      { error: formatError(error), sessionId },
+      "Failed to retrieve checkout session — rejecting /billing/success"
     );
-    // Continue anyway - we'll check the database
+    // Fail CLOSED. Without the session we cannot verify ownership;
+    // any "continue anyway" path lets a sessionId guesser confirm
+    // that some session belongs to *some* paying tenant via timing.
+    throw redirect("/billing");
+  }
+
+  // Hard tenant check. The accountId stamped into Stripe metadata at
+  // session-creation time is the ONLY ground truth for ownership.
+  //   - missing metadata → unknown provenance, reject.
+  //   - mismatched metadata → cross-tenant attempt, reject.
+  const sessionAccountId = checkoutSession.metadata?.accountId;
+  if (!sessionAccountId) {
+    logger.warn(
+      { sessionId, accountId },
+      "Checkout session missing accountId metadata on /billing/success"
+    );
+    throw redirect("/billing");
+  }
+  if (sessionAccountId !== accountId) {
+    logger.warn(
+      { sessionId, sessionAccountId, accountId },
+      "Checkout session accountId mismatch on /billing/success"
+    );
+    throw redirect("/billing");
+  }
+
+  let checkoutPlanSlug: string | null = null;
+  let checkoutCompleted = false;
+  if (checkoutSession.payment_status === "paid") {
+    checkoutCompleted = true;
+    checkoutPlanSlug = checkoutSession.metadata?.planSlug || null;
   }
 
   // Get the current subscription from our DB.

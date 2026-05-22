@@ -58,6 +58,7 @@ import {
   verifyWebhookSignature,
   InvalidWebhookSignatureError,
 } from "./signature.server.js";
+import { getExpectedStripeLivemode } from "./env.server.js";
 
 const logger = createLogger({ service: "billing:webhook" });
 
@@ -138,6 +139,34 @@ export async function handleStripeWebhook(
   );
 
   // ====================================================================
+  // STEP 1b: livemode enforcement. The secret key prefix declares
+  // which mode this deployment expects (sk_live_* → live, sk_test_*
+  // → test). Reject any event whose livemode disagrees — a
+  // misconfigured prod env pointed at a test secret would otherwise
+  // accept anyone's test-mode webhook fixtures as authoritative.
+  //
+  // We log SECURITY but DO NOT log event payload or signature. The
+  // very small set of fields below is safe to log to our aggregator.
+  // ====================================================================
+  const expectedLivemode = getExpectedStripeLivemode();
+  if (expectedLivemode !== null && event.livemode !== expectedLivemode) {
+    logger.warn(
+      {
+        security: true,
+        eventId: event.id,
+        eventType: event.type,
+        expectedLivemode,
+        eventLivemode: event.livemode,
+      },
+      "SECURITY: Stripe webhook livemode mismatch — rejecting"
+    );
+    return {
+      status: "invalid_signature",
+      reason: "livemode_mismatch",
+    };
+  }
+
+  // ====================================================================
   // STEP 2: Acknowledge unhandled types up-front so we don't waste a
   // ledger row on them. Stripe sends a lot of event types we don't
   // care about — return 200 so they stop retrying.
@@ -170,14 +199,29 @@ export async function handleStripeWebhook(
     });
     ledgerRowId = ledgerRow.id;
   } catch (err) {
-    // Unique-constraint violation = we've seen this event before. The
-    // first delivery either succeeded (processedAt set) or is still
-    // mid-processing (processedAt null). Either way, Stripe is told
-    // "ok, stop retrying" — duplicate processing would be unsafe.
-    if (isUniqueConstraintError(err)) {
+    if (!isUniqueConstraintError(err)) {
+      throw err;
+    }
+
+    // We've seen this eventId before. Inspect the existing row:
+    //   - processedAt IS NOT NULL → previous delivery actually completed;
+    //     this is a true duplicate, drop with 200.
+    //   - processedAt IS NULL → previous delivery's transaction rolled
+    //     back (we kept the row only to record the error). Delete it
+    //     and re-insert so this retry can re-enter processing fresh.
+    //     Without this, every retry after a failure would silently 200
+    //     and abandon the event.
+    const existing = await prisma.stripeWebhookEvent.findUnique({
+      where: {
+        gatewayId_eventId: { gatewayId: "stripe", eventId: event.id },
+      },
+      select: { id: true, processedAt: true },
+    });
+
+    if (existing && existing.processedAt) {
       logger.info(
         { eventId: event.id, eventType: event.type },
-        "Stripe webhook event already seen (deduplicated)"
+        "Stripe webhook event already processed (deduplicated)"
       );
       return {
         status: "ok",
@@ -186,7 +230,34 @@ export async function handleStripeWebhook(
         applied: [],
       };
     }
-    throw err;
+
+    if (!existing) {
+      // Race: row vanished between INSERT-fail and our lookup. Let
+      // Stripe retry — re-throw so we return non-2xx.
+      throw err;
+    }
+
+    logger.info(
+      {
+        eventId: event.id,
+        eventType: event.type,
+        staleLedgerRowId: existing.id,
+      },
+      "Stripe webhook retry: previous delivery did not complete, retrying"
+    );
+
+    await prisma.stripeWebhookEvent.delete({ where: { id: existing.id } });
+
+    const reinserted = await prisma.stripeWebhookEvent.create({
+      data: {
+        gatewayId: "stripe",
+        eventId: event.id,
+        eventType: event.type,
+        eventCreatedAt,
+      },
+      select: { id: true },
+    });
+    ledgerRowId = reinserted.id;
   }
 
   // ====================================================================
@@ -613,13 +684,37 @@ async function applyInvoicePayment(
       });
     }
   } else {
+    // Status-specific amount selection:
+    //   - SUCCEEDED → amount_paid is the canonical paid total.
+    //   - FAILED    → amount_paid is 0 for a failed charge, so the
+    //                 outstanding amount lives on amount_due.
+    //   - other     → fall back to amount_due; log so we notice an
+    //                 unexpected status hitting this branch.
+    let amount: number;
+    if (status === "SUCCEEDED") {
+      amount = invoice.amount_paid ?? 0;
+    } else if (status === "FAILED") {
+      amount = invoice.amount_due ?? 0;
+    } else {
+      logger.warn(
+        {
+          invoiceId: invoice.id,
+          status,
+          amount_paid: invoice.amount_paid,
+          amount_due: invoice.amount_due,
+        },
+        "Unexpected invoice payment status — falling back to amount_due"
+      );
+      amount = invoice.amount_due ?? 0;
+    }
+
     await tx.paymentHistory.create({
       data: {
         accountId,
         subscriptionId: sub?.id,
         gatewayId: "stripe",
         gatewayPaymentId,
-        amount: invoice.amount_paid ?? invoice.amount_due ?? 0,
+        amount,
         currency: invoice.currency ?? "usd",
         status,
         description:

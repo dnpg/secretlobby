@@ -104,6 +104,7 @@ export async function action({ request }: Route.ActionArgs) {
     createCustomerPortalSession,
     BillingError,
     getStripeClient,
+    getAppBaseUrl,
   } = await import("@secretlobby/payments/billing");
   const { createLogger, formatError } = await import(
     "@secretlobby/logger/server"
@@ -125,6 +126,24 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const intent = formData.get("intent");
 
+  // Build absolute redirect URLs from APP_BASE_URL — NOT from the
+  // request's Host header. A misconfigured upstream proxy could
+  // otherwise forward an attacker-controlled Host, causing Stripe's
+  // success redirect to land on `evil.com/billing/success`.
+  // getAppBaseUrl() fails closed (throws) when APP_BASE_URL is unset;
+  // we refuse to start checkout in that case rather than silently
+  // falling back to the request URL.
+  let baseUrl: string;
+  try {
+    baseUrl = getAppBaseUrl();
+  } catch (err) {
+    logger.error(
+      { err: formatError(err) },
+      "APP_BASE_URL not configured — refusing to handle billing intent"
+    );
+    return { error: "Billing is not configured for this deployment." };
+  }
+
   try {
     if (intent === "checkout") {
       const planSlug = String(formData.get("planSlug") ?? "");
@@ -136,9 +155,6 @@ export async function action({ request }: Route.ActionArgs) {
       ) {
         return { error: "Invalid plan selection" };
       }
-
-      const url = new URL(request.url);
-      const baseUrl = `${url.protocol}//${url.host}`;
 
       const result = await createCheckoutSession({
         accountId,
@@ -157,8 +173,6 @@ export async function action({ request }: Route.ActionArgs) {
     }
 
     if (intent === "portal") {
-      const url = new URL(request.url);
-      const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createCustomerPortalSession({
         accountId,
         returnUrl: `${baseUrl}/billing`,
@@ -170,8 +184,6 @@ export async function action({ request }: Route.ActionArgs) {
       // Defer cancellation to the Customer Portal — Stripe will fire
       // the customer.subscription.updated/deleted webhook and our
       // handler will sync the DB. We just open the portal here.
-      const url = new URL(request.url);
-      const baseUrl = `${url.protocol}//${url.host}`;
       const result = await createCustomerPortalSession({
         accountId,
         returnUrl: `${baseUrl}/billing`,

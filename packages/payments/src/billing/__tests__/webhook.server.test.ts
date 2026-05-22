@@ -37,6 +37,8 @@ interface PrismaMock {
   stripeWebhookEvent: {
     create: MockFn;
     update: MockFn;
+    findUnique: MockFn;
+    delete: MockFn;
   };
   account: {
     findUnique: MockFn;
@@ -61,7 +63,12 @@ interface PrismaMock {
 
 const { prismaMock } = vi.hoisted(() => {
   const mock: PrismaMock = {
-    stripeWebhookEvent: { create: vi.fn(), update: vi.fn() },
+    stripeWebhookEvent: {
+      create: vi.fn(),
+      update: vi.fn(),
+      findUnique: vi.fn(),
+      delete: vi.fn(),
+    },
     account: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     subscription: { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     subscriptionPlan: { findFirst: vi.fn() },
@@ -151,6 +158,8 @@ describe("handleStripeWebhook", () => {
       id: "wevt_row_1",
     });
     prismaMock.stripeWebhookEvent.update.mockResolvedValue({});
+    prismaMock.stripeWebhookEvent.findUnique.mockResolvedValue(null);
+    prismaMock.stripeWebhookEvent.delete.mockResolvedValue({});
     prismaMock.account.findUnique.mockResolvedValue({ id: "acct_test_001" });
     prismaMock.account.update.mockResolvedValue({});
     prismaMock.account.updateMany.mockResolvedValue({ count: 1 });
@@ -231,13 +240,19 @@ describe("handleStripeWebhook", () => {
     expect(updateArgs.data.processedAt).toBeInstanceOf(Date);
   });
 
-  it("deduplicates when the ledger insert hits the unique constraint", async () => {
-    // Simulate Prisma's P2002 unique-constraint error.
+  it("deduplicates when the prior delivery already completed (processedAt set)", async () => {
+    // Simulate Prisma's P2002 unique-constraint error on insert, then
+    // the existing row has processedAt set — the prior delivery did
+    // finish, so this is a true duplicate Stripe redelivery.
     const err = Object.assign(
       new Error("Unique constraint failed on (gatewayId, eventId)"),
       { code: "P2002" }
     );
     prismaMock.stripeWebhookEvent.create.mockRejectedValueOnce(err);
+    prismaMock.stripeWebhookEvent.findUnique.mockResolvedValueOnce({
+      id: "wevt_row_existing",
+      processedAt: new Date(),
+    });
 
     const body = makeSubscriptionEvent("customer.subscription.created");
     const header = makeStripeSignature(body);
@@ -253,6 +268,83 @@ describe("handleStripeWebhook", () => {
     // No subsequent work should have happened.
     expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    // We did NOT delete (this was a real duplicate, not a retry).
+    expect(prismaMock.stripeWebhookEvent.delete).not.toHaveBeenCalled();
+  });
+
+  it("retries (does NOT dedupe) when the prior delivery failed (processedAt null)", async () => {
+    // C1 regression: a previous delivery hit an error mid-processing
+    // and left the ledger row with processedAt=null + error stamped.
+    // Stripe's next retry must NOT be silently 200'd — we should
+    // delete the stale row and re-process.
+    const err = Object.assign(
+      new Error("Unique constraint failed on (gatewayId, eventId)"),
+      { code: "P2002" }
+    );
+    // First create() (initial insert) hits P2002. After we delete and
+    // re-insert, the second create() resolves normally.
+    prismaMock.stripeWebhookEvent.create
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ id: "wevt_row_2" });
+    prismaMock.stripeWebhookEvent.findUnique.mockResolvedValueOnce({
+      id: "wevt_row_stale",
+      processedAt: null,
+    });
+
+    const body = makeSubscriptionEvent("customer.subscription.created");
+    const header = makeStripeSignature(body);
+
+    const result = await handleStripeWebhook({
+      rawBody: body,
+      signatureHeader: header,
+    });
+
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.deduplicated).toBe(false);
+    expect(result.applied).toContain(
+      "subscription.upsert:applied(sub_test_001, status=ACTIVE)"
+    );
+    // Stale row deleted.
+    expect(prismaMock.stripeWebhookEvent.delete).toHaveBeenCalledWith({
+      where: { id: "wevt_row_stale" },
+    });
+    // Re-insert happened (two create calls — first errored, second succeeded).
+    expect(prismaMock.stripeWebhookEvent.create).toHaveBeenCalledTimes(2);
+    // Apply ran, processedAt stamped on the new row.
+    expect(prismaMock.subscription.upsert).toHaveBeenCalledTimes(1);
+    expect(prismaMock.stripeWebhookEvent.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "wevt_row_2" },
+        data: expect.objectContaining({ processedAt: expect.any(Date) }),
+      })
+    );
+  });
+
+  it("rejects live-mode events when configured with a test secret key (livemode mismatch)", async () => {
+    // H3: STRIPE_SECRET_KEY=sk_test_* in beforeEach → expectedLivemode=false.
+    // An event with livemode:true must be rejected before any DB writes.
+    const body = JSON.stringify({
+      id: "evt_livemode_mismatch",
+      object: "event",
+      type: "customer.subscription.created",
+      created: Math.floor(Date.now() / 1000),
+      livemode: true, // ← mismatch
+      data: { object: { id: "sub_x", customer: "cus_x", status: "active", items: { data: [] } } },
+    });
+    const header = makeStripeSignature(body);
+
+    const result = await handleStripeWebhook({
+      rawBody: body,
+      signatureHeader: header,
+    });
+
+    expect(result.status).toBe("invalid_signature");
+    if (result.status !== "invalid_signature") return;
+    expect(result.reason).toBe("livemode_mismatch");
+    // Critical: no DB writes whatsoever.
+    expect(prismaMock.stripeWebhookEvent.create).not.toHaveBeenCalled();
+    expect(prismaMock.subscription.upsert).not.toHaveBeenCalled();
   });
 
   it("acknowledges unhandled event types without writing a ledger row", async () => {
