@@ -9,6 +9,7 @@ export type {
   Staff,
   Session,
   Lobby,
+  LobbyUser,
   Track,
   Domain,
   AuditLog,
@@ -42,6 +43,8 @@ export {
   InvitationStatus,
   FeedbackType,
   FeedbackStatus,
+  LobbyAccessPolicy,
+  LobbyUserStatus,
 } from "./generated/client/enums.js";
 
 // Re-export Prisma types for advanced queries

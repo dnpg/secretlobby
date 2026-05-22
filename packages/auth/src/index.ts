@@ -46,6 +46,26 @@ export {
   getActiveKeyId,
 } from "./lobby-password.server.js";
 
+// Lobby access control (identity + policy + magic-link lifecycle).
+// Composes with lobby-password.server.ts.
+export {
+  LOBBY_MAGIC_LINK_TTL_MS,
+  LOBBY_SESSION_TTL_MS,
+  normalizeEmail,
+  isValidEmailShape,
+  extractEmailDomain,
+  isDomainAllowed,
+  checkLobbyAccess,
+  issueLobbyMagicLink,
+  consumeLobbyMagicLink,
+  touchLobbyUser,
+  type LobbyAccessCheck,
+  type LobbyAccessShape,
+  type IssueMagicLinkOptions,
+  type IssuedMagicLink,
+  type ConsumeMagicLinkResult,
+} from "./lobby-access.server.js";
+
 // OAuth
 export {
   getGoogleClient,

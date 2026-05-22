@@ -3,6 +3,8 @@ export { sendMail, type SendMailParams } from "./transport.js";
 export { sendPasswordResetEmail } from "./password-reset.js";
 export { sendEmailVerification } from "./email-verification.js";
 export { sendInvitationEmail } from "./invitation.js";
+export { sendLobbyMagicLinkEmail } from "./lobby-magic-link.js";
+export { sendLobbyInvitationEmail } from "./lobby-invitation.js";
 export { sendFeedbackNotificationEmail } from "./feedback-notification.js";
 export {
   getAssembledEmail,
