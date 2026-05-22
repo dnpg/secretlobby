@@ -7,8 +7,10 @@
 // to this tenant (defense in depth against a leaked token), and then
 // hand the visitor a lobby session cookie.
 //
-// Failure paths bounce to /auth/request-link the same way the magic-link
-// flow does — keeps the recovery story identical for both methods.
+// Failure paths bounce back to the lobby's canonical URL with
+// `?reason=<code>` — the lobby's _index loader picks up the reason and
+// surfaces the matching banner above the sign-in form. Visitors never
+// see this URL beyond the brief redirect.
 
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.google.finish";
@@ -21,13 +23,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const token = url.searchParams.get("t");
   if (!token) {
-    throw redirect("/auth/request-link?reason=missing_token");
+    throw redirect("/?reason=missing_token");
   }
 
   const verified = verifyLobbyOAuthHandoff(token);
   if (!verified.ok) {
     const reason = verified.reason === "expired" ? "expired" : "used_or_invalid";
-    throw redirect(`/auth/request-link?reason=${reason}`);
+    throw redirect(`/?reason=${reason}`);
   }
 
   // The token only proves the *console* believed this person was
@@ -61,7 +63,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     lobbyUser.lobby.accountId !== tenant.account.id ||
     !lobbyUser.lobby.isPublished
   ) {
-    throw redirect("/auth/request-link?reason=lobby_mismatch");
+    throw redirect("/?reason=lobby_mismatch");
   }
 
   // Honor the explicit returnPath if it's a sane in-lobby path,

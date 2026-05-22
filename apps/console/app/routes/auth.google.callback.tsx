@@ -131,9 +131,10 @@ export async function loader({ request }: Route.LoaderArgs) {
       });
       if (!lobby || !lobby.isPublished || !lobby.identityGoogle) {
         // The lobby toggled Google off (or got unpublished) between
-        // the start of the flow and now.
+        // the start of the flow and now. Bounce back to the lobby root
+        // — _index surfaces the reason banner above the sign-in form.
         const proto = process.env.NODE_ENV === "production" ? "https" : "http";
-        throw redirect(`${proto}://${returnHost}/auth/request-link?reason=not_authorized`);
+        throw redirect(`${proto}://${returnHost}/?reason=not_authorized`);
       }
 
       const email = normalizeEmail(googleUser.email);
@@ -150,7 +151,10 @@ export async function loader({ request }: Route.LoaderArgs) {
           { lobbyId, reason: allowed.reason },
           "Lobby Google sign-in denied (policy)",
         );
-        throw redirect(`${lobbyOrigin}/auth/request-link?reason=not_authorized`);
+        // Bounce to the lobby's actual path (default lobby → /, else
+        // /<slug>) with the reason banner. lobbyPath was computed
+        // above as `returnPath ?? (isDefault ? "/" : "/<slug>")`.
+        throw redirect(`${lobbyOrigin}${lobbyPath}${lobbyPath.includes("?") ? "&" : "?"}reason=not_authorized`);
       }
 
       // Upsert the LobbyUser. First Google sign-in stamps googleSub

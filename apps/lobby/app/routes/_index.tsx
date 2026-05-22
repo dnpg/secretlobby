@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import { useLoaderData, useActionData, redirect } from "react-router";
+import { useLoaderData, useActionData } from "react-router";
 import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
@@ -36,6 +36,7 @@ import {
   SecretLobbyFooter,
   trackEvent,
   type ImageUrls,
+  type LoginAccessMode,
   type LoginPageSettings,
   type PlayerBlockContent,
   type Section,
@@ -201,6 +202,13 @@ export async function loader({ request }: Route.LoaderArgs) {
       csrfToken,
       pageLayout: null as null,
       themeSettings: defaultDarkTheme,
+      // Login-data slots kept on the localhost dev branch too so the
+      // render path sees a consistent shape — values are all null /
+      // defaults because localhost dev only uses the legacy
+      // password-only gate.
+      accessMode: null as LoginAccessMode | null,
+      loginReasonMessage: null as string | null,
+      magicLinkExpiresInDays: 7,
     };
   }
 
@@ -246,6 +254,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       csrfToken,
       pageLayout: null as null,
       themeSettings: defaultDarkTheme,
+      accessMode: null as LoginAccessMode | null,
+      loginReasonMessage: null as string | null,
+      magicLinkExpiresInDays: 7,
     };
   }
 
@@ -254,25 +265,20 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Check if lobby requires password and user is authenticated for THIS specific lobby
   const isAuthenticated = isAuthenticatedForLobby(session, lobby.id);
 
-  // If the lobby uses email-based identity (magic-link/invitation) or
-  // Google sign-in, the login UI lives at /auth/request-link rather than
-  // inline on the lobby page. Forward unauthenticated visitors there;
-  // the request-link route renders whichever methods are configured and
-  // handles password-on-top, invite-list checks, and domain allowlists.
-  // The lobby's own UI is only reached after a successful consume sets
-  // the session cookie.
-  if (!isAuthenticated && (lobby.identityEmail || lobby.identityGoogle)) {
-    const target = lobby.isDefault
-      ? "/auth/request-link"
-      : `/auth/request-link?lobby=${encodeURIComponent(lobby.slug)}`;
-    throw redirect(target);
-  }
-
-  // Password gate uses the explicit `passwordRequired` flag now (set by
-  // the schema migration to true for any lobby with a non-empty
-  // password). This lets admins disable the gate without clearing the
-  // shared secret.
-  const needsPassword = lobby.passwordRequired && !isAuthenticated;
+  // Unified sign-in gate: any combination of (passwordRequired,
+  // identityEmail, identityGoogle) keeps the visitor on this same URL
+  // — the URL never changes during sign-in. The LoginPanel below picks
+  // up `accessMode` when identity methods are on and falls back to the
+  // legacy password-only form otherwise. Failure paths (magic-link
+  // consume / Google finish) redirect back to this URL with
+  // `?reason=<code>`; we surface the matching banner via
+  // `resolveLoginReasonMessage`.
+  const needsLogin =
+    !isAuthenticated &&
+    (lobby.passwordRequired || lobby.identityEmail || lobby.identityGoogle);
+  // Backwards-compat name — preserved because downstream loader logic
+  // gates on it ("don't fetch tracks when on the login screen").
+  const needsPassword = needsLogin;
 
   // Extract per-lobby settings from lobby.settings
   let loginPageSettings: LoginPageSettings = defaultLoginPageSettings;
@@ -633,6 +639,47 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   }
 
+  // Inline sign-in support data — computed only when we'll actually
+  // render the LoginPanel. Keeping it conditional avoids paying for
+  // these reads on every authenticated page view.
+  const { getLobbyGoogleSignInUrl, resolveLoginReasonMessage, LOGIN_MAGIC_LINK_EXPIRES_IN_DAYS } =
+    needsLogin
+      ? await import("~/lib/login-page.server")
+      : ({
+          getLobbyGoogleSignInUrl: () => null,
+          resolveLoginReasonMessage: () => null,
+          LOGIN_MAGIC_LINK_EXPIRES_IN_DAYS: 7,
+        } as const);
+
+  const googleSignInUrl = needsLogin
+    ? getLobbyGoogleSignInUrl(request, {
+        id: lobby.id,
+        slug: lobby.slug,
+        isDefault: lobby.isDefault,
+        identityGoogle: lobby.identityGoogle,
+      })
+    : null;
+
+  const reasonParam = new URL(request.url).searchParams.get("reason");
+  const loginReasonMessage = needsLogin
+    ? resolveLoginReasonMessage(reasonParam)
+    : null;
+
+  // The LoginPanel's `accessMode` prop turns on the multi-method form
+  // (email + Google + optional password). When identity methods are
+  // off, we omit accessMode so LoginPanel falls back to its legacy
+  // password-only render — same behavior as before this refactor.
+  const accessMode =
+    needsLogin && (lobby.identityEmail || lobby.identityGoogle)
+      ? {
+          identityEmail: lobby.identityEmail,
+          identityGoogle: lobby.identityGoogle,
+          passwordRequired: lobby.passwordRequired,
+          googleSignInUrl,
+          lobbySlug: lobby.slug,
+        }
+      : null;
+
   const data = {
     isLocalhost: false,
     content: null,
@@ -640,6 +687,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       id: lobby.id,
       title: lobby.title,
       description: lobby.description,
+      slug: lobby.slug,
+      isDefault: lobby.isDefault,
       // True when the lobby is password-gated. The authenticated render
       // path uses this to decide whether to show the Logout button —
       // distinct from `requiresPassword`, which is only true BEFORE
@@ -652,6 +701,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     },
     requiresPassword: needsPassword,
     isAuthenticated: !needsPassword,
+    accessMode,
+    loginReasonMessage,
+    magicLinkExpiresInDays: LOGIN_MAGIC_LINK_EXPIRES_IN_DAYS,
     isPreview: tenant.isPreview,
     imageUrls,
     tracks,
@@ -788,18 +840,19 @@ export async function action({ request }: Route.ActionArgs) {
     return { error: "Lobby not found" };
   }
 
-  // If the lobby switched to email or Google identity while a stale tab
-  // was open, the POST here would still try to authenticate by password
-  // only — bypassing the invite-list / domain check the new flow
-  // requires. Fail closed and bounce them to the request-link page.
-  if (tenant.lobby.identityEmail || tenant.lobby.identityGoogle) {
-    const target = tenant.lobby.isDefault
-      ? "/auth/request-link"
-      : `/auth/request-link?lobby=${encodeURIComponent(tenant.lobby.slug)}`;
-    throw redirect(target);
+  const formData = await request.formData();
+
+  // Branch on form shape rather than lobby config — the rendered form
+  // dictates which fields the submit carries. An `email` field means
+  // the visitor used the multi-method sign-in form; anything else is
+  // the legacy password-only gate. This makes the action robust to
+  // stale tabs (the form they're submitting is whatever they actually
+  // saw).
+  if (formData.has("email")) {
+    const { handleMagicLinkRequest } = await import("~/lib/login-page.server");
+    return handleMagicLinkRequest(request, tenant.lobby, formData);
   }
 
-  const formData = await request.formData();
   const password = formData.get("password") as string;
 
   // Verify password — decrypts the stored value with constant-time-ish
@@ -1063,7 +1116,23 @@ export default function LobbyIndex() {
             logoImageUrl={loginLogoImageUrl}
             logoImageWidth={loginLogoImageWidth}
             logoImageHeight={loginLogoImageHeight}
-            errorMessage={actionData?.error ?? null}
+            // Show actionData errors when present, fall back to the
+            // reason banner (from a failed magic-link click landing
+            // back on /?reason=...). Form errors are interactive and
+            // therefore take precedence.
+            errorMessage={
+              actionData && "error" in actionData
+                ? actionData.error
+                : data.loginReasonMessage
+            }
+            // `submitted` is set when the magic-link action returned
+            // success — LoginPanel swaps the form for the "check your
+            // email" message. Only meaningful with accessMode.
+            submitted={
+              !!(actionData && "magicLink" in actionData && "success" in actionData)
+            }
+            magicLinkExpiresInDays={data.magicLinkExpiresInDays}
+            accessMode={data.accessMode ?? undefined}
             csrfToken={data.csrfToken}
             wrapperClassName="flex-1 flex items-center justify-center overflow-hidden"
             belowPanel={

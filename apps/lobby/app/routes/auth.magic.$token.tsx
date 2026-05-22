@@ -8,8 +8,12 @@
 // token was issued for (the URL only tells us the *account*, since the
 // magic-link URL doesn't carry a lobby slug), double-check the current
 // access policy, bind the session to the visitor's LobbyUser row, and
-// redirect to the right lobby path. Any failure path bounces to
-// /auth/request-link so they can self-serve a fresh link.
+// redirect to the right lobby path.
+//
+// Failure paths bounce back to the lobby's canonical URL (`/` for the
+// default lobby, `/<slug>` otherwise) with `?reason=<code>` — _index
+// surfaces the matching banner above the sign-in form. We never expose
+// the consume URL to the user beyond the brief redirect.
 
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.magic.$token";
@@ -24,7 +28,7 @@ import { resolveTenant } from "~/lib/subdomain.server";
 export async function loader({ request, params }: Route.LoaderArgs) {
   const token = params.token;
   if (!token) {
-    throw redirect("/auth/request-link?reason=missing_token");
+    throw redirect("/?reason=missing_token");
   }
 
   // The URL only resolves the *account* (subdomain or custom domain).
@@ -39,9 +43,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   if (!result.ok) {
     // not_found covers both "never existed" and "already consumed" — we
     // collapse them so a forwarder can't tell whether the legit recipient
-    // clicked first.
+    // clicked first. We don't know the lobby slug from a failed consume,
+    // so the visitor lands on the account's default lobby and can
+    // re-request from there if needed.
     const reason = result.reason === "expired" ? "expired" : "used_or_invalid";
-    throw redirect(`/auth/request-link?reason=${reason}`);
+    throw redirect(`/?reason=${reason}`);
   }
 
   const lobby = await prisma.lobby.findUnique({
@@ -56,8 +62,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     },
   });
   if (!lobby || lobby.accountId !== tenant.account.id) {
-    throw redirect("/auth/request-link?reason=lobby_mismatch");
+    throw redirect("/?reason=lobby_mismatch");
   }
+
+  // Helper for the rest of the failure paths — we now know the lobby's
+  // canonical path so we can land the visitor exactly where they were
+  // trying to go.
+  const lobbyHome = lobby.isDefault ? "/" : `/${lobby.slug}`;
 
   // Defense in depth: re-run the policy check on the consumed email.
   // Guards against the admin tightening the policy between issue and
@@ -71,16 +82,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     result.lobbyUser.email,
   );
   if (!allowed.allowed) {
-    throw redirect("/auth/request-link?reason=not_authorized");
+    throw redirect(`${lobbyHome}?reason=not_authorized`);
   }
 
-  const redirectPath = lobby.isDefault ? "/" : `/${lobby.slug}`;
-  return authenticateForLobby(
-    request,
-    lobby.id,
-    redirectPath,
-    result.lobbyUser.id,
-  );
+  return authenticateForLobby(request, lobby.id, lobbyHome, result.lobbyUser.id);
 }
 
 // Route renders nothing — loader always throws a redirect.

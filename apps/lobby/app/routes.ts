@@ -12,10 +12,12 @@ export default [
   // The resolveTenant function extracts the lobby slug from the URL path
   route(":lobbySlug", "routes/$lobbySlug.tsx"),
 
-  // Magic-link sign-in (lobby visitor identity flow)
+  // Magic-link sign-in (lobby visitor identity flow). Both consumers
+  // are loader-only and redirect back to the lobby root with
+  // `?reason=<code>` on failure — the user never sees an /auth/* URL
+  // beyond the brief redirect. The sign-in FORM lives on the lobby
+  // root itself; see apps/lobby/app/routes/_index.tsx.
   route("auth/magic/:token", "routes/auth.magic.$token.tsx"),
-  route("auth/request-link", "routes/auth.request-link.tsx"),
-  // Google sign-in finish (central console callback hands off here)
   route("auth/google/finish", "routes/auth.google.finish.tsx"),
 
   // Logout
