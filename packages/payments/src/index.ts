@@ -1,52 +1,22 @@
 /**
  * @secretlobby/payments
  *
- * Flexible multi-gateway payment system supporting Stripe, PayPal, and more.
+ * Stripe subscription billing API. The earlier multi-gateway abstraction
+ * (paymentManager + stripeGateway + paypalGateway + the normalized webhook
+ * handler) was retired alongside the security-review follow-up — the
+ * `./billing` module is now the only entry point.
+ *
+ * If you need a second gateway, build it as a peer of `./billing` rather
+ * than reviving the old abstraction; the legacy design was load-bearing
+ * for env-driven price IDs that no longer exist (SubscriptionPlan rows
+ * carry stripePriceMonthly/Yearly now).
  */
 
-// Types
-export type {
-  PaymentGateway,
-  CheckoutParams,
-  CheckoutResult,
-  SubscriptionParams,
-  SubscriptionResult,
-  UpdateSubscriptionParams,
-  CustomerParams,
-  CustomerPortalResult,
-  PaymentMethodInfo,
-  PaymentRecord,
-  PaymentStatus,
-  WebhookEvent,
-  WebhookEventType,
-  WebhookEventData,
-  SubscriptionTier,
-  SubscriptionStatus,
-  GatewayConfig,
-  AvailableGateway,
-} from './types.js';
-
-// Constants
-export { SUBSCRIPTION_TIERS } from './types.js';
-
-// Manager
-export { paymentManager, PaymentGatewayManager } from './manager.js';
-
-// Gateways
-export { stripeGateway, getStripeClient, getStripePublishableKey } from './gateways/stripe.js';
-export { paypalGateway } from './gateways/paypal.js';
-export { registerAllGateways, registerConfiguredGateways } from './gateways/index.js';
-
-// Webhook Handler (legacy normalized-event abstraction)
-export { processWebhookEvent, type WebhookHandlerResult } from './webhooks/handler.js';
-
-// Billing — Stripe subscription API. Prefer this over the legacy
-// `paymentManager` for new code; the gateway abstraction will be
-// retired once everything is migrated.
+// Billing — Stripe subscription API.
 export {
   // env / client
-  getStripeClient as getBillingStripeClient,
-  getStripePublishableKey as getBillingPublishableKey,
+  getStripeClient,
+  getStripePublishableKey,
   isBillingConfigured,
   MissingStripeConfigError,
   // signature

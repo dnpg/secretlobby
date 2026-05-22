@@ -44,10 +44,6 @@ function getGatewayStatus() {
       hasSecretKey: Boolean(process.env.STRIPE_SECRET_KEY),
       hasPublishableKey: Boolean(process.env.STRIPE_PUBLISHABLE_KEY),
       hasWebhookSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
-      hasPrices: Boolean(
-        process.env.STRIPE_PRICE_STARTER_MONTHLY &&
-        process.env.STRIPE_PRICE_PRO_MONTHLY
-      ),
     },
     paypal: {
       configured: Boolean(
@@ -592,9 +588,6 @@ export default function SettingsPage() {
                         <div className={gatewayStatus.stripe.hasWebhookSecret ? "text-[var(--color-success)]" : "text-theme-muted"}>
                           {gatewayStatus.stripe.hasWebhookSecret ? "✓" : "○"} STRIPE_WEBHOOK_SECRET
                         </div>
-                        <div className={gatewayStatus.stripe.hasPrices ? "text-[var(--color-success)]" : "text-theme-muted"}>
-                          {gatewayStatus.stripe.hasPrices ? "✓" : "○"} Price IDs configured
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -823,13 +816,7 @@ STRIPE_SECRET_KEY=sk_...
 STRIPE_PUBLISHABLE_KEY=pk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Stripe Price IDs (from Stripe Dashboard)
-STRIPE_PRICE_STARTER_MONTHLY=price_...
-STRIPE_PRICE_STARTER_YEARLY=price_...
-STRIPE_PRICE_PRO_MONTHLY=price_...
-STRIPE_PRICE_PRO_YEARLY=price_...
-STRIPE_PRICE_ENTERPRISE_MONTHLY=price_...
-STRIPE_PRICE_ENTERPRISE_YEARLY=price_...
+# Price IDs are managed in the SubscriptionPlan table — see /plans
 
 # PayPal Configuration (optional)
 PAYPAL_CLIENT_ID=...
