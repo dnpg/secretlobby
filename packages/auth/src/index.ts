@@ -34,6 +34,18 @@ export {
   type CreateUserOptions,
 } from "./password.server.js";
 
+// Lobby password encryption at rest (separate concern from user-account
+// password hashing — lobby passwords are shared secrets, see the file
+// for the threat model).
+export {
+  encryptLobbyPassword,
+  decryptLobbyPassword,
+  verifyLobbyPassword,
+  isEncryptedLobbyPassword,
+  getEncryptedKeyId,
+  getActiveKeyId,
+} from "./lobby-password.server.js";
+
 // OAuth
 export {
   getGoogleClient,

@@ -10,6 +10,9 @@ export async function getLobbyById(lobbyId: string) {
   });
 }
 
+// Lobby + every media slot. Used by the page-builder loader so the editor
+// can render existing image/banner/background/profile assignments and
+// surface them in the image-block picker.
 export async function getLobbyByIdWithMedia(lobbyId: string) {
   return prisma.lobby.findUnique({
     where: { id: lobbyId },

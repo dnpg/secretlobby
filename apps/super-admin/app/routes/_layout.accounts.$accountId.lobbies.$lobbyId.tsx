@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Form, Link, useActionData, useLoaderData, useNavigation } from "react-router";
 import type { Route } from "./+types/_layout.accounts.$accountId.lobbies.$lobbyId";
 import { prisma } from "@secretlobby/db";
+import { decryptLobbyPassword } from "@secretlobby/auth/lobby-password";
 import { cn } from "@secretlobby/ui";
 import { toast } from "sonner";
 
@@ -42,8 +43,15 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     ? `${protocol}://${account?.slug}.${baseDomain}`
     : `${protocol}://${account?.slug}.${baseDomain}/${lobby.slug}`;
 
+  // Decrypt password at the loader boundary so the rendered form gets
+  // plaintext but the wire-format never leaks the encrypted blob.
+  const decryptedLobby = {
+    ...lobby,
+    password: lobby.password ? decryptLobbyPassword(lobby.password) : null,
+  };
+
   return {
-    lobby,
+    lobby: decryptedLobby,
     accountSlug: account?.slug ?? "",
     accountDefaultLobbyId: account?.defaultLobbyId ?? null,
     lobbyUrl,

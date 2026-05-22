@@ -281,16 +281,15 @@ const mainNavItems = [
   { to: "feedback", label: "Feedback", icon: "feedback" as const },
 ];
 
-// Lobby-specific navigation items (shown when editing a lobby)
+// Lobby-specific navigation items (shown when editing a lobby).
+// Theme, login-page, technical-info and per-lobby password live in the
+// page-builder editor now; password protection is folded into the lobby
+// index alongside the lobby title/description.
 const lobbyNavItems = [
   { to: "", label: "Content", end: true, icon: "content" as const },
   { to: "analytics", label: "Analytics", icon: "analytics" as const },
   { to: "playlists", label: "Playlists", icon: "playlist" as const },
-  { to: "theme", label: "Theme", icon: "theme" as const },
   { to: "social", label: "Social Links", icon: "social" as const },
-  { to: "technical-info", label: "Tech Info", icon: "techInfo" as const },
-  { to: "login-page", label: "Login Page", icon: "login" as const },
-  { to: "password", label: "Password", icon: "password" as const },
 ];
 
 export default function AdminLayout() {

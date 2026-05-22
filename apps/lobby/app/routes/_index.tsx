@@ -4,6 +4,7 @@ import type { Route } from "./+types/_index";
 import { resolveTenant, isLocalhost, getPreviewCookieHeader } from "~/lib/subdomain.server";
 import { prisma } from "@secretlobby/db";
 import { getSession, createSessionResponse, authenticateForLobby, isAuthenticatedForLobby } from "@secretlobby/auth";
+import { verifyLobbyPassword } from "@secretlobby/auth/lobby-password";
 import {
   getSiteContent,
   getSitePassword,
@@ -772,8 +773,10 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const password = formData.get("password") as string;
 
-  // Verify password
-  if (password !== tenant.lobby.password) {
+  // Verify password — decrypts the stored value with constant-time-ish
+  // compare. Legacy plaintext values still verify until the migration
+  // script encrypts them in place.
+  if (!verifyLobbyPassword(password, tenant.lobby.password ?? "")) {
     return { error: "Invalid password" };
   }
 

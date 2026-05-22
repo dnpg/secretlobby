@@ -1,4 +1,5 @@
 import { prisma, Prisma } from "@secretlobby/db";
+import { encryptLobbyPassword } from "@secretlobby/auth/lobby-password";
 
 // =============================================================================
 // Lobby Content & Media
@@ -17,27 +18,12 @@ export async function updateLobbyContent(
   });
 }
 
-export async function updateLobbyMedia(
-  lobbyId: string,
-  field:
-    | "backgroundMediaId"
-    | "backgroundMediaDarkId"
-    | "bannerMediaId"
-    | "bannerMediaDarkId"
-    | "profileMediaId"
-    | "profileMediaDarkId",
-  mediaId: string | null
-) {
-  return prisma.lobby.update({
-    where: { id: lobbyId },
-    data: { [field]: mediaId },
-  });
-}
-
 export async function updateLobbyPassword(lobbyId: string, password: string) {
+  // Encrypt before write so the DB never sees plaintext. Empty string
+  // ("no password") stays empty via encryptLobbyPassword's short-circuit.
   return prisma.lobby.update({
     where: { id: lobbyId },
-    data: { password },
+    data: { password: encryptLobbyPassword(password) },
   });
 }
 

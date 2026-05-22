@@ -1,4 +1,5 @@
 import { prisma } from "@secretlobby/db";
+import { encryptLobbyPassword } from "@secretlobby/auth/lobby-password";
 
 const SLUG_RE = /^[a-z0-9-]+$/;
 
@@ -55,7 +56,11 @@ export async function updateLobbyCore(
       description: input.description?.trim() || null,
       isPublished: input.isPublished,
       requiresAuth: input.requiresAuth,
-      password: input.password && input.password.length > 0 ? input.password : null,
+      // Encrypt before write — see packages/auth/src/lobby-password.server.ts.
+      password:
+        input.password && input.password.length > 0
+          ? encryptLobbyPassword(input.password)
+          : null,
       ...publishedAtChange,
     },
   });
