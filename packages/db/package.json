@@ -23,8 +23,6 @@
     "db:reset": "prisma migrate reset",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
     "db:create-super-admin": "dotenv -e ../../.env -- tsx prisma/create-super-admin.ts",
-    "db:encrypt-lobby-passwords": "dotenv -e ../../.env -- tsx prisma/scripts/encrypt-lobby-passwords.ts",
-    "db:encrypt-lobby-passwords:prod": "node prisma/scripts/encrypt-lobby-passwords.mjs",
     "clean": "rm -rf node_modules src/generated"
   },
   "dependencies": {

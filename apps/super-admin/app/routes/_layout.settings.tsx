@@ -166,6 +166,118 @@ export async function action({ request }: Route.ActionArgs) {
     return { success: true, message: "Page builder settings updated" };
   }
 
+  if (intent === "encryptLobbyPasswords") {
+    const {
+      decryptLobbyPassword,
+      encryptLobbyPassword,
+      getActiveKeyId,
+      getEncryptedKeyId,
+      isEncryptedLobbyPassword,
+    } = await import("@secretlobby/auth/lobby-password");
+
+    let activeKeyId: string;
+    try {
+      activeKeyId = getActiveKeyId();
+    } catch (err) {
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : "Encryption key not configured",
+      };
+    }
+
+    const lobbies = await prisma.lobby.findMany({
+      where: { password: { not: null } },
+      select: { id: true, password: true },
+    });
+
+    let encrypted = 0;
+    let rotated = 0;
+    let skipped = 0;
+
+    for (const lobby of lobbies) {
+      const current = lobby.password ?? "";
+      if (!current) { skipped++; continue; }
+
+      const encKeyId = getEncryptedKeyId(current);
+      if (encKeyId === activeKeyId) { skipped++; continue; }
+
+      const plaintext = decryptLobbyPassword(current);
+      const next = encryptLobbyPassword(plaintext);
+      await prisma.lobby.update({
+        where: { id: lobby.id },
+        data: { password: next },
+      });
+
+      if (isEncryptedLobbyPassword(current)) {
+        rotated++;
+      } else {
+        encrypted++;
+      }
+    }
+
+    return {
+      success: true,
+      message: `Passwords updated: ${encrypted} encrypted, ${rotated} rotated, ${skipped} already current`,
+    };
+  }
+
+  if (intent === "migrateHls") {
+    const { getFile, generateHls } = await import("@secretlobby/storage");
+
+    const { getMediaFolder } = await import("@secretlobby/storage");
+
+    const tracks = await prisma.track.findMany({
+      where: { hlsReady: false },
+      include: {
+        media: { select: { key: true } },
+      },
+    });
+
+    if (tracks.length === 0) {
+      return { success: true, message: "All tracks are already HLS-ready" };
+    }
+
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const track of tracks) {
+      const mediaKey = track.media?.key ?? track.filename;
+      try {
+        const file = await getFile(mediaKey);
+        if (!file) {
+          failed++;
+          errors.push(`${track.title}: file not found`);
+          continue;
+        }
+
+        const buffer = Buffer.from(file.body);
+        const mediaFolder = getMediaFolder(mediaKey);
+        const result = await generateHls(buffer, mediaFolder);
+
+        await prisma.track.update({
+          where: { id: track.id },
+          data: {
+            hlsReady: true,
+            waveformPeaks: result.waveformPeaks,
+            duration: result.duration > 0 ? result.duration : track.duration,
+          },
+        });
+
+        success++;
+      } catch (e) {
+        failed++;
+        errors.push(`${track.title}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    const summary = `${success} converted, ${failed} failed out of ${tracks.length} tracks`;
+    if (errors.length > 0) {
+      return { success: failed === 0, message: `${summary}. Errors: ${errors.slice(0, 5).join("; ")}` };
+    }
+    return { success: true, message: summary };
+  }
+
   if (intent === "updateFeedbackNotifications") {
     const feedbackNotificationEmail = formData.get("feedbackNotificationEmail") as string;
 
@@ -858,6 +970,52 @@ export default function SettingsPage() {
               </button>
             </div>
           </fetcher.Form>
+        </div>
+
+        {/* Security & Maintenance */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-4">Security &amp; Maintenance</h3>
+
+          {/* Password encryption */}
+          <div className="mb-6">
+            <h4 className="text-md font-medium mb-2">Encrypt Lobby Passwords</h4>
+            <p className="text-theme-secondary text-sm mb-3">
+              Encrypt plaintext passwords at rest under the active AES-256-GCM key.
+              Already-encrypted passwords are skipped. Safe to run multiple times.
+            </p>
+            <fetcher.Form method="post">
+              <input type="hidden" name="intent" value="encryptLobbyPasswords" />
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="cursor-pointer px-4 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+              >
+                {isSubmitting ? "Encrypting..." : "Encrypt Lobby Passwords"}
+              </button>
+            </fetcher.Form>
+          </div>
+
+          <hr className="border-theme my-6" />
+
+          {/* HLS migration */}
+          <div>
+            <h4 className="text-md font-medium mb-2">Generate HLS Streams</h4>
+            <p className="text-theme-secondary text-sm mb-3">
+              Process tracks that are not yet HLS-ready. Downloads each track{"'"}s audio
+              from storage, generates HLS segments + waveform peaks, and marks
+              the track as ready. This may take a while for large libraries.
+            </p>
+            <fetcher.Form method="post">
+              <input type="hidden" name="intent" value="migrateHls" />
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="cursor-pointer px-4 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+              >
+                {isSubmitting ? "Processing tracks..." : "Generate HLS for Pending Tracks"}
+              </button>
+            </fetcher.Form>
+          </div>
         </div>
 
         {/* Environment Variables Reference */}
