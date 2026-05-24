@@ -714,6 +714,14 @@ model SystemSettings {
   maintenanceMode  Boolean  @default(false)
   prelaunchMode    Boolean  @default(false)
 
+  // Page Builder
+  // When true, the page-builder's per-section grid-template-columns inputs
+  // (Desktop / Tablet / Mobile) are hidden from customers. Layout still
+  // works because new sections are seeded with sensible defaults
+  // (mobile = 1fr, tablet/desktop = "1fr 300px"). Default ON so customers
+  // don't see the raw grid-template controls until super-admin opts in.
+  disableColumnSizeEditor Boolean @default(true)
+
   // Feedback Notifications
   feedbackNotificationEmail String?
 

@@ -130,12 +130,13 @@ export function migrateLobbyToV2(
     content.name = "Content";
 
     // v3 sizing: pin the sidebar at 300px and let the player take the
-    // remaining fluid space. Tablet collapses to a single stacked track so
-    // the sidebar drops below the player at narrower widths. We DON'T set
-    // per-column `width` strings anymore — the grid template on the section
-    // is the source of truth.
+    // remaining fluid space. Tablet mirrors desktop so the sidebar stays
+    // visible at narrower widths — mobile drops to a single stack via the
+    // `mobileLayout: "stack"` default (no `gridTemplateMobile` needed).
+    // We DON'T set per-column `width` strings anymore — the grid template
+    // on the section is the source of truth.
     content.gridTemplateDesktop = "1fr 300px";
-    content.gridTemplateTablet = "1fr";
+    content.gridTemplateTablet = "1fr 300px";
 
     const left: Column = content.columns[0];
     left.name = "Player";
@@ -489,7 +490,7 @@ function htmlToBlocks(html: string): Block[] {
     if (/^h[1-6]$/.test(name)) {
       if (!closing) {
         flushPara();
-        headingLevel = parseInt(name[1], 10) as 1 | 2 | 3 | 4 | 5 | 6;
+        headingLevel = 5;
         target = "heading";
       } else {
         flushHeading();

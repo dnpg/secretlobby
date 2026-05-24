@@ -67,22 +67,40 @@ export function createColumns(count: number, _gap = "16px"): Column[] {
   }));
 }
 
-// Helper to create a new section. v3 seeds an even fr-track grid template
-// matching the requested column count (`"1fr"`, `"1fr 1fr"`, …). Designers
-// can edit the template directly in the section settings to swap in pixel /
-// minmax / repeat values later.
-export function createSection(columnCount = 1): Section {
+// Helper to create a new section. Defaults:
+//   1 column         → `"1fr"`
+//   2 columns        → `"1fr 300px"` on desktop AND tablet (content + sidebar)
+//   3+ columns       → even fr-track split (`"1fr 1fr 1fr"`, …)
+//   mobile (always)  → renders 1fr via `mobileLayout: "stack"`; the explicit
+//                      `gridTemplateMobile` is left undefined unless a designer
+//                      switches mobileLayout to "grid" in the settings panel.
+//
+// The 2-column "1fr 300px" default is the platform's house style — most
+// lobbies pair a main content column with a fixed sidebar. Designers can edit
+// the template directly in the section settings to swap in different
+// pixel / minmax / repeat values later. With the platform-wide
+// `disableColumnSizeEditor` flag on (default), this default is the only
+// layout customers see for 2-column sections.
+export function createSection(columnCount = 2): Section {
   const gap = "16";
+  const gridTemplateDesktop =
+    columnCount <= 1
+      ? "1fr"
+      : columnCount === 2
+        ? "1fr 300px"
+        : Array.from({ length: columnCount }, () => "1fr").join(" ");
   return {
     id: generateId("section"),
     columns: createColumns(columnCount, gap + "px"),
     rowGap: gap,
     columnGap: gap,
     mobileLayout: "stack",
-    gridTemplateDesktop:
-      columnCount <= 1
-        ? "1fr"
-        : Array.from({ length: columnCount }, () => "1fr").join(" "),
+    gridTemplateDesktop,
+    // Mirror desktop on tablet for the 2-column default so the sidebar
+    // doesn't reflow at tablet widths. For 1 / 3+ column counts we omit
+    // the override so it inherits desktop automatically.
+    gridTemplateTablet:
+      columnCount === 2 ? "1fr 300px" : undefined,
   };
 }
 

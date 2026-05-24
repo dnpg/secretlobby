@@ -234,6 +234,38 @@ export function ThemeOverlay({ onClose }: ThemeOverlayProps) {
               onDeleteSwatch={deleteSwatch}
             />
           </div>
+
+          {/* Page overlay — semi-transparent color wash on top of the
+              background. Uses the same ColorPicker as other theme colors;
+              opacity is part of the solid color value. 0% opacity = off. */}
+          <div className="mt-3 pt-3 border-t border-theme">
+            <label className="block text-xs text-theme-secondary mb-1">
+              Overlay
+            </label>
+            <ColorPicker
+              label="Background overlay"
+              value={{
+                type: "solid",
+                color: theme.background?.overlay?.color ?? "#000000",
+                opacity: theme.background?.overlay?.opacity ?? 0,
+              }}
+              onChange={(next) => {
+                const solid = next as { type: "solid"; color: string; opacity: number };
+                set("background", {
+                  ...theme.background,
+                  overlay: { color: solid.color, opacity: solid.opacity },
+                });
+              }}
+              allowedTypes={["solid"]}
+              swatches={swatches}
+              onSaveSwatch={saveSwatch}
+              onUpdateSwatch={updateSwatch}
+              onDeleteSwatch={deleteSwatch}
+            />
+            <p className="text-xs text-theme-muted mt-1">
+              Color wash over the entire background. Set opacity to 0 to disable.
+            </p>
+          </div>
         </CollapsibleSection>
 
         <CollapsibleSection title="Text" defaultOpen={false}>

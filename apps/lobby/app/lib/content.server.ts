@@ -151,15 +151,26 @@ export interface ThemeSettings {
   visualizerBar: string;
   visualizerBarAlt: string;
   visualizerGlow: string;
+  /** Card background — legacy hex + opacity pair. The lobby renders cards
+   *  via `buildCardStyles` from `@secretlobby/theme`, which reads these
+   *  fields. Optional so old persisted JSON still type-checks. */
+  cardBgColor?: string;
+  cardBgOpacity?: number;
   /** Optional composed `backdrop-filter` for the card surface (see
    *  @secretlobby/theme). Undefined / empty means no filter. */
   cardBackdropFilter?: BackdropFilter;
+  /** Playlist region container — glass-blur treatment mirroring cards. */
+  playlistContainerEnabled?: boolean;
+  playlistBg?: ThemeBackgroundColor;
+  playlistBackdropFilter?: BackdropFilter;
   // Border radius fields — number (uniform) or per-corner object. Optional so
   // legacy persisted JSON without these still type-checks; readers should
   // normalize via `normalizeBorderRadius` and fall back to a sensible default.
   cardBorderRadius?: BorderRadius;
   buttonBorderRadius?: BorderRadius;
   playButtonBorderRadius?: BorderRadius;
+  playButtonBg?: ThemeBackgroundColor;
+  playButtonIconColor?: string;
   visualizerBorderRadius?: BorderRadius;
   // Button base styling — optional so legacy persisted JSON still type-checks.
   // Buttons are color-only (no image overlay) — `ThemeBackgroundColor` is the
@@ -197,6 +208,22 @@ export const defaultDarkTheme: ThemeSettings = {
   visualizerBar: "#ffffff",
   visualizerBarAlt: "#9ca3af",
   visualizerGlow: "#ffffff",
+  cardBgColor: "#000000",
+  cardBgOpacity: 50,
+  cardBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
+  playlistContainerEnabled: true,
+  playlistBg: { type: "solid" as const, color: "#000000", opacity: 50 },
+  playlistBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
+  buttonBorderRadius: 24,
+  playButtonBorderRadius: 9999,
+  playButtonBg: { type: "solid" as const, color: "#ffffff", opacity: 100 },
+  playButtonIconColor: "#000000",
+  buttonBg: { type: "solid" as const, color: "#ffffff", opacity: 100 },
+  buttonText: "#000000",
+  buttonBorderShow: false,
+  buttonBorderColor: "#374151",
+  buttonBorderWidth: "1px",
+  buttonBorderStyle: "none",
 };
 
 export const defaultLightTheme: ThemeSettings = {
@@ -216,6 +243,22 @@ export const defaultLightTheme: ThemeSettings = {
   visualizerBar: "#111827",
   visualizerBarAlt: "#4b5563",
   visualizerGlow: "#111827",
+  cardBgColor: "#000000",
+  cardBgOpacity: 50,
+  cardBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
+  playlistContainerEnabled: true,
+  playlistBg: { type: "solid" as const, color: "#000000", opacity: 50 },
+  playlistBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
+  buttonBorderRadius: 24,
+  playButtonBorderRadius: 9999,
+  playButtonBg: { type: "solid" as const, color: "#ffffff", opacity: 100 },
+  playButtonIconColor: "#000000",
+  buttonBg: { type: "solid" as const, color: "#000000", opacity: 100 },
+  buttonText: "#ffffff",
+  buttonBorderShow: false,
+  buttonBorderColor: "#d1d5db",
+  buttonBorderWidth: "1px",
+  buttonBorderStyle: "none",
 };
 
 export const defaultTheme: ThemeSettings = defaultDarkTheme;

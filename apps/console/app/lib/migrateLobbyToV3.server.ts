@@ -87,9 +87,24 @@ function upgradeSection(section: Section): Section {
     return section;
   }
 
-  // Pull per-column percentages off the legacy `width` field. Missing /
-  // malformed values fall back to an equal split via `parseWidthToPercent`'s
-  // default, so the section never collapses on bad input.
+  // 2-column sections are the platform's house style (player + sidebar),
+  // so we override the legacy per-column widths with the canonical
+  // `1fr 300px` template on both desktop and tablet. This trades the
+  // exact v2 ratio (e.g. 50/50, 60/40) for a consistent visual baseline
+  // — designers can drag the resize handle to fine-tune after migration,
+  // and the per-column `width`s remain on disk for reversibility.
+  if (columnCount === 2) {
+    return {
+      ...section,
+      gridTemplateDesktop: "1fr 300px",
+      gridTemplateTablet: "1fr 300px",
+    };
+  }
+
+  // 1 / 3+ columns: synthesise the template from the legacy column widths.
+  // Missing / malformed values fall back to an equal split via
+  // `parseWidthToPercent`'s default, so the section never collapses on
+  // bad input.
   const desktopPercents = section.columns.map((col) =>
     parseWidthToPercent(col.width ?? "", columnCount)
   );

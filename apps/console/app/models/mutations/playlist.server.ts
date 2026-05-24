@@ -69,36 +69,52 @@ export async function setDefaultPlaylist(lobbyId: string, playlistId: string) {
 
 /**
  * Idempotent: returns the lobby's default playlist if it exists; otherwise
- * creates one and returns it. Handles a race where two concurrent callers
- * try to create the default at the same time — the unique (lobbyId, name)
- * constraint guarantees one wins, and we fall back to the existing row.
+ * creates one and returns it. Also backfills any orphaned tracks (those with
+ * `playlistId = NULL` for this lobby) into the default playlist — this
+ * handles the case where a database dump is imported with INSERT-only SQL
+ * and the original Prisma migration backfill doesn't re-run. Handles a race
+ * where two concurrent callers try to create the default at the same time —
+ * the unique (lobbyId, name) constraint guarantees one wins, and we fall
+ * back to the existing row.
  */
 export async function ensureDefaultPlaylistExists(
   lobbyId: string,
   name = "Default"
 ) {
-  const existing = await prisma.playlist.findFirst({
+  let playlist = await prisma.playlist.findFirst({
     where: { lobbyId, isDefault: true },
   });
-  if (existing) return existing;
 
-  // No default yet — create one. If another request snuck in between the
-  // findFirst and create (or there's a non-default playlist with the same
-  // name), the unique constraint will throw and we re-fetch.
-  try {
-    return await prisma.playlist.create({
-      data: { lobbyId, name, isDefault: true, position: 0 },
-    });
-  } catch {
-    const refetch = await prisma.playlist.findFirst({
-      where: { lobbyId, isDefault: true },
-    });
-    if (refetch) return refetch;
-    // Last resort: pick any playlist with the requested name.
-    const sameName = await prisma.playlist.findUnique({
-      where: { lobbyId_name: { lobbyId, name } },
-    });
-    if (sameName) return sameName;
-    throw new Error("Failed to ensure default playlist");
+  if (!playlist) {
+    // No default yet — create one. If another request snuck in between the
+    // findFirst and create (or there's a non-default playlist with the same
+    // name), the unique constraint will throw and we re-fetch.
+    try {
+      playlist = await prisma.playlist.create({
+        data: { lobbyId, name, isDefault: true, position: 0 },
+      });
+    } catch {
+      playlist = await prisma.playlist.findFirst({
+        where: { lobbyId, isDefault: true },
+      });
+      if (!playlist) {
+        // Last resort: pick any playlist with the requested name.
+        playlist = await prisma.playlist.findUnique({
+          where: { lobbyId_name: { lobbyId, name } },
+        });
+      }
+      if (!playlist) throw new Error("Failed to ensure default playlist");
+    }
   }
+
+  // Backfill orphaned tracks — tracks that belong to this lobby but have no
+  // playlist assigned (playlistId IS NULL). This happens after a database
+  // import or when tracks were created before the playlist feature existed.
+  // The updateMany is a no-op when every track already has a playlistId.
+  await prisma.track.updateMany({
+    where: { lobbyId, playlistId: null },
+    data: { playlistId: playlist.id },
+  });
+
+  return playlist;
 }

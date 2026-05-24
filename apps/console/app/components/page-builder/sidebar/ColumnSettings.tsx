@@ -20,6 +20,7 @@ interface ColumnSettingsProps {
   totalColumns: number;
   viewport: ViewportSize;
   onUpdate: (updates: Partial<Column>) => void;
+  disableColumnSizeEditor: boolean;
 }
 
 export function ColumnSettings({
@@ -28,6 +29,7 @@ export function ColumnSettings({
   totalColumns,
   viewport: _viewport,
   onUpdate,
+  disableColumnSizeEditor,
 }: ColumnSettingsProps) {
   void _viewport; // v3: width no longer varies per viewport at the column level
   return (
@@ -51,8 +53,10 @@ export function ColumnSettings({
         <p className="text-xs text-theme-secondary mt-1">Vertical spacing between blocks. Numbers default to px.</p>
       </div>
 
-      {/* v3 sizing hint — points designers at the section panel. */}
-      {totalColumns > 1 && (
+      {/* v3 sizing hint — points designers at the section panel. Hidden
+          when the platform-wide flag disables column sizing controls,
+          since there's nothing actionable to point the user to. */}
+      {totalColumns > 1 && !disableColumnSizeEditor && (
         <div className="rounded-md border border-theme bg-theme-tertiary/40 p-3 text-xs text-theme-secondary">
           Column widths are now set on the parent section's grid template. Open
           the section settings to drag the track-resize handle or edit

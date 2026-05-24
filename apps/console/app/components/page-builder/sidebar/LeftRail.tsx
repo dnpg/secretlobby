@@ -93,6 +93,9 @@ interface LeftRailProps {
    *  blocks paint with the LAYER_COLORS palette (violet / indigo / brand-red);
    *  when false, they fall back to neutral black/white based on theme.colorMode. */
   showLayoutEdit: boolean;
+  /** Platform-wide SystemSettings flag. When true, the per-section
+   *  grid-template-columns inputs are hidden from SectionSettings. */
+  disableColumnSizeEditor: boolean;
 }
 
 // Shared confirm-delete state for "section has blocks" — surfaced from the
@@ -131,6 +134,7 @@ function LayersRail({
   themeOverlayOpen,
   onCloseThemeOverlay,
   showLayoutEdit,
+  disableColumnSizeEditor,
 }: LeftRailProps) {
   const { state, dispatch } = usePageBuilder();
   const { sections, selection, mode } = state;
@@ -296,8 +300,10 @@ function LayersRail({
   };
 
   // Mutations & selection — all through context dispatch.
+  // New sections default to 2 columns with the platform "1fr 300px" template
+  // (see createSection). Users can change the column count from SectionSettings.
   const onAddSection = () => {
-    const newSection = createSection(1);
+    const newSection = createSection();
     dispatch({ type: "addSection", section: newSection, select: true });
   };
 
@@ -600,7 +606,10 @@ function LayersRail({
           selected. Positioned absolute inside the rail aside. Phase 4: do not
           mount in preview mode (selection state is preserved). */}
       {!isPreview && selection.kind !== "none" && (
-        <SettingsOverlay sections={sections as Section[]} />
+        <SettingsOverlay
+          sections={sections as Section[]}
+          disableColumnSizeEditor={disableColumnSizeEditor}
+        />
       )}
 
       {/* Theme overlay — triggered by the paint brush button in TopHeader.

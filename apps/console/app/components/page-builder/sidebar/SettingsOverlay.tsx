@@ -23,6 +23,9 @@ import { BlockSettings } from "./BlockSettings";
 
 interface SettingsOverlayProps {
   sections: Section[];
+  /** Platform-wide flag from SystemSettings. Forwarded to SectionSettings,
+   *  where it hides the grid-template-columns inputs. */
+  disableColumnSizeEditor: boolean;
 }
 
 function defaultColumnName(index: number): string {
@@ -35,7 +38,10 @@ function defaultBlockName(block: Block, sameTypeIndex: number): string {
   return `${label} ${sameTypeIndex + 1}`;
 }
 
-export function SettingsOverlay({ sections }: SettingsOverlayProps) {
+export function SettingsOverlay({
+  sections,
+  disableColumnSizeEditor,
+}: SettingsOverlayProps) {
   const { state, dispatch } = usePageBuilder();
   const { selection, viewport } = state;
   const { resolvedMode } = useColorMode();
@@ -134,6 +140,7 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
           <SectionSettings
             section={section}
             viewport={viewport}
+            disableColumnSizeEditor={disableColumnSizeEditor}
             onUpdate={(updates) => {
               if (
                 updates.name !== undefined &&
@@ -224,6 +231,7 @@ export function SettingsOverlay({ sections }: SettingsOverlayProps) {
             index={columnIndex}
             totalColumns={section.columns.length}
             viewport={viewport}
+            disableColumnSizeEditor={disableColumnSizeEditor}
             onUpdate={(updates) =>
               dispatch({
                 type: "updateColumn",

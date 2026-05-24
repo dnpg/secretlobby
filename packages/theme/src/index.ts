@@ -107,6 +107,10 @@ export interface ThemeBackground {
   color: ThemeBackgroundColor;
   /** Optional image overlay layered on top of the color. */
   image?: ImageBackground;
+  /** Page-level color overlay rendered on top of everything (image + color).
+   *  `color` is a hex string, `opacity` is 0–100 (0 = invisible / disabled).
+   *  Useful for dimming a background image or adding a tinted wash. */
+  overlay?: { color: string; opacity: number };
 }
 
 // =============================================================================
@@ -851,11 +855,16 @@ export const defaultDarkTheme: ThemeSettings = {
   cardContentColor: "#9ca3af",
   cardMutedColor: "#6b7280",
   cardBgType: "solid",
-  cardBgColor: "#111827",
+  cardBgColor: "#000000",
   cardBgGradientFrom: "#1f2937",
   cardBgGradientTo: "#111827",
   cardBgGradientAngle: 135,
   cardBgOpacity: 50,
+  cardBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
+  // Playlist region — glass-blur to match cards.
+  playlistContainerEnabled: true,
+  playlistBg: { type: "solid" as const, color: "#000000", opacity: 50 },
+  playlistBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
   cardBorderShow: true,
   cardBorderType: "solid",
   cardBorderColor: "#374151",
@@ -873,7 +882,9 @@ export const defaultDarkTheme: ThemeSettings = {
   imageBorderColor: "#374151",
   imageBorderStyle: "solid",
   buttonBorderRadius: 24,
-  playButtonBorderRadius: 50,
+  playButtonBorderRadius: 9999,
+  playButtonBg: { type: "solid" as const, color: "#ffffff", opacity: 100 },
+  playButtonIconColor: "#000000",
   // Button styles — dark mode: white pill on dark bg.
   buttonBg: { type: "solid", color: "#ffffff", opacity: 100 },
   buttonText: "#000000",
@@ -916,11 +927,15 @@ export const defaultLightTheme: ThemeSettings = {
   cardContentColor: "#4b5563",
   cardMutedColor: "#9ca3af",
   cardBgType: "solid",
-  cardBgColor: "#f3f4f6",
+  cardBgColor: "#000000",
   cardBgGradientFrom: "#e5e7eb",
   cardBgGradientTo: "#f3f4f6",
   cardBgGradientAngle: 135,
   cardBgOpacity: 50,
+  cardBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
+  playlistContainerEnabled: true,
+  playlistBg: { type: "solid" as const, color: "#000000", opacity: 50 },
+  playlistBackdropFilter: [{ id: "default-blur", kind: "blur" as const, px: 8 }],
   cardBorderShow: true,
   cardBorderType: "solid",
   cardBorderColor: "#d1d5db",
@@ -936,7 +951,9 @@ export const defaultLightTheme: ThemeSettings = {
   imageBorderColor: "#d1d5db",
   imageBorderStyle: "solid",
   buttonBorderRadius: 24,
-  playButtonBorderRadius: 50,
+  playButtonBorderRadius: 9999,
+  playButtonBg: { type: "solid" as const, color: "#ffffff", opacity: 100 },
+  playButtonIconColor: "#000000",
   // Button styles — light mode: black pill on light bg.
   buttonBg: { type: "solid", color: "#000000", opacity: 100 },
   buttonText: "#ffffff",
@@ -1135,7 +1152,7 @@ export function normalizeThemeBackground(
       return fallback;
     }
 
-    // ---- New layered shape: `{ color: {...}, image?: {...} }`.
+    // ---- New layered shape: `{ color: {...}, image?: {...}, overlay?: {...} }`.
     if ("color" in b && b.color && typeof b.color === "object") {
       const colorPart = normalizeColorPart(b.color as Record<string, unknown>);
       if (!colorPart) return fallback;
@@ -1146,7 +1163,17 @@ export function normalizeThemeBackground(
         );
         if (normalized) image = normalized;
       }
-      return image ? { color: colorPart, image } : { color: colorPart };
+      let overlay: ThemeBackground["overlay"];
+      if (b.overlay && typeof b.overlay === "object") {
+        const o = b.overlay as Record<string, unknown>;
+        if (typeof o.color === "string" && typeof o.opacity === "number") {
+          overlay = { color: o.color, opacity: o.opacity };
+        }
+      }
+      const result: ThemeBackground = { color: colorPart };
+      if (image) result.image = image;
+      if (overlay) result.overlay = overlay;
+      return result;
     }
   }
   // Legacy path — old themes only had bgPrimary/bgSecondary/bgTertiary hex
@@ -1305,13 +1332,27 @@ export function backgroundToCSS(
   transformUrl?: BackgroundImageTransform
 ): string {
   const colorCSS = colorPartToCSS(bg.color, swatches, drafts);
-  if (!bg.image) return colorCSS;
+
+  // Page-level overlay — topmost layer, rendered as a flat linear-gradient
+  // so it participates in the CSS `background:` shorthand stack. Sits on
+  // top of both the image and the color so it tints/dims the entire page.
+  const pageOverlay =
+    bg.overlay && bg.overlay.opacity > 0
+      ? (() => {
+          const rgba = hexToRgba(bg.overlay.color, bg.overlay.opacity / 100);
+          return `linear-gradient(${rgba}, ${rgba})`;
+        })()
+      : null;
+
+  if (!bg.image) {
+    return pageOverlay ? `${pageOverlay}, ${colorCSS}` : colorCSS;
+  }
   // JSON.stringify safe-quotes the URL so embedded quotes/parens can't break
   // out of the `url(...)` token.
   const imgUrl = transformUrl
     ? buildImageSet(bg.image.mediaUrl, transformUrl)
     : `url(${JSON.stringify(bg.image.mediaUrl)})`;
-  const overlay = bg.image.overlay && bg.image.overlay.opacity > 0
+  const imgOverlay = bg.image.overlay && bg.image.overlay.opacity > 0
     ? (() => {
         const rgba = hexToRgba(
           bg.image.overlay.color,
@@ -1320,7 +1361,8 @@ export function backgroundToCSS(
         return `linear-gradient(${rgba}, ${rgba})`;
       })()
     : null;
-  const layers = [overlay, imgUrl].filter(Boolean).join(", ");
+  // Layer order (top → bottom): page overlay > image overlay > image > color.
+  const layers = [pageOverlay, imgOverlay, imgUrl].filter(Boolean).join(", ");
   return `${layers}, ${colorCSS}`;
 }
 

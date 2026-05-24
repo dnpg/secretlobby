@@ -36,6 +36,12 @@ export const HEADING_LEVEL_CLASSES: Record<HeadingBlockContent["level"], string>
 
 export function HeadingView({ content }: HeadingViewProps) {
   const level = (content.level ?? 1) as HeadingBlockContent["level"];
+  const alignClass =
+    content.align === "center"
+      ? "text-center"
+      : content.align === "right"
+        ? "text-right"
+        : "";
   return (
     <div
       role="heading"
@@ -47,7 +53,7 @@ export function HeadingView({ content }: HeadingViewProps) {
         className="inline-editor relative w-full"
       >
         <div
-          className={`inline-editor-content outline-none w-full ${HEADING_LEVEL_CLASSES[level]}`}
+          className={`inline-editor-content outline-none w-full ${HEADING_LEVEL_CLASSES[level]} ${alignClass}`.trim()}
         >
           <TiptapMirror doc={content.inline} />
         </div>

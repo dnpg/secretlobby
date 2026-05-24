@@ -79,6 +79,10 @@ interface PageBuilderLoaderData {
   loginLogoImageUrl: string | null;
   loginLogoImageWidth: number | null;
   loginLogoImageHeight: number | null;
+  // Platform-wide flag from SystemSettings. When true, the per-section
+  // grid-template-columns inputs are hidden from SectionSettings. Read once
+  // by the loader from SystemSettings (singleton row).
+  disableColumnSizeEditor: boolean;
 }
 
 // =============================================================================
@@ -239,7 +243,12 @@ export function PageBuilderRoot({ loaderData }: PageBuilderRootProps) {
   return (
     <PageBuilderProvider initialState={initialState}>
       <SwatchProvider initialSwatches={initialSwatches} csrfToken={csrfToken}>
-        <PageBuilderInner lobby={lobby} csrfToken={csrfToken} pageKind={pageKind} />
+        <PageBuilderInner
+          lobby={lobby}
+          csrfToken={csrfToken}
+          pageKind={pageKind}
+          disableColumnSizeEditor={loaderData.disableColumnSizeEditor}
+        />
       </SwatchProvider>
     </PageBuilderProvider>
   );
@@ -497,6 +506,10 @@ interface PageBuilderInnerProps {
   };
   csrfToken: string;
   pageKind: "lobby" | "login";
+  /** Platform-wide flag from SystemSettings. Forwarded to LeftRail →
+   *  SettingsOverlay → SectionSettings to hide the grid-template inputs
+   *  from customers. */
+  disableColumnSizeEditor: boolean;
 }
 
 // Hidden form payload typing for the autosave fetcher. Returned data shape is
@@ -505,7 +518,12 @@ type SaveActionData = { success: true } | { error: string };
 
 // Autosave + URL-sync wrapper. Reads from the reducer-backed context, owns the
 // fetcher used for `update_page_layout`, and renders the layout shell.
-function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps) {
+function PageBuilderInner({
+  lobby,
+  csrfToken,
+  pageKind,
+  disableColumnSizeEditor,
+}: PageBuilderInnerProps) {
   const { state, dispatch, undo, redo } = usePageBuilder();
   const {
     sections,
@@ -889,6 +907,7 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
             themeOverlayOpen={themeOverlayOpen}
             onCloseThemeOverlay={() => setThemeOverlayOpen(false)}
             showLayoutEdit={showLayoutEdit}
+            disableColumnSizeEditor={disableColumnSizeEditor}
           />
         </div>
 
@@ -898,6 +917,7 @@ function PageBuilderInner({ lobby, csrfToken, pageKind }: PageBuilderInnerProps)
             showLayoutEdit={showLayoutEdit}
             hasPassword={lobby.hasPassword}
             csrfToken={csrfToken}
+            disableColumnSizeEditor={disableColumnSizeEditor}
           />
         </div>
       </div>

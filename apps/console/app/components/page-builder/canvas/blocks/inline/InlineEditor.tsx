@@ -25,10 +25,12 @@ interface InlineEditorProps {
   // suppressed so the menu opens cleanly without inserting the character.
   onSlash?: (anchorEl: HTMLElement) => void;
   // Notion-style Enter hook. Fires when the user hits Enter (no shift) while
-  // editing a NON-empty doc, so the parent can append a fresh paragraph
-  // below the block. Tiptap's default Enter-splits-paragraph is suppressed.
+  // editing. `atStart` is true when the cursor is at position 0 of a
+  // non-empty doc — the parent inserts ABOVE in that case (pushing the
+  // current content down), matching text-editor feel. Tiptap's default
+  // Enter-splits-paragraph is suppressed.
   // Shift+Enter still inserts a hard break for soft line wraps.
-  onEnter?: () => void;
+  onEnter?: (opts: { atStart: boolean }) => void;
   // When true, the editor focuses itself once on mount/update and then
   // synchronously calls `onFocusConsumed` so the parent can clear its
   // pending-focus token. Used to chase the caret onto a freshly inserted
@@ -135,16 +137,18 @@ export function InlineEditor({
             return true;
           }
         }
-        // Enter: fire `onEnter` so the parent appends a new paragraph
-        // below. Tiptap's default Enter splits the current paragraph;
-        // we suppress that here because the page-builder column owns
-        // block structure (no in-doc paragraph splits).
+        // Enter: fire `onEnter` so the parent inserts a new paragraph.
+        // When the cursor is at the very start of the doc we pass
+        // `{ atStart: true }` so the parent inserts ABOVE (pushing the
+        // current block down) — matches the expected text-editor feel
+        // where Enter at position 0 opens a blank line above.
         // Shift+Enter still inserts a `hardBreak` (soft line break) via
         // StarterKit's HardBreak extension — we don't intercept it.
         if (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
           if (onEnterRef.current) {
             event.preventDefault();
-            onEnterRef.current();
+            const atStart = view.state.selection.from <= 1 && view.state.doc.textContent.length > 0;
+            onEnterRef.current({ atStart });
             return true;
           }
         }

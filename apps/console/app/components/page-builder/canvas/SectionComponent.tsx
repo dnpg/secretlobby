@@ -19,11 +19,12 @@
 //     production renderer (flex strip, or single-column stack).
 // =============================================================================
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@secretlobby/ui";
 import {
   equalGridTemplate,
-  parseFrToken,
+  parsePixelGap,
+  resolveTemplateToPixelWidths,
   tokenizeGridTemplate,
 } from "@secretlobby/lobby-template";
 import type {
@@ -44,6 +45,11 @@ export interface SectionComponentProps {
   viewport: ViewportSize;
   isEditing: boolean;
   showLayoutEdit: boolean;
+  /** Platform-wide SystemSettings flag. When true, in-canvas column resize
+   *  handles are hidden alongside the sidebar grid-template inputs. The
+   *  drag handles and the sidebar text inputs must move together so the
+   *  set of "ways to change column sizing" is consistent. */
+  disableColumnSizeEditor: boolean;
   selectedBlockId: string | null;
   onSelectColumn: (columnId: string) => void;
   onSelectBlock: (blockId: string | null) => void;
@@ -76,6 +82,7 @@ export function SectionComponent({
   viewport,
   isEditing,
   showLayoutEdit,
+  disableColumnSizeEditor,
   selectedBlockId,
   onSelectColumn,
   onSelectBlock,
@@ -102,6 +109,23 @@ export function SectionComponent({
   const isTablet = viewport === "tablet";
   const columnCount = section.columns.length;
   const containerRef = useRef<HTMLDivElement>(null);
+  // Track the section's live pixel width so the resize-handle render math
+  // can position handles between mixed-unit tracks accurately. Refs alone
+  // don't trigger re-renders, so without this state the handles would be
+  // missing on first mount (clientWidth is 0 before React paints). A
+  // ResizeObserver keeps it fresh through viewport switches and window
+  // resizes — accuracy matters more here than render count, the section
+  // resizes rarely.
+  const [containerWidth, setContainerWidth] = useState(0);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => setContainerWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Active grid template for the current viewport. The fallback chain mirrors
   // the production CSS (tablet → desktop → equal split) so legacy sections
@@ -122,17 +146,24 @@ export function SectionComponent({
     columnCount,
   ]);
 
-  // Tokenise the active template once so the resize handles can walk
-  // neighbouring tracks. We keep both the raw tokens (for write-back) and
-  // their parsed fr values (or `null` for fixed/auto tracks).
+  // Tokenise the active template once so the resize handler + handle
+  // positioning math can reason about each track. The handle works between
+  // any two adjacent tracks now (regardless of `fr` / `px` / `%`); dragging
+  // converts the pair to percentage form so unit mixing is no longer a
+  // dead-end for the user.
   const tokens = useMemo(() => tokenizeGridTemplate(activeTemplate), [
     activeTemplate,
   ]);
-  const frValues = useMemo(() => tokens.map((t) => parseFrToken(t)), [tokens]);
+  const gapPx = useMemo(() => parsePixelGap(section.columnGap), [
+    section.columnGap,
+  ]);
 
-  // Resize: drag between tracks i and i+1, shifting fr units from one to the
-  // other while keeping their SUM constant. Non-fr neighbouring tracks are
-  // left untouched — the handle simply doesn't render between them.
+  // Resize: drag between tracks i and i+1. We resolve the current template
+  // into pixel widths against the live container, shift pixels from one
+  // track to the other (keeping the pair's combined width constant), then
+  // write the dragged pair back as `%` of the track-total. Other tracks
+  // are left untouched so a 3-col `1fr 300px 1fr` keeps the px-locked
+  // middle column pinned while the user drags either fluid neighbour.
   const handleResize = (
     leftIndex: number,
     rightIndex: number,
@@ -142,28 +173,50 @@ export function SectionComponent({
     if (isMobile) return; // mobile slider / stack handled by CSS short-circuit
     if (viewport !== "desktop" && viewport !== "tablet") return;
 
-    const leftFr = frValues[leftIndex];
-    const rightFr = frValues[rightIndex];
-    // Only fr ↔ fr neighbours are resizable. Mixed neighbours (e.g.
-    // `1fr 300px`) get a non-interactive boundary — designers manage those
-    // via the section settings template input directly.
-    if (leftFr === null || rightFr === null) return;
+    const sectionEl = containerRef.current;
+    if (!sectionEl) return;
+    const containerWidth = sectionEl.clientWidth;
+    if (containerWidth <= 0) return;
+    // Track-total is what `grid-template-columns` actually distributes — the
+    // gaps consume the rest of the section width.
+    const trackTotal = Math.max(1, containerWidth - gapPx * (columnCount - 1));
 
-    const total = leftFr + rightFr;
-    // Convert percentage delta to fr delta, keeping the pair's sum constant.
-    const minFrac = 0.1; // never let a track go below 10% of the pair
-    const minFr = total * minFrac;
-    const targetLeft = leftFr + (deltaPercent / 100) * total;
-    const clampedLeft = Math.max(minFr, Math.min(total - minFr, targetLeft));
-    const clampedRight = total - clampedLeft;
+    const pixelWidths = resolveTemplateToPixelWidths(
+      activeTemplate,
+      containerWidth,
+      gapPx
+    );
+    if (pixelWidths.length !== tokens.length) return;
 
-    // Snap to one decimal place so the persisted string stays human-readable.
-    const nextLeft = Math.round(clampedLeft * 10) / 10;
-    const nextRight = Math.round(clampedRight * 10) / 10;
+    const leftPx = pixelWidths[leftIndex];
+    const rightPx = pixelWidths[rightIndex];
+    const pairSum = leftPx + rightPx;
+    if (pairSum <= 0) return;
+
+    // ResizeHandle reports delta as % of the section's container width, so
+    // multiply by track-total to get the pixel delta the user dragged.
+    const deltaPx = (deltaPercent / 100) * trackTotal;
+    const minPx = Math.max(40, pairSum * 0.1);
+    const newLeftPx = Math.max(
+      minPx,
+      Math.min(pairSum - minPx, leftPx + deltaPx)
+    );
+    const newRightPx = pairSum - newLeftPx;
+
+    // Express the dragged pair as % of the FULL container width (not the
+    // track-total). CSS Grid resolves `%` against the container, so for a
+    // 2-col section with a 16px gap the emitted percentages must sum to
+    // (100% - gapPct), leaving room for the gap. Using track-total here
+    // would produce templates that overflow the section by exactly the
+    // gap width — see the matching note in resolveTemplateToPixelWidths.
+    void trackTotal; // kept for the min/clamp math above; not used in emit
+    const round1 = (n: number) => Math.round(n * 10) / 10;
+    const leftPct = round1((newLeftPx / containerWidth) * 100);
+    const rightPct = round1((newRightPx / containerWidth) * 100);
 
     const nextTokens = tokens.slice();
-    nextTokens[leftIndex] = `${nextLeft}fr`;
-    nextTokens[rightIndex] = `${nextRight}fr`;
+    nextTokens[leftIndex] = `${leftPct}%`;
+    nextTokens[rightIndex] = `${rightPct}%`;
     onResizeGridTemplate(nextTokens.join(" "), viewport);
   };
 
@@ -198,9 +251,16 @@ export function SectionComponent({
 
   // Resize handles render any time we are in edit mode and have 2+ columns
   // on a non-mobile/non-slider layout. v3: we only show a handle BETWEEN
-  // adjacent fr-typed tracks (where dragging is well-defined).
+  // adjacent fr-typed tracks (where dragging is well-defined). Also gated
+  // by the platform-wide `disableColumnSizeEditor` flag — when the sidebar
+  // text inputs are hidden, the drag handles must hide too so the user
+  // never has a sizing affordance the super-admin disabled.
   const showResizeHandles =
-    showSectionUi && columnCount > 1 && !isMobileView && !isSlider;
+    showSectionUi &&
+    !disableColumnSizeEditor &&
+    columnCount > 1 &&
+    !isMobileView &&
+    !isSlider;
   const gapValue = parseGapValue(section.columnGap);
   const rowGapValue = parseGapValue(section.rowGap);
 
@@ -366,51 +426,51 @@ export function SectionComponent({
           ))}
 
           {/* v3 resize handles. Rendered absolutely positioned between every
-              pair of fr-typed neighbouring tracks. Position is computed from
-              the running sum of normalised fr ratios — non-fr tracks
-              (`200px`, `auto`, …) participate in the offset math via their
-              measured DOM width, NOT here, so we keep the handle render math
-              simple and rely on `position: absolute` over the grid container.
-              The handle's delta is interpreted as percent-of-section, and
-              `handleResize` projects it back into fr units. */}
+              pair of adjacent tracks. Position is computed from the
+              resolved pixel widths of each track against the live section
+              container — accurate for mixed `1fr 300px` / `60% 40%` /
+              `1fr 1fr` templates alike. Drag converts the pair to `%` so
+              the handle keeps working through subsequent drags regardless
+              of original unit. See `handleResize` for the projection math. */}
           {showResizeHandles &&
-            tokens.slice(0, -1).map((_, i) => {
-              const leftFr = frValues[i];
-              const rightFr = frValues[i + 1];
-              // No handle between non-fr neighbours — dragging fixed widths
-              // isn't well-defined.
-              if (leftFr === null || rightFr === null) return null;
-              // Position approximation: cumulative fr fractions across the
-              // section. For mixed `1fr 200px 1fr` templates this is
-              // approximate (it ignores the px track's pixel width); the
-              // tradeoff is fine because the handle still anchors near the
-              // correct boundary, and dragging only affects the two fr
-              // tracks it sits between.
-              const totalFr: number = frValues.reduce<number>(
-                (sum, v) => sum + (v ?? 0),
-                0
+            (() => {
+              if (containerWidth <= 0) return null;
+              const pixelWidths = resolveTemplateToPixelWidths(
+                activeTemplate,
+                containerWidth,
+                gapPx
               );
-              const cumLeftFr: number = frValues
-                .slice(0, i + 1)
-                .reduce<number>((sum, v) => sum + (v ?? 0), 0);
-              const offsetPercent = totalFr > 0 ? (cumLeftFr / totalFr) * 100 : 50;
-              return (
-                <div
-                  key={`gap-${i}`}
-                  className="absolute top-0 bottom-0 flex items-center justify-center"
-                  style={{
-                    left: `${offsetPercent}%`,
-                    width: gapValue,
-                    transform: "translateX(-50%)",
-                    pointerEvents: "auto",
-                  }}
-                >
-                  <ResizeHandle
-                    onResize={(delta) => handleResize(i, i + 1, delta)}
-                  />
-                </div>
-              );
-            })}
+              let cumPx = 0;
+              return tokens.slice(0, -1).map((_, i) => {
+                cumPx += pixelWidths[i] ?? 0;
+                // Anchor the handle on the boundary between tracks i and
+                // i+1 (the gap centre). The (cumPx + i*gap + gap/2) term
+                // accounts for previous gaps + half of the current gap so
+                // the handle sits in the visual middle of the gap.
+                const offsetPx = cumPx + i * gapPx + gapPx / 2;
+                const offsetPercent = (offsetPx / containerWidth) * 100;
+                // Pair sanity check — skip the handle when the pair has
+                // collapsed to zero width (degenerate template).
+                const pairSum = (pixelWidths[i] ?? 0) + (pixelWidths[i + 1] ?? 0);
+                if (pairSum <= 0) return null;
+                return (
+                  <div
+                    key={`gap-${i}`}
+                    className="absolute top-0 bottom-0 flex items-center justify-center"
+                    style={{
+                      left: `${offsetPercent}%`,
+                      width: gapValue,
+                      transform: "translateX(-50%)",
+                      pointerEvents: "auto",
+                    }}
+                  >
+                    <ResizeHandle
+                      onResize={(delta) => handleResize(i, i + 1, delta)}
+                    />
+                  </div>
+                );
+              });
+            })()}
         </div>
       )}
 

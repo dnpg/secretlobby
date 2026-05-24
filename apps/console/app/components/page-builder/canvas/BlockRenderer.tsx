@@ -57,7 +57,7 @@ interface BlockRendererProps {
   // - `pendingFocus` + `onFocusConsumed` chase the caret onto a freshly
   //   inserted paragraph.
   onSlash?: (anchorEl: HTMLElement) => void;
-  onEnter?: () => void;
+  onEnter?: (opts: { atStart: boolean }) => void;
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
 }

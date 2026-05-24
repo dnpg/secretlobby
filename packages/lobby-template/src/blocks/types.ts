@@ -207,6 +207,7 @@ export interface GalleryBlockContent {
 export interface HeadingBlockContent {
   level: 1 | 2 | 3 | 4 | 5 | 6;
   inline: InlineDoc;
+  align?: "left" | "center" | "right";
 }
 
 export interface ParagraphBlockContent {

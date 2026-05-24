@@ -378,6 +378,38 @@ export async function getLobbyThemeSettings(lobbyId: string): Promise<ThemeSetti
   if (!themeSource || !(themeSource as { background?: unknown }).background) {
     theme.background = normalizeThemeBackground(theme);
   }
+
+  // Carry over the lobby-level background image (Lobby.backgroundMediaId) into
+  // the theme when the theme doesn't already have an image overlay. Pre-v2
+  // lobbies stored their background via a direct FK on the Lobby row; the new
+  // theme format expects it inside `background.image`. On first autosave the
+  // editor persists the synthesized image back, so this query only fires until
+  // the lobby is re-saved.
+  if (!theme.background?.image) {
+    const { prisma } = await import("@secretlobby/db");
+    const { getPublicUrl } = await import("@secretlobby/storage");
+    const lobbyBg = await prisma.lobby.findUnique({
+      where: { id: lobbyId },
+      select: {
+        backgroundMedia: { select: { id: true, key: true } },
+      },
+    });
+    if (lobbyBg?.backgroundMedia?.key) {
+      theme.background = {
+        ...theme.background,
+        image: {
+          type: "image",
+          mediaId: lobbyBg.backgroundMedia.id,
+          mediaUrl: getPublicUrl(lobbyBg.backgroundMedia.key),
+          size: "cover",
+          position: "center",
+          repeat: "no-repeat",
+          attachment: "fixed",
+        },
+        overlay: theme.background?.overlay ?? { color: "#000000", opacity: 30 },
+      };
+    }
+  }
   // Coerce border-radius fields so both legacy number JSON and new per-corner
   // object JSON load cleanly. We always run this — `defaultTheme` already has
   // number values which normalize as-is.
@@ -389,6 +421,27 @@ export async function getLobbyThemeSettings(lobbyId: string): Promise<ThemeSetti
   theme.visualizerBorderRadius = normalizeBorderRadius(
     theme.visualizerBorderRadius
   );
+
+  // Glass-blur defaults for cards and playlist. Existing lobbies saved
+  // before these fields were introduced won't have them in `themeSource`,
+  // so the shallow merge with `defaultTheme` already fills them in. This
+  // guard is defensive: if a lobby's JSON somehow has the keys set to
+  // falsy values (null from a bad editor save), we fall back to the
+  // platform defaults so every lobby has the blur treatment.
+  const src = themeSource as Record<string, unknown> | undefined;
+  if (!src?.cardBackdropFilter) {
+    theme.cardBackdropFilter = defaultTheme.cardBackdropFilter;
+  }
+  if (!src?.playlistBackdropFilter) {
+    theme.playlistBackdropFilter = defaultTheme.playlistBackdropFilter;
+  }
+  if (src?.playlistContainerEnabled === undefined) {
+    theme.playlistContainerEnabled = defaultTheme.playlistContainerEnabled;
+  }
+  if (!src?.playlistBg) {
+    theme.playlistBg = defaultTheme.playlistBg;
+  }
+
   return theme;
 }
 

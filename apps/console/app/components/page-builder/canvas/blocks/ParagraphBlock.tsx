@@ -11,7 +11,7 @@ interface ParagraphBlockProps {
   // for the trigger rules (slash at the start of an empty doc; Enter without
   // shift in a non-empty doc; auto-focus on pending-focus token).
   onSlash?: (anchorEl: HTMLElement) => void;
-  onEnter?: () => void;
+  onEnter?: (opts: { atStart: boolean }) => void;
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
   onEmptyDelete?: () => void;

@@ -23,7 +23,12 @@ export function ResizeHandle({ onResize }: ResizeHandleProps) {
     setIsDragging(true);
     startXRef.current = e.clientX;
     const sectionEl = (e.target as HTMLElement).closest('[data-section-container]');
-    containerWidthRef.current = (sectionEl?.clientWidth || 800) - 32;
+    // Use the section container's full client width as the % denominator.
+    // SectionComponent's handler converts the % back into pixels using the
+    // same width minus gaps, so the math stays consistent. (Previously this
+    // subtracted a hard-coded `-32` for assumed padding, but the section
+    // has no inner padding — that fudge meant drags computed a wrong %.)
+    containerWidthRef.current = sectionEl?.clientWidth || 800;
   };
 
   useEffect(() => {
@@ -31,11 +36,12 @@ export function ResizeHandle({ onResize }: ResizeHandleProps) {
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startXRef.current;
+      // Send any movement past 1px of jitter. The previous 0.3% gate meant
+      // sub-pixel drags on wider canvases (where 0.3% > 1px) felt sticky.
+      if (Math.abs(deltaX) < 1) return;
       const deltaPercent = (deltaX / containerWidthRef.current) * 100;
-      if (Math.abs(deltaPercent) > 0.3) {
-        onResizeRef.current(deltaPercent);
-        startXRef.current = e.clientX;
-      }
+      onResizeRef.current(deltaPercent);
+      startXRef.current = e.clientX;
     };
 
     const handleMouseUp = () => setIsDragging(false);

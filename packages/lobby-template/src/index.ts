@@ -148,12 +148,15 @@ export { GalleryView, type GalleryViewProps } from "./blocks/GalleryView";
 export {
   VIEWPORT_WIDTHS,
   parseGapValue,
+  parsePixelGap,
   parseWidthToPercent,
   normalizePercents,
   percentsToGridTemplate,
   equalGridTemplate,
   tokenizeGridTemplate,
   parseFrToken,
+  resolveTemplateToPixelWidths,
+  gridTemplateAlternatives,
 } from "./blocks/layoutHelpers";
 
 // Page-builder block schema — the shape both the editor saves and the lobby

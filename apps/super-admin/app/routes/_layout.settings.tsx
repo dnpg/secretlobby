@@ -92,6 +92,7 @@ export async function loader({}: Route.LoaderArgs) {
       allowSignups: settings.allowSignups,
       maintenanceMode: settings.maintenanceMode,
       prelaunchMode: settings.prelaunchMode,
+      disableColumnSizeEditor: settings.disableColumnSizeEditor,
       feedbackNotificationEmail: settings.feedbackNotificationEmail,
     },
     favicon: {
@@ -149,6 +150,20 @@ export async function action({ request }: Route.ActionArgs) {
     });
 
     return { success: true, message: "Platform settings updated" };
+  }
+
+  if (intent === "updatePageBuilder") {
+    // Checkbox name="disableColumnSizeEditor" only submits when checked, so
+    // the absence of the field is the "off" signal.
+    const disableColumnSizeEditor =
+      formData.get("disableColumnSizeEditor") === "true";
+
+    await prisma.systemSettings.update({
+      where: { id: "default" },
+      data: { disableColumnSizeEditor },
+    });
+
+    return { success: true, message: "Page builder settings updated" };
   }
 
   if (intent === "updateFeedbackNotifications") {
@@ -757,6 +772,49 @@ export default function SettingsPage() {
                 className="px-4 py-2 btn-primary rounded-lg transition disabled:opacity-50"
               >
                 {isSubmitting ? "Saving..." : "Save Platform Settings"}
+              </button>
+            </div>
+          </fetcher.Form>
+        </div>
+
+        {/* Page Builder */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-4">Page Builder</h3>
+          <p className="text-theme-secondary text-sm mb-6">
+            Controls for the per-lobby page-builder editor that customers see in the console.
+          </p>
+
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="updatePageBuilder" />
+
+            <div className="space-y-4">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  name="disableColumnSizeEditor"
+                  value="true"
+                  defaultChecked={settings.disableColumnSizeEditor}
+                  className="mt-1 h-4 w-4 rounded border-theme bg-theme-tertiary text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+                />
+                <div>
+                  <span className="text-sm font-medium">Hide column size editor</span>
+                  <p className="text-xs text-theme-secondary mt-0.5">
+                    Hides the per-section <code>grid-template-columns</code> inputs
+                    (Desktop / Tablet / Mobile) from customers. New sections still
+                    use sensible defaults (mobile <code>1fr</code>, tablet/desktop <code>1fr 300px</code>).
+                    Column count, gaps, and mobile layout selectors stay visible.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="mt-6">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="cursor-pointer px-4 py-2 btn-primary rounded-lg transition disabled:opacity-50"
+              >
+                {isSubmitting ? "Saving..." : "Save Page Builder Settings"}
               </button>
             </div>
           </fetcher.Form>

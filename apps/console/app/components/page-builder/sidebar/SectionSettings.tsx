@@ -14,7 +14,12 @@
 // =============================================================================
 
 import { cn } from "@secretlobby/ui";
-import { equalGridTemplate } from "@secretlobby/lobby-template";
+import {
+  VIEWPORT_WIDTHS,
+  equalGridTemplate,
+  gridTemplateAlternatives,
+  parsePixelGap,
+} from "@secretlobby/lobby-template";
 import type { Column, Section, ViewportSize } from "../state/types";
 import { generateId } from "../state/helpers";
 import { MobileIcon } from "../icons";
@@ -26,26 +31,31 @@ interface SectionSettingsProps {
   onUpdate: (updates: Partial<Section>) => void;
   onUpdateColumn: (columnId: string, updates: Partial<Column>) => void;
   viewport: ViewportSize;
+  /** Platform-wide flag from SystemSettings. When true, the per-section
+   *  grid-template-columns inputs (Desktop / Tablet / Mobile) and their
+   *  preset buttons are hidden. Column count, gaps, and mobile layout
+   *  selectors remain visible. The flag is read by the page-builder loader
+   *  and threaded down via PageBuilderRoot → LeftRail → SettingsOverlay. */
+  disableColumnSizeEditor: boolean;
 }
 
-// Quick-pick presets surfaced as buttons next to the desktop template input.
-// Tuned to the common designer patterns (two equal columns, sidebar-on-right,
-// sidebar-on-left, three equal columns). Each preset overwrites the template
-// untouched — designers can fine-tune the string after picking.
-const DESKTOP_PRESETS: Array<{ label: string; template: string; columns: number }> = [
-  { label: "1fr", template: "1fr", columns: 1 },
-  { label: "1fr 1fr", template: "1fr 1fr", columns: 2 },
-  { label: "1fr 300px", template: "1fr 300px", columns: 2 },
-  { label: "300px 1fr", template: "300px 1fr", columns: 2 },
-  { label: "2fr 1fr", template: "2fr 1fr", columns: 2 },
-  { label: "1fr 1fr 1fr", template: "1fr 1fr 1fr", columns: 3 },
-];
+// The preset row under the template input shows context-aware alternatives
+// computed from the current value — same visual layout, different unit form.
+// For a current `67% 33%` (or its drag-produced sibling `66.7% 33.3%`) the
+// row offers `2fr 1fr`, `1fr 300px`, `300px 1fr` so designers can swap
+// expressive forms without re-typing.
+//
+// We resolve against `VIEWPORT_WIDTHS[viewport]` rather than the real
+// canvas width because the sidebar lives outside the canvas DOM tree —
+// 1440/768/375 are the same logical widths the editor frame uses, so the
+// alternatives match what the user sees when they switch viewport.
 
 export function SectionSettings({
   section,
   onUpdate,
   onUpdateColumn: _onUpdateColumn,
   viewport,
+  disableColumnSizeEditor,
 }: SectionSettingsProps) {
   void _onUpdateColumn; // legacy: per-column width writes are no longer used
   const columnCount = section.columns.length;
@@ -80,9 +90,24 @@ export function SectionSettings({
     onUpdate(ensureColumnCount(newCount, equalGridTemplate(newCount)));
   };
 
-  const handleDesktopPresetClick = (preset: (typeof DESKTOP_PRESETS)[number]) => {
-    onUpdate(ensureColumnCount(preset.columns, preset.template));
+  // Alternative click: replace the desktop template with the chosen form.
+  // We don't touch column count — alternatives preserve track count by
+  // construction (they're equivalent expressions of the same grid).
+  const handleAlternativeClick = (template: string) => {
+    onUpdate({ gridTemplateDesktop: template });
   };
+
+  // Compute alternatives for the current desktop template. We resolve at
+  // the viewport's logical width so the suggested pixel widths line up
+  // with what the user sees at the active viewport — for tablet preview
+  // a `1fr 300px` suggestion will already be small enough to fit.
+  const desktopAlternatives = gridTemplateAlternatives(
+    section.gridTemplateDesktop && section.gridTemplateDesktop.trim().length > 0
+      ? section.gridTemplateDesktop
+      : equalGridTemplate(columnCount),
+    VIEWPORT_WIDTHS[viewport],
+    parsePixelGap(section.columnGap)
+  );
 
   return (
     <div className="p-3 space-y-4">
@@ -107,8 +132,14 @@ export function SectionSettings({
         </div>
       </div>
 
-      {/* v3 grid templates — desktop + optional tablet/mobile overrides. */}
-      {columnCount > 1 && (
+      {/* v3 grid templates — desktop + optional tablet/mobile overrides.
+          Gated by the platform-wide `disableColumnSizeEditor` flag so the
+          super-admin can hide the raw CSS controls from customers. When
+          hidden, the section still works because new sections seed sensible
+          defaults (mobile = 1fr via mobileLayout: "stack", tablet/desktop
+          = "1fr 300px") and the renderer continues to read whatever is
+          persisted on the section. */}
+      {columnCount > 1 && !disableColumnSizeEditor && (
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-theme-primary mb-2">
@@ -122,26 +153,36 @@ export function SectionSettings({
               className="w-full px-3 py-2 text-sm bg-theme-tertiary border border-theme rounded-lg text-theme-primary placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand-red)] focus:border-transparent font-mono"
             />
             <p className="text-xs text-theme-secondary mt-1">
-              CSS <code>grid-template-columns</code> value. Resize handle drags fr tokens.
+              CSS <code>grid-template-columns</code> value. Drag handles in
+              the canvas to resize; we'll rewrite the dragged pair as
+              percentages.
             </p>
-            {/* Preset buttons — quick swap for the most common layouts. */}
-            <div className="mt-2 flex flex-wrap gap-1">
-              {DESKTOP_PRESETS.map((preset) => (
-                <button
-                  key={preset.label}
-                  onClick={() => handleDesktopPresetClick(preset)}
-                  className={cn(
-                    "px-2 py-1 text-xs rounded border transition-colors cursor-pointer font-mono",
-                    section.gridTemplateDesktop === preset.template
-                      ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
-                      : "border-theme text-theme-secondary hover:bg-theme-tertiary"
-                  )}
-                  title={`${preset.columns} columns`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
+            {/* Alternative forms of the current template — same visual
+                layout, different units (%, fr, sidebar-on-{left,right}).
+                Computed dynamically so suggestions stay relevant after a
+                drag or a manual edit. */}
+            {desktopAlternatives.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs text-theme-muted mb-1">Equivalent forms</p>
+                <div className="flex flex-wrap gap-1">
+                  {desktopAlternatives.map((alt) => (
+                    <button
+                      key={alt}
+                      onClick={() => handleAlternativeClick(alt)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded border transition-colors cursor-pointer font-mono",
+                        section.gridTemplateDesktop === alt
+                          ? "bg-[var(--color-brand-red-muted)] border-[var(--color-brand-red)] text-[var(--color-brand-red)]"
+                          : "border-theme text-theme-secondary hover:bg-theme-tertiary"
+                      )}
+                      title="Click to swap to this form"
+                    >
+                      {alt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

@@ -318,9 +318,22 @@ export function BlockListSurface({
   // land the caret — the InlineEditor's setEditable + auto-focus effects
   // chain off `isSelected`.
   const handleEnter = useCallback(
-    (blockId: string) => {
+    (blockId: string, opts?: { atStart: boolean }) => {
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
+
+      // When the cursor is at position 0 of a non-empty block, insert
+      // ABOVE so the current content pushes down — matches the expected
+      // text-editor feel (Enter at position 0 opens a blank line above).
+      if (opts?.atStart) {
+        pendingFocusReqRef.current = {
+          sourceBlockId: blockId,
+          knownIds: new Set(blocks.map((b) => b.id)),
+        };
+        onAddBlock("paragraph", idx);
+        return;
+      }
+
       const nextBlock = blocks[idx + 1];
       if (nextBlock && isEmptyParagraphBlock(nextBlock)) {
         // Select AND queue pendingFocus. Selection alone flips the next
@@ -414,7 +427,7 @@ export function BlockListSurface({
                   })
                 }
                 onSlash={(anchorEl) => handleSlash(block.id, anchorEl)}
-                onEnter={() => handleEnter(block.id)}
+                onEnter={(opts) => handleEnter(block.id, opts)}
                 pendingFocus={pendingFocusBlockId === block.id}
                 onFocusConsumed={() => handleFocusConsumed(block.id)}
               />

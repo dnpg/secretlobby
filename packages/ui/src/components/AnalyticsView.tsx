@@ -277,7 +277,9 @@ function TopTracksTable({
         Top tracks
       </h3>
       <p className="text-theme-muted text-xs mb-3">
-        Replays = plays after the first by the same listener. Repeats = listeners who played a track 2+ times.
+        Replays counts extra <em>plays</em> (every play after the first by the
+        same listener). Returning listeners counts extra <em>people</em>
+        (distinct listeners who played the track 2+ times).
       </p>
       {rows.length === 0 ? (
         <p className="text-theme-muted text-sm">No track plays in this period.</p>
@@ -292,7 +294,7 @@ function TopTracksTable({
               <th className="text-right py-2 pr-4 font-medium">Plays</th>
               <th className="text-right py-2 pr-4 font-medium">Listeners</th>
               <th className="text-right py-2 pr-4 font-medium">Replays</th>
-              <th className="text-right py-2 font-medium">Repeats</th>
+              <th className="text-right py-2 font-medium">Returning listeners</th>
             </tr>
           </thead>
           <tbody>

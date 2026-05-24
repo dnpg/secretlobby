@@ -63,9 +63,18 @@ interface CanvasProps {
    *  renders the button in preview mode (no CSRF needed), but the prop
    *  exists for symmetry with the lobby render path. */
   csrfToken: string;
+  /** Platform-wide SystemSettings flag. Forwarded to each SectionComponent
+   *  so the in-canvas column resize handles disappear in lockstep with the
+   *  SectionSettings grid-template inputs. */
+  disableColumnSizeEditor: boolean;
 }
 
-export function Canvas({ showLayoutEdit, hasPassword, csrfToken }: CanvasProps) {
+export function Canvas({
+  showLayoutEdit,
+  hasPassword,
+  csrfToken,
+  disableColumnSizeEditor,
+}: CanvasProps) {
   const { state } = usePageBuilder();
   // Login-page template branch: short-circuit before any DndContext or
   // section-list machinery mounts. We delegate to LobbyCanvas (everything
@@ -79,11 +88,16 @@ export function Canvas({ showLayoutEdit, hasPassword, csrfToken }: CanvasProps) 
       showLayoutEdit={showLayoutEdit}
       hasPassword={hasPassword}
       csrfToken={csrfToken}
+      disableColumnSizeEditor={disableColumnSizeEditor}
     />
   );
 }
 
-function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
+function LobbyCanvas({
+  showLayoutEdit,
+  hasPassword,
+  disableColumnSizeEditor,
+}: CanvasProps) {
   const { state, dispatch } = usePageBuilder();
   const { sections, selection, viewport, mode, theme, socialLinks } = state;
   const isEditing = mode === "edit";
@@ -524,6 +538,7 @@ function LobbyCanvas({ showLayoutEdit, hasPassword }: CanvasProps) {
         viewport,
         isEditing,
         showLayoutEdit,
+        disableColumnSizeEditor,
         selectedBlockId,
         onSelectColumn: (columnId: string) => selectColumn(columnId),
         onSelectBlock: (id: string | null) => selectBlock(id),

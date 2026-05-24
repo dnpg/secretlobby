@@ -20,6 +20,9 @@ export interface SortableSectionProps {
   viewport: ViewportSize;
   isEditing: boolean;
   showLayoutEdit: boolean;
+  /** Forwarded to SectionComponent. Hides the in-canvas resize handles
+   *  when the platform-wide column-size editor is disabled. */
+  disableColumnSizeEditor: boolean;
   selectedBlockId: string | null;
   onSelectColumn: (columnId: string) => void;
   onSelectBlock: (blockId: string | null) => void;
@@ -47,6 +50,7 @@ export function SortableSection({
   viewport,
   isEditing,
   showLayoutEdit,
+  disableColumnSizeEditor,
   selectedBlockId,
   onSelectColumn,
   onSelectBlock,
@@ -133,6 +137,7 @@ export function SortableSection({
         viewport={viewport}
         isEditing={isEditing}
         showLayoutEdit={showLayoutEdit}
+        disableColumnSizeEditor={disableColumnSizeEditor}
         selectedBlockId={selectedBlockId}
         onSelectColumn={onSelectColumn}
         onSelectBlock={onSelectBlock}

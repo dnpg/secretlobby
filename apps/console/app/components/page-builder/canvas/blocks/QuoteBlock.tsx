@@ -9,7 +9,7 @@ interface QuoteBlockProps {
   onUpdate?: (content: Partial<BlockContent>) => void;
   // Notion-style hooks forwarded into the InlineEditor.
   onSlash?: (anchorEl: HTMLElement) => void;
-  onEnter?: () => void;
+  onEnter?: (opts: { atStart: boolean }) => void;
   pendingFocus?: boolean;
   onFocusConsumed?: () => void;
   onEmptyDelete?: () => void;

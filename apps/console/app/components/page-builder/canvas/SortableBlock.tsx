@@ -43,7 +43,7 @@ interface SortableBlockProps {
   onSlash?: (anchorEl: HTMLElement) => void;
   // Enter pressed inside the text editor — parent appends a new paragraph
   // below and routes pending focus back via `pendingFocus`.
-  onEnter?: () => void;
+  onEnter?: (opts: { atStart: boolean }) => void;
   // When true, the inline editor inside this block should focus itself once
   // and then call `onFocusConsumed`. Used to chase the caret onto a freshly
   // inserted paragraph after Enter.

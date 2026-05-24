@@ -207,6 +207,8 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const pageKind: "lobby" | "login" =
     new URL(request.url).searchParams.get("page") === "login" ? "login" : "lobby";
 
+  const { prisma: prismaForSystemSettings } = await import("@secretlobby/db");
+
   const [
     lobby,
     account,
@@ -216,6 +218,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     swatchesRaw,
     socialLinks,
     loginPage,
+    systemSettings,
   ] = await Promise.all([
     getLobbyByIdWithMedia(lobbyId),
     getAccountWithBasicInfo(accountId),
@@ -230,6 +233,14 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     // LeftRail login-page settings panel. Same lobby/account merge fallback
     // as theme/social-links.
     getLobbyLoginPageSettings(lobbyId),
+    // Platform-wide flags from the super-admin Settings page. Only the
+    // page-builder-related toggles are surfaced to this loader. The row is
+    // created on first super-admin visit; defensively select-only here so a
+    // missing singleton just falls back to schema defaults.
+    prismaForSystemSettings.systemSettings.findUnique({
+      where: { id: "default" },
+      select: { disableColumnSizeEditor: true },
+    }),
   ]);
 
   // Public URL for the login-page logo image (same helper as the dedicated
@@ -434,6 +445,10 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     loginLogoImageUrl,
     loginLogoImageWidth,
     loginLogoImageHeight,
+    // Global flag: when true, hide the per-section grid-template-columns
+    // inputs from the editor. Defaults to true on a fresh install (schema
+    // default), so we fall back to true if the singleton row is missing.
+    disableColumnSizeEditor: systemSettings?.disableColumnSizeEditor ?? true,
   };
 }
 

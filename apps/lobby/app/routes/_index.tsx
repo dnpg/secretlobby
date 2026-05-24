@@ -29,6 +29,9 @@ import {
   LoginAutoplayToggle,
   LoginPanel,
   LogoutButton,
+  PAGE_LAYOUT_VERSION,
+  parseWidthToPercent,
+  percentsToGridTemplate,
   setAnalyticsContext,
   StandalonePlayerBlock,
   PreviewBar,
@@ -38,8 +41,15 @@ import {
   type ImageUrls,
   type LoginAccessMode,
   type LoginPageSettings,
+  type Block,
+  type CardBlockContent,
+  type Column,
+  type HeadingBlockContent,
+  type ImageBlockContent,
+  type ParagraphBlockContent,
   type PlayerBlockContent,
   type Section,
+  type SocialLinksBlockContent,
   type SocialLinksSettings,
   type Track,
 } from "@secretlobby/lobby-template";
@@ -126,6 +136,417 @@ function getBodyBgCSS(
     undefined,
     transformUrl
   );
+}
+
+// =============================================================================
+// Inline V1 → V2 page-layout migration. Mirrors the console's
+// migrateLobbyToV2 so the lobby can build a section layout from legacy fields
+// (bannerMedia, profileMedia, title, description, technicalInfo, socialLinks)
+// without importing from the console app.
+// =============================================================================
+
+// Bump this whenever buildV1Layout or _htmlToBlocks logic changes. The lobby
+// loader checks the persisted stamp — if it's older than this value, the
+// layout is re-synthesized even though a pageLayout already exists. This
+// avoids the user having to manually clear stale migration data.
+const V1_MIGRATION_REV = 3;
+
+let _idCounter = 0;
+function _genId(prefix = "s") {
+  return `${prefix}-${Date.now()}-${(++_idCounter).toString(36)}`;
+}
+function _block(type: string): Block {
+  return { id: _genId("b"), type: type as Block["type"], content: {} as Block["content"] };
+}
+function _section(cols: number): Section {
+  const columns: Column[] = Array.from({ length: cols }, () => ({
+    id: _genId("c"),
+    blocks: [_block("paragraph")],
+  }));
+  const tpl =
+    cols <= 1 ? "1fr" : cols === 2 ? "1fr 300px" : Array(cols).fill("1fr").join(" ");
+  return {
+    id: _genId("s"),
+    columns,
+    rowGap: "16",
+    columnGap: "16",
+    mobileLayout: "stack",
+    gridTemplateDesktop: tpl,
+    gridTemplateTablet: cols === 2 ? "1fr 300px" : undefined,
+  };
+}
+
+// Compact HTML → block converter for legacy description/technicalInfo fields.
+// Handles <p>, <br>, <h1-6>, strips inline tags, and preserves text-align
+// from both inline styles and tiptap CSS classes.
+type BlockAlign = "left" | "center" | "right";
+
+function _extractAlign(tag: string): BlockAlign | undefined {
+  // style="text-align: center"
+  const styleMatch = tag.match(/text-align:\s*(left|center|right)/i);
+  if (styleMatch) return styleMatch[1].toLowerCase() as BlockAlign;
+  // tiptap classes: class="... tiptap-text-align-center ..."
+  const classMatch = tag.match(/tiptap-text-align-(left|center|right)/i);
+  if (classMatch) return classMatch[1].toLowerCase() as BlockAlign;
+  // Quill classes: class="ql-align-center"
+  const quillMatch = tag.match(/ql-align-(left|center|right)/i);
+  if (quillMatch) return quillMatch[1].toLowerCase() as BlockAlign;
+  // HTML4 attribute: align="center"
+  const attrMatch = tag.match(/\balign=["'](left|center|right)["']/i);
+  if (attrMatch) return attrMatch[1].toLowerCase() as BlockAlign;
+  return undefined;
+}
+
+function _decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function _stripTags(s: string): string {
+  return _decodeEntities(s.replace(/<[^>]*>/g, "")).trim();
+}
+
+// Tiptap inline node types used in the JSON doc.
+type InlineMark = { type: string; attrs?: Record<string, unknown> };
+type InlineNode =
+  | { type: "text"; text: string; marks?: InlineMark[] }
+  | { type: "hardBreak" };
+
+// Map of HTML tags to Tiptap mark types.
+const MARK_BY_TAG: Record<string, string> = {
+  b: "bold", strong: "bold",
+  i: "italic", em: "italic",
+  u: "underline",
+  s: "strike", del: "strike", strike: "strike",
+  code: "code",
+};
+
+function _htmlToBlocks(html: string): Block[] {
+  if (!html) return [];
+  const blocks: Block[] = [];
+
+  const TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^>]*)?)\/?\s*>/g;
+  let lastIndex = 0;
+  let pendingAlign: BlockAlign | undefined;
+  let pendingTag: string | null = null;
+  let inlineNodes: InlineNode[] = [];
+  const markStack: InlineMark[] = [];
+
+  const pushText = (raw: string) => {
+    const text = _decodeEntities(raw);
+    if (!text) return;
+    const node: InlineNode = { type: "text", text };
+    if (markStack.length > 0) {
+      node.marks = markStack.map((m) => ({ ...m }));
+    }
+    inlineNodes.push(node);
+  };
+
+  const trimBreaks = (nodes: InlineNode[]): InlineNode[] => {
+    let start = 0;
+    let end = nodes.length;
+    while (start < end && nodes[start].type === "hardBreak") start++;
+    while (end > start && nodes[end - 1].type === "hardBreak") end--;
+    return nodes.slice(start, end);
+  };
+
+  const flush = () => {
+    const trimmed = trimBreaks(inlineNodes);
+    inlineNodes = [];
+    if (trimmed.length === 0) { pendingTag = null; pendingAlign = undefined; return; }
+
+    const isHeading = pendingTag && /^h[1-6]$/i.test(pendingTag);
+
+    if (isHeading) {
+      const h = _block("heading");
+      (h.content as HeadingBlockContent) = {
+        level: 5,
+        inline: {
+          type: "doc",
+          content: [{ type: "heading", attrs: { level: 5 }, content: trimmed }],
+        },
+        ...(pendingAlign ? { align: pendingAlign } : {}),
+      };
+      blocks.push(h);
+    } else {
+      const p = _block("paragraph");
+      (p.content as ParagraphBlockContent) = {
+        inline: {
+          type: "doc",
+          content: [{ type: "paragraph", content: trimmed }],
+        },
+        fontSize: "14px",
+        ...(pendingAlign ? { align: pendingAlign } : {}),
+      };
+      blocks.push(p);
+    }
+    pendingTag = null;
+    pendingAlign = undefined;
+  };
+
+  const BLOCK_TAGS = new Set(["p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6"]);
+
+  let m: RegExpExecArray | null;
+  while ((m = TAG_RE.exec(html)) !== null) {
+    const before = html.slice(lastIndex, m.index);
+    lastIndex = m.index + m[0].length;
+    const isClosing = m[1] === "/";
+    const tagName = m[2].toLowerCase();
+
+    if (tagName === "br") {
+      pushText(before);
+      inlineNodes.push({ type: "hardBreak" });
+      continue;
+    }
+
+    if (!BLOCK_TAGS.has(tagName)) {
+      pushText(before);
+
+      // Inline mark tags (bold, italic, underline, etc.)
+      const markType = MARK_BY_TAG[tagName];
+      if (markType) {
+        if (isClosing) {
+          for (let i = markStack.length - 1; i >= 0; i--) {
+            if (markStack[i].type === markType) { markStack.splice(i, 1); break; }
+          }
+        } else {
+          markStack.push({ type: markType });
+        }
+        continue;
+      }
+
+      // Link tags
+      if (tagName === "a") {
+        if (isClosing) {
+          for (let i = markStack.length - 1; i >= 0; i--) {
+            if (markStack[i].type === "link") { markStack.splice(i, 1); break; }
+          }
+        } else {
+          const hrefMatch = m[0].match(/href=["']([^"']*)["']/i);
+          if (hrefMatch) {
+            markStack.push({ type: "link", attrs: { href: hrefMatch[1], target: "_blank", rel: "noopener noreferrer nofollow" } });
+          }
+        }
+        continue;
+      }
+
+      // Any other inline tag (span, font, etc.) — drop the tag, keep the text
+      continue;
+    }
+
+    if (!isClosing) {
+      pushText(before);
+      // Preserve the current alignment before flushing — if the new tag
+      // has no alignment of its own (e.g. a bare `<p>` inside a
+      // `<div style="text-align:center">`), inherit from the parent.
+      const inheritAlign = pendingAlign;
+      flush();
+      const tagAlign = _extractAlign(m[0]);
+      pendingAlign = tagAlign ?? inheritAlign;
+      pendingTag = tagName;
+    } else {
+      pushText(before);
+      flush();
+    }
+  }
+
+  // Remaining text after last tag
+  pushText(html.slice(lastIndex));
+  flush();
+
+  return blocks;
+}
+
+interface MigMedia {
+  id: string;
+  key: string;
+  type: string;
+  embedUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+}
+
+function buildV1Layout(
+  lobby: {
+    title: string | null;
+    description: string | null;
+    bannerMedia?: MigMedia | null;
+    profileMedia?: MigMedia | null;
+  },
+  legacySettings: {
+    technicalInfo?: { title?: string; content?: string } | null;
+    socialLinks?: Partial<SocialLinksSettings> | null;
+  },
+  defaultPlaylistId: string
+): { sections: Section[]; version: number } {
+  const sections: Section[] = [];
+
+  if (lobby.bannerMedia) {
+    const sec = _section(1);
+    sec.name = "Header";
+    const img = _block("image");
+    const url = lobby.bannerMedia.type === "EMBED"
+      ? (lobby.bannerMedia.embedUrl || "")
+      : getPublicUrl(lobby.bannerMedia.key);
+    (img.content as ImageBlockContent) = {
+      mediaId: lobby.bannerMedia.id,
+      mediaUrl: url,
+      mediaWidth: lobby.bannerMedia.width ?? undefined,
+      mediaHeight: lobby.bannerMedia.height ?? undefined,
+    };
+    sec.columns[0].blocks = [img];
+    sections.push(sec);
+  }
+
+  const player = _block("player");
+  (player.content as PlayerBlockContent) = {
+    playlistId: defaultPlaylistId,
+    variant: "full",
+    showVisualizer: true,
+    showPlaylist: true,
+    autoplay: false,
+    showTrackImage: false,
+  };
+  const leftBlocks: Block[] = [player];
+
+  const ti = legacySettings.technicalInfo;
+  if (ti && ((ti.title && ti.title.trim()) || (ti.content && ti.content.trim()))) {
+    const card = _block("card");
+    const inner: Block[] = [];
+    if (ti.title?.trim()) {
+      const h = _block("heading");
+      (h.content as HeadingBlockContent) = {
+        level: 5,
+        inline: { type: "doc", content: [{ type: "heading", attrs: { level: 5 }, content: [{ type: "text", text: ti.title.trim() }] }] },
+      };
+      inner.push(h);
+    }
+    if (ti.content?.trim()) {
+      inner.push(..._htmlToBlocks(ti.content));
+    }
+    (card.content as CardBlockContent) = { blocks: inner };
+    leftBlocks.push(card);
+  }
+
+  const rightBlocks: Block[] = [];
+  if (lobby.profileMedia) {
+    const img = _block("image");
+    const url = lobby.profileMedia.type === "EMBED"
+      ? (lobby.profileMedia.embedUrl || "")
+      : getPublicUrl(lobby.profileMedia.key);
+    (img.content as ImageBlockContent) = {
+      mediaId: lobby.profileMedia.id,
+      mediaUrl: url,
+      mediaWidth: lobby.profileMedia.width ?? undefined,
+      mediaHeight: lobby.profileMedia.height ?? undefined,
+    };
+    rightBlocks.push(img);
+  }
+
+  const sl = legacySettings.socialLinks;
+  if (sl?.links && Array.isArray(sl.links) && sl.links.length > 0) {
+    const card = _block("card");
+    const inner: Block[] = [];
+    if (sl.title?.trim()) {
+      const h = _block("heading");
+      (h.content as HeadingBlockContent) = {
+        level: 5,
+        inline: { type: "doc", content: [{ type: "heading", attrs: { level: 5 }, content: [{ type: "text", text: sl.title.trim() }] }] },
+      };
+      inner.push(h);
+    }
+    const linksBlock = _block("socialLinks");
+    (linksBlock.content as SocialLinksBlockContent) = {
+      alignment: "center",
+      iconStyle: ((sl as { iconStyle?: string }).iconStyle === "brand" ? "brand" : "mono") as "brand" | "mono",
+    };
+    inner.push(linksBlock);
+    (card.content as CardBlockContent) = { blocks: inner };
+    rightBlocks.push(card);
+  }
+
+  if (lobby.title?.trim() || lobby.description?.trim()) {
+    const card = _block("card");
+    const inner: Block[] = [];
+    if (lobby.title?.trim()) {
+      const h = _block("heading");
+      (h.content as HeadingBlockContent) = {
+        level: 4,
+        inline: { type: "doc", content: [{ type: "heading", attrs: { level: 4 }, content: [{ type: "text", text: lobby.title.trim() }] }] },
+      };
+      inner.push(h);
+    }
+    if (lobby.description?.trim()) {
+      inner.push(..._htmlToBlocks(lobby.description));
+    }
+    (card.content as CardBlockContent) = { blocks: inner };
+    rightBlocks.push(card);
+  }
+
+  if (rightBlocks.length > 0) {
+    const sec = _section(2);
+    sec.name = "Content";
+    sec.columns[0].name = "Player";
+    sec.columns[0].blocks = leftBlocks;
+    sec.columns[1].name = "Sidebar";
+    sec.columns[1].blocks = rightBlocks;
+    sections.push(sec);
+  } else {
+    const sec = _section(1);
+    sec.name = "Content";
+    sec.columns[0].blocks = leftBlocks;
+    sections.push(sec);
+  }
+
+  return { sections, version: PAGE_LAYOUT_VERSION, _migRev: V1_MIGRATION_REV } as { sections: Section[]; version: number };
+}
+
+// Inline v2→v3 layout migration. Mirrors the console's migrateLobbyToV3 but
+// lives here so the lobby can run it on read without importing from the
+// console app. Pure function — safe on every load; idempotent on v3 layouts.
+function migratePageLayoutToV3(
+  layout: { sections: unknown[]; version: number }
+): { sections: Section[]; version: number } {
+  if (layout.version >= PAGE_LAYOUT_VERSION) {
+    const allHaveTemplate = (layout.sections as Section[]).every(
+      (s) =>
+        typeof s.gridTemplateDesktop === "string" &&
+        s.gridTemplateDesktop.trim().length > 0
+    );
+    if (allHaveTemplate) {
+      return layout as { sections: Section[]; version: number };
+    }
+  }
+  const migrated = (layout.sections as Section[]).map((section) => {
+    if (
+      typeof section.gridTemplateDesktop === "string" &&
+      section.gridTemplateDesktop.trim().length > 0
+    ) {
+      return section;
+    }
+    const columnCount = section.columns?.length ?? 1;
+    if (columnCount === 2) {
+      return { ...section, gridTemplateDesktop: "1fr 300px", gridTemplateTablet: "1fr 300px" };
+    }
+    const desktopPercents = (section.columns ?? []).map((col) =>
+      parseWidthToPercent(col.width ?? "", columnCount)
+    );
+    const gridTemplateDesktop = percentsToGridTemplate(desktopPercents);
+    let gridTemplateTablet: string | undefined;
+    if ((section.columns ?? []).some((col) => typeof col.tabletWidth === "string" && col.tabletWidth.length > 0)) {
+      const tabletPercents = (section.columns ?? []).map((col) =>
+        parseWidthToPercent(col.tabletWidth || col.width || "", columnCount)
+      );
+      gridTemplateTablet = percentsToGridTemplate(tabletPercents);
+    }
+    return { ...section, gridTemplateDesktop, ...(gridTemplateTablet ? { gridTemplateTablet } : {}) };
+  });
+  return { sections: migrated, version: PAGE_LAYOUT_VERSION };
 }
 
 const defaultLoginPageSettings: LoginPageSettings = {
@@ -264,7 +685,23 @@ export async function loader({ request }: Route.LoaderArgs) {
     };
   }
 
-  const { account, lobby } = tenant;
+  const { account } = tenant;
+  let { lobby } = tenant;
+
+  // Backfill access controls for imported data. The Prisma migration
+  // `20260522120000_add_lobby_access_controls` ran `UPDATE "Lobby" SET
+  // "passwordRequired" = true WHERE "password" IS NOT NULL AND
+  // "password" <> ''` once. After a database import the column defaults
+  // may disagree with the actual password state — a lobby with a password
+  // would appear open. Fix it lazily on read and persist so it only fires
+  // once.
+  if (lobby.password && !lobby.passwordRequired) {
+    lobby = { ...lobby, passwordRequired: true };
+    void prisma.$executeRawUnsafe(
+      `UPDATE "Lobby" SET "passwordRequired" = true WHERE "id" = $1 AND "password" IS NOT NULL AND "password" <> ''`,
+      lobby.id
+    ).catch(() => {});
+  }
 
   // Check if lobby requires password and user is authenticated for THIS specific lobby
   const isAuthenticated = isAuthenticatedForLobby(session, lobby.id);
@@ -326,10 +763,37 @@ export async function loader({ request }: Route.LoaderArgs) {
     ) {
       const pl = lobbySettings.pageLayout as Record<string, unknown>;
       if (Array.isArray(pl.sections)) {
-        pageLayout = {
-          sections: pl.sections,
-          version: typeof pl.version === "number" ? pl.version : 1,
-        };
+        const rawVersion = typeof pl.version === "number" ? pl.version : 1;
+
+        // Check migration revision stamp. When the V1 migration logic
+        // changes (new mark support, alignment, etc.) we bump
+        // V1_MIGRATION_REV. If the persisted layout was produced by an
+        // older revision (or has no stamp at all), we discard it and
+        // force a fresh V1 migration below. Layouts saved by the console
+        // editor (user edits) don't carry `_migRev` — those should NOT
+        // be re-migrated, so we only trigger when the version matches
+        // PAGE_LAYOUT_VERSION (meaning it was auto-migrated, not
+        // hand-edited via the page builder).
+        const storedMigRev = typeof pl._migRev === "number" ? pl._migRev : 0;
+        const wasMigratedByLobby = storedMigRev > 0;
+        if (wasMigratedByLobby && storedMigRev < V1_MIGRATION_REV) {
+          // Stale lobby migration — discard and re-run below.
+          // pageLayout stays null → triggers buildV1Layout.
+        } else {
+          const raw = { sections: pl.sections, version: rawVersion };
+
+          if (rawVersion < PAGE_LAYOUT_VERSION) {
+            const migrated = migratePageLayoutToV3(raw);
+            pageLayout = migrated;
+            void prisma.$executeRawUnsafe(
+              `UPDATE "Lobby" SET "settings" = "settings" || $1::jsonb WHERE "id" = $2`,
+              JSON.stringify({ pageLayout: migrated }),
+              lobby.id
+            ).catch(() => {});
+          } else {
+            pageLayout = raw as { sections: Section[]; version: number };
+          }
+        }
       }
     }
   }
@@ -380,6 +844,96 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
     loginLogoImageWidth = logoMedia?.width ?? null;
     loginLogoImageHeight = logoMedia?.height ?? null;
+  }
+
+  // V1 → V2 migration: when no pageLayout is saved (or it's empty), build
+  // the full section layout from legacy lobby fields — banner, profile image,
+  // title + description about card, social links, technical info. Mirrors
+  // the console's migrateLobbyToV2 + V3 chain so the visitor sees the same
+  // layout the admin would see after opening the page builder.
+  if (!pageLayout) {
+    const lobbyMedia = await prisma.lobby.findUnique({
+      where: { id: lobby.id },
+      include: {
+        bannerMedia: { select: { id: true, key: true, type: true, embedUrl: true, width: true, height: true } },
+        profileMedia: { select: { id: true, key: true, type: true, embedUrl: true, width: true, height: true } },
+      },
+    });
+    // Ensure a default playlist exists + backfill orphaned tracks (same
+    // logic the console runs). We need the playlist ID for the player block.
+    let defaultPlaylist = await prisma.playlist.findFirst({
+      where: { lobbyId: lobby.id, isDefault: true },
+      select: { id: true },
+    });
+    if (!defaultPlaylist) {
+      try {
+        defaultPlaylist = await prisma.playlist.create({
+          data: { lobbyId: lobby.id, name: "Default", isDefault: true, position: 0 },
+          select: { id: true },
+        });
+      } catch {
+        defaultPlaylist = await prisma.playlist.findFirst({
+          where: { lobbyId: lobby.id, isDefault: true },
+          select: { id: true },
+        });
+      }
+    }
+    if (defaultPlaylist) {
+      await prisma.track.updateMany({
+        where: { lobbyId: lobby.id, playlistId: null },
+        data: { playlistId: defaultPlaylist.id },
+      });
+    }
+
+    const migrated = buildV1Layout(
+      {
+        title: lobby.title,
+        description: lobby.description,
+        bannerMedia: lobbyMedia?.bannerMedia as MigMedia | null,
+        profileMedia: lobbyMedia?.profileMedia as MigMedia | null,
+      },
+      { technicalInfo, socialLinks: socialLinksSettings },
+      defaultPlaylist?.id ?? ""
+    );
+    pageLayout = migrated;
+    // Persist so subsequent loads skip the migration.
+    void prisma.$executeRawUnsafe(
+      `UPDATE "Lobby" SET "settings" = "settings" || $1::jsonb WHERE "id" = $2`,
+      JSON.stringify({ pageLayout: migrated }),
+      lobby.id
+    ).catch(() => {});
+  }
+
+  // Carry over the lobby-level background image (Lobby.backgroundMediaId)
+  // into the theme when the theme doesn't already have an image overlay.
+  // Pre-v2 lobbies stored their background via a direct FK on the Lobby row;
+  // the new theme format expects it inside `background.image`.
+  if (!themeSettings.background?.image) {
+    const lobbyBgMedia = await prisma.lobby.findUnique({
+      where: { id: lobby.id },
+      select: {
+        backgroundMedia: { select: { id: true, key: true } },
+      },
+    });
+    if (lobbyBgMedia?.backgroundMedia?.key) {
+      const existingBg = normalizeThemeBackground(themeSettings);
+      themeSettings = {
+        ...themeSettings,
+        background: {
+          ...existingBg,
+          image: {
+            type: "image",
+            mediaId: lobbyBgMedia.backgroundMedia.id,
+            mediaUrl: getPublicUrl(lobbyBgMedia.backgroundMedia.key),
+            size: "cover",
+            position: "center",
+            repeat: "no-repeat",
+            attachment: "fixed",
+          },
+          overlay: existingBg.overlay ?? { color: "#000000", opacity: 30 },
+        },
+      };
+    }
   }
 
   // Resolve any swatch-ref entries in the persisted theme JSON. Swatches are
@@ -963,6 +1517,15 @@ export default function LobbyIndex() {
     if (!lobbyId) return;
     setAnalyticsContext({ lobbyId, accountId: null });
   }, [data.lobby?.id]);
+
+  // Disable right-click on the lobby page to discourage casual content
+  // copying (images, audio, text). Not bulletproof — browser dev-tools
+  // bypass it trivially — but it's a speed bump for non-technical visitors.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", handler);
+    return () => document.removeEventListener("contextmenu", handler);
+  }, []);
 
   // Fire `lobby_password_view` whenever the visitor lands on (or returns to)
   // the password gate. This is the entry-point event for the "how many
