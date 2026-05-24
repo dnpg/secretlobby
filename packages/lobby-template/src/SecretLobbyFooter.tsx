@@ -28,19 +28,25 @@ export interface SecretLobbyFooterProps {
    *  component intentionally doesn't render a spacer so the caller keeps
    *  full control over its layout. */
   floating?: boolean;
+  /** When true, the floating footer skips its dark backdrop. Use this on
+   *  pages with a solid background (e.g. the login page) where the dark
+   *  strip looks out of place. Ignored when `floating` is false. */
+  transparent?: boolean;
 }
 
 export function SecretLobbyFooter({
   className,
   floating = false,
+  transparent = false,
 }: SecretLobbyFooterProps) {
   const positionClasses = floating
-    ? "fixed bottom-0 left-0 right-0 z-50 backdrop-blur-sm"
+    ? `fixed bottom-0 left-0 right-0 z-50${transparent ? "" : " backdrop-blur-sm"}`
     : "";
-  const positionStyle: React.CSSProperties = floating
+  const positionStyle: React.CSSProperties = floating && !transparent
     ? // Semi-transparent neutral surface so the floating footer reads
       // against any lobby background without locking onto the lobby's own
-      // palette. Skipped entirely in the in-flow variant.
+      // palette. Skipped entirely in the in-flow variant and when the
+      // caller opts into transparent mode (login page with solid bg).
       { backgroundColor: "rgba(0, 0, 0, 0.4)" }
     : {};
   return (

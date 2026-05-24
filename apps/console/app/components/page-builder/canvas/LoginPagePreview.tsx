@@ -84,9 +84,21 @@ export function LoginPagePreview() {
   // Mirror the main Canvas's "themed surface" wrapper. The LoginPanel itself
   // owns its own bg-color (driven by loginPage.bgColor) — these CSS variables
   // only matter for any nested theme-aware child, kept here for symmetry.
+  // When the login page has a bgImage, apply it to the wrapper so the
+  // preview shows the same full-bleed image the live lobby renders.
+  const bgImageStyle: React.CSSProperties = loginPage.bgImage
+    ? {
+        backgroundImage: `url(${JSON.stringify(loginPage.bgImage.mediaUrl)})`,
+        backgroundSize: loginPage.bgImage.size ?? "cover",
+        backgroundPosition: loginPage.bgImage.position ?? "center",
+        backgroundRepeat: loginPage.bgImage.repeat ?? "no-repeat",
+        backgroundAttachment: loginPage.bgImage.attachment ?? "scroll",
+      }
+    : {};
   const themedSurfaceStyle: React.CSSProperties = {
     fontSize: "var(--text-base-size, 16px)",
     ...themeStyle,
+    ...bgImageStyle,
   };
 
   // Desktop: edge-to-edge background, no rounded device chrome.

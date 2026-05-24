@@ -192,7 +192,7 @@ export function LoginPanel({
   // Logo + title + description block. Reused across both rendering
   // branches (legacy password-only and the new multi-method form).
   const chrome = (
-    <div className="text-center mb-8">
+    <div className="text-center pb-8">
       {showImage && logoImageUrl && (
         <div className="flex justify-center mb-4 w-full">
           <ResponsiveImage

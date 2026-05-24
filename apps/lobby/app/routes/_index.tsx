@@ -1540,8 +1540,13 @@ export default function LobbyIndex() {
     });
   }, [data.requiresPassword, data.lobby?.id]);
 
-  // Apply body background from theme settings
+  // Apply body background from theme settings — only when showing the
+  // authenticated lobby content. On the login page the LoginPanel paints
+  // its own full-bleed bgColor; applying the lobby's bodyBg (which may
+  // include a background image) to document.body would bleed through at
+  // the edges / footer.
   useEffect(() => {
+    if (data.requiresPassword) return;
     const bg = data.bodyBg;
     if (
       bg.startsWith("linear-gradient") ||
@@ -1557,7 +1562,7 @@ export default function LobbyIndex() {
       document.body.style.background = "";
       document.body.style.backgroundColor = "";
     };
-  }, [data.bodyBg]);
+  }, [data.bodyBg, data.requiresPassword]);
 
   // Inject Google Analytics script
   useEffect(() => {
@@ -1714,6 +1719,13 @@ export default function LobbyIndex() {
           className="flex flex-col"
           style={{
             ...(data.themeVars as React.CSSProperties),
+            ...(lp.bgImage ? {
+              backgroundImage: `url(${JSON.stringify(lp.bgImage.mediaUrl)})`,
+              backgroundSize: lp.bgImage.size ?? "cover",
+              backgroundPosition: lp.bgImage.position ?? "center",
+              backgroundRepeat: lp.bgImage.repeat ?? "no-repeat",
+              backgroundAttachment: lp.bgImage.attachment ?? "scroll",
+            } : {}),
             // LoginPanel paints its own full-bleed `bgColor` wrapper
             // inside, so we don't need to set `background` on the main —
             // but we DO need `--btn-*` and friends to cascade so the
