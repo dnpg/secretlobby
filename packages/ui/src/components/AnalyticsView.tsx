@@ -276,6 +276,9 @@ function TopTracksTable({
       <h3 className="text-theme-primary text-sm font-semibold mb-4">
         Top tracks
       </h3>
+      <p className="text-theme-muted text-xs mb-3">
+        Replays = plays after the first by the same listener. Repeats = listeners who played a track 2+ times.
+      </p>
       {rows.length === 0 ? (
         <p className="text-theme-muted text-sm">No track plays in this period.</p>
       ) : (
@@ -287,7 +290,9 @@ function TopTracksTable({
                 <th className="text-left py-2 pr-4 font-medium">Lobby</th>
               )}
               <th className="text-right py-2 pr-4 font-medium">Plays</th>
-              <th className="text-right py-2 font-medium">Listeners</th>
+              <th className="text-right py-2 pr-4 font-medium">Listeners</th>
+              <th className="text-right py-2 pr-4 font-medium">Replays</th>
+              <th className="text-right py-2 font-medium">Repeats</th>
             </tr>
           </thead>
           <tbody>
@@ -308,8 +313,14 @@ function TopTracksTable({
                   <td className="py-2 pr-4 text-right tabular-nums">
                     {formatNumber(r.plays)}
                   </td>
-                  <td className="py-2 text-right tabular-nums">
+                  <td className="py-2 pr-4 text-right tabular-nums">
                     {formatNumber(r.listeners)}
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-theme-secondary">
+                    {formatNumber(r.replays)}
+                  </td>
+                  <td className="py-2 text-right tabular-nums text-theme-secondary">
+                    {formatNumber(r.repeatListeners)}
                   </td>
                 </tr>
               );
@@ -349,7 +360,7 @@ export function AnalyticsView({
         <StatCard
           label="Track plays"
           value={formatNumber(summary.plays)}
-          hint={`${formatNumber(summary.completes)} completes`}
+          hint={`${formatNumber(summary.replays)} replays · ${formatNumber(summary.completes)} completes`}
         />
         <StatCard
           label="Unique visitors"

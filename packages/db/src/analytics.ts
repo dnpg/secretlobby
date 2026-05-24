@@ -28,6 +28,12 @@ export interface AnalyticsSummary {
   landings: number;
   entries: number;
   plays: number;
+  /**
+   * Repeat plays — every audio_play after the first by the same visitor on
+   * the same track. Always equals `plays - distinct (visitor, track) pairs`,
+   * so it's 0 when nobody has replayed anything.
+   */
+  replays: number;
   completes: number;
   visitors: number;
   sessions: number;
@@ -69,6 +75,10 @@ export interface TopTrackRow {
   lobbyName: string | null;
   plays: number;
   listeners: number;
+  /** Repeat plays beyond the first by the same visitor: plays - listeners. */
+  replays: number;
+  /** Distinct visitors who played this track 2+ times. */
+  repeatListeners: number;
 }
 
 export interface AnalyticsForPeriod {
@@ -128,6 +138,8 @@ interface TopTrackAggRow {
   trackId: string;
   plays: number;
   listeners: number;
+  replays: number;
+  repeatListeners: number;
 }
 
 export async function getAnalyticsForPeriod(
@@ -140,8 +152,14 @@ export async function getAnalyticsForPeriod(
     ? Prisma.sql`AND "lobbyId" = ${lobbyId}`
     : Prisma.empty;
 
-  const [summaryRows, dailyRows, topCountriesAgg, topTracksAgg, topLobbiesAgg] =
-    await Promise.all([
+  const [
+    summaryRows,
+    summaryReplaysRows,
+    dailyRows,
+    topCountriesAgg,
+    topTracksAgg,
+    topLobbiesAgg,
+  ] = await Promise.all([
       // Summary: landings and entries are DISTINCT VISITORS (not raw event
       // counts) so refreshing the password page or re-logging-in doesn't
       // inflate the funnel — one person reaching the gate or entering the
@@ -159,6 +177,24 @@ export async function getAnalyticsForPeriod(
         FROM "AnalyticsEvent"
         WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
         ${lobbyFilter}
+      `,
+
+      // Total replays across all tracks: every audio_play after the first
+      // by the same (visitor, track) pair. Computed from a per-pair count
+      // subquery so the math matches what the Top Tracks table shows.
+      // Events with a null trackId can't be attributed to a specific track
+      // and are excluded — they wouldn't be replays of anything anyway.
+      prisma.$queryRaw<{ replays: number }[]>`
+        SELECT COALESCE(SUM(plays_per_pair - 1), 0)::int AS replays
+        FROM (
+          SELECT COUNT(*) AS plays_per_pair
+          FROM "AnalyticsEvent"
+          WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
+            AND "eventType" = 'audio_play'
+            AND "trackId" IS NOT NULL
+            ${lobbyFilter}
+          GROUP BY "trackId", "visitorId"
+        ) per_pair
       `,
 
       // Daily series: distinct visitors per day for landings/entries
@@ -192,17 +228,30 @@ export async function getAnalyticsForPeriod(
         LIMIT 10
       `,
 
-      // Top tracks by play count (audio_play events only).
+      // Top tracks by play count (audio_play events only). Replays /
+      // repeat-listeners are derived from a per-(track,visitor) subquery:
+      //   plays                = SUM(plays per pair)
+      //   listeners            = COUNT(pairs)                       — one row per distinct visitor
+      //   replays              = SUM(plays_per_pair - 1)            — every play after the first
+      //   repeat_listeners     = COUNT(pairs WHERE plays_per_pair >= 2)
+      // The inner GROUP BY scans the same composite index as the original
+      // query, so cost is roughly the same.
       prisma.$queryRaw<TopTrackAggRow[]>`
         SELECT
           "trackId",
-          COUNT(*)::int AS plays,
-          COUNT(DISTINCT "visitorId")::int AS listeners
-        FROM "AnalyticsEvent"
-        WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
-          AND "eventType" = 'audio_play'
-          AND "trackId" IS NOT NULL
-          ${lobbyFilter}
+          SUM(plays_per_pair)::int AS plays,
+          COUNT(*)::int AS listeners,
+          SUM(plays_per_pair - 1)::int AS replays,
+          COUNT(*) FILTER (WHERE plays_per_pair >= 2)::int AS "repeatListeners"
+        FROM (
+          SELECT "trackId", "visitorId", COUNT(*) AS plays_per_pair
+          FROM "AnalyticsEvent"
+          WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
+            AND "eventType" = 'audio_play'
+            AND "trackId" IS NOT NULL
+            ${lobbyFilter}
+          GROUP BY "trackId", "visitorId"
+        ) per_pair
         GROUP BY "trackId"
         ORDER BY plays DESC
         LIMIT 10
@@ -228,7 +277,7 @@ export async function getAnalyticsForPeriod(
       `,
     ]);
 
-  const summary = summaryRows[0] ?? {
+  const baseSummary = summaryRows[0] ?? {
     landings: 0,
     entries: 0,
     plays: 0,
@@ -236,8 +285,9 @@ export async function getAnalyticsForPeriod(
     visitors: 0,
     sessions: 0,
   };
+  const replays = summaryReplaysRows[0]?.replays ?? 0;
   const conversion =
-    summary.landings > 0 ? summary.entries / summary.landings : 0;
+    baseSummary.landings > 0 ? baseSummary.entries / baseSummary.landings : 0;
 
   // Enrich top-lobby rows with lobby + account names (one round-trip).
   const lobbyIds = topLobbiesAgg.map((r) => r.lobbyId);
@@ -293,6 +343,8 @@ export async function getAnalyticsForPeriod(
       lobbyName: t?.lobby?.name ?? null,
       plays: r.plays,
       listeners: r.listeners,
+      replays: r.replays,
+      repeatListeners: r.repeatListeners,
     };
   });
 
@@ -312,7 +364,7 @@ export async function getAnalyticsForPeriod(
 
   return {
     period: { from, to, lobbyId },
-    summary: { ...summary, conversion },
+    summary: { ...baseSummary, replays, conversion },
     daily,
     topLobbies,
     topCountries,
