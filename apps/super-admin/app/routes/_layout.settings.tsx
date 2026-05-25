@@ -173,6 +173,7 @@ export async function action({ request }: Route.ActionArgs) {
       getActiveKeyId,
       getEncryptedKeyId,
       isEncryptedLobbyPassword,
+      verifyLobbyPassword,
     } = await import("@secretlobby/auth/lobby-password");
 
     let activeKeyId: string;
@@ -187,38 +188,67 @@ export async function action({ request }: Route.ActionArgs) {
 
     const lobbies = await prisma.lobby.findMany({
       where: { password: { not: null } },
-      select: { id: true, password: true },
+      select: { id: true, name: true, password: true },
     });
 
     let encrypted = 0;
     let rotated = 0;
     let skipped = 0;
+    let failed = 0;
+    const errors: string[] = [];
 
     for (const lobby of lobbies) {
       const current = lobby.password ?? "";
       if (!current) { skipped++; continue; }
 
+      // Already encrypted under the active key — verified and skipped.
       const encKeyId = getEncryptedKeyId(current);
-      if (encKeyId === activeKeyId) { skipped++; continue; }
+      if (encKeyId === activeKeyId) {
+        skipped++;
+        continue;
+      }
 
-      const plaintext = decryptLobbyPassword(current);
-      const next = encryptLobbyPassword(plaintext);
-      await prisma.lobby.update({
-        where: { id: lobby.id },
-        data: { password: next },
-      });
+      try {
+        // Step 1: Get the original plaintext. For legacy plaintext values
+        // (no enc:v1: prefix) this returns the value as-is. For values
+        // encrypted under a different key, this decrypts them.
+        const plaintext = decryptLobbyPassword(current);
 
-      if (isEncryptedLobbyPassword(current)) {
-        rotated++;
-      } else {
-        encrypted++;
+        // Step 2: Encrypt under the active key — same function the
+        // console's updateLobbyPassword uses.
+        const next = encryptLobbyPassword(plaintext);
+
+        // Step 3: Verify the round-trip BEFORE writing. If the encrypted
+        // value can't be verified against the original plaintext, something
+        // is wrong — skip this lobby to avoid corruption.
+        if (!verifyLobbyPassword(plaintext, next)) {
+          failed++;
+          errors.push(`${lobby.name}: round-trip verification failed`);
+          continue;
+        }
+
+        // Step 4: Write only after verification passes.
+        await prisma.lobby.update({
+          where: { id: lobby.id },
+          data: { password: next },
+        });
+
+        if (isEncryptedLobbyPassword(current)) {
+          rotated++;
+        } else {
+          encrypted++;
+        }
+      } catch (err) {
+        failed++;
+        errors.push(`${lobby.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
-    return {
-      success: true,
-      message: `Passwords updated: ${encrypted} encrypted, ${rotated} rotated, ${skipped} already current`,
-    };
+    const summary = `${encrypted} encrypted, ${rotated} rotated, ${skipped} already current, ${failed} failed`;
+    if (errors.length > 0) {
+      return { success: false, message: `${summary}. Errors: ${errors.join("; ")}` };
+    }
+    return { success: true, message: summary };
   }
 
   if (intent === "migrateHls") {
